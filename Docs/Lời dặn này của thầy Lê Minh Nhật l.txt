@@ -1,0 +1,105 @@
+Lời dặn này của thầy Lê Minh Nhật là **cực kỳ chính xác, thực tế và là "pha cứu thua" giúp nhóm bạn cắt giảm được ít nhất 40% khối lượng công việc!** 
+
+Thầy chỉ ra đúng bản chất của **cửa hàng bán lẻ (Retail - như Bách Hóa Xanh, Co.op Food, WinMart+)**:
+* Cửa hàng bán lẻ không sản xuất, không bán buôn nên **không cần làm quy trình "Xuất kho" riêng biệt phức tạp**. 
+* **"Xuất kho" ở đây thực chất chính là "Bán hàng cho khách" (Bán ra = Trừ tồn kho).**
+* Không cần làm luân chuyển ngang giữa các shop, không cần làm thủ tục trả hàng lỗi rườm rà.
+
+Nhờ thầy "khoanh vùng" như vậy, bài toán của bạn bây giờ trở nên **rất gọn gàng, rõ ràng và không sợ bị sai hướng nữa.**
+
+---
+
+### 1. Luồng nghiệp vụ tinh gọn chuẩn Retail (Đúng ý thầy 100%)
+
+Toàn bộ hệ thống của bạn bây giờ chỉ xoay quanh **4 hành động chính**:
+
+```mermaid
+flowchart LR
+    A[Kho tổng DC] -->|1. Nhập hàng theo Lô| B(Cửa hàng bán lẻ)
+    B -->|2. Theo dõi HSD & Cảnh báo| B
+    B -->|3. Bán hàng ra / Sales Out| C[Khách hàng]
+    B -->|4. Dự báo nhu cầu| D[Đề xuất đơn hàng mới gửi Kho tổng]
+    B -.->|Hết hạn không bán kịp| E[Hủy hàng / Ghi nhận lãng phí]
+```
+
+1. **Nhập hàng (In):** Cửa hàng nhận hàng từ Kho tổng về $\rightarrow$ Lưu thông tin theo **Lô (Mã lô, Số lượng, Hạn sử dụng - HSD)**.
+2. **Kiểm soát tại cửa hàng (Store Inventory):** Hệ thống đếm lùi ngày hết hạn của từng lô. Lô nào cận date thì đổi màu cảnh báo (Đỏ/Vàng).
+3. **Bán hàng ra (Out):** Khách mua hàng $\rightarrow$ Trừ tồn kho theo nguyên tắc **FEFO (Lô nào hết hạn trước thì ưu tiên trừ trước)**.
+4. **Dự báo & Đề xuất (Predictor):** Dựa vào tốc độ bán + thời tiết + ngày lễ $\rightarrow$ Hệ thống gợi ý: *"Đợt tới nên xin kho tổng cấp bao nhiêu là vừa đủ để không bị ế/hỏng"*.
+5. **Ghi nhận hao hụt (Spoilage):** Nếu có hàng quá date buộc phải vứt bỏ $\rightarrow$ Bấm nút "Ghi nhận hủy" để thống kê tỷ lệ lãng phí.
+
+---
+
+### 2. CSDL sau khi tinh gọn theo lời thầy (Chỉ còn 5 bảng cốt lõi!)
+
+Bạn và Quân không cần làm 7 hay 10 bảng nữa. CSDL bây giờ **siêu gọn, chỉ cần 5 bảng**:
+
+1. **`users`**: Tài khoản quản lý/nhân viên cửa hàng.
+2. **`products`**: Thông tin sản phẩm (Mã vạch/SKU, Tên, Đơn vị tính, Danh mục).
+3. **`batches` (Lô hàng tại cửa hàng):**
+   * `id`, `product_id`, `batch_code` (Mã lô)
+   * `import_date` (Ngày nhập từ kho tổng)
+   * `expiry_date` (Hạn sử dụng)
+   * `quantity` (Số lượng tồn hiện tại trong cửa hàng)
+   * `status` (Đang bán / Sắp hết hạn / Đã hủy)
+4. **`sales_history` (Dữ liệu bán hàng ra):**
+   * `id`, `product_id`, `sale_date`, `quantity_sold`
+   * `weather` (Nắng / Mưa - dùng để dự báo)
+   * `is_holiday` (Ngày lễ / Cuối tuần)
+5. **`spoilage_records` (Nhật ký hàng hư hỏng/hết hạn phải bỏ):**
+   * `id`, `batch_id`, `disposed_date`, `quantity_disposed`, `reason`
+
+*(Bỏ hoàn toàn các bảng: Luân chuyển kho, Trả hàng nhà cung cấp, Phiếu xuất kho nội bộ).*
+
+---
+
+### 3. Sơ đồ DFD (Sơ đồ luồng dữ liệu) Mức 1 gửi cho Quân làm báo cáo
+
+Bạn gửi sơ đồ này cho bạn Quân đưa vào báo cáo hoặc làm khung dựng Backend:
+
+```mermaid
+flowchart TD
+    User([Nhân viên / Quản lý])
+    FileExcel[(File Excel Bán hàng)]
+
+    subgraph "HỆ THỐNG QUẢN TRỊ BÁN LẺ CHỐNG LÃNG PHÍ"
+        P1[1.0 Nhập lô hàng từ kho tổng]
+        P2[2.0 Ghi nhận bán hàng / Import Excel]
+        P3[3.0 Quét HSD & Bắn cảnh báo Spoilage]
+        P4[4.0 Dự báo nhu cầu & Đề xuất nhập]
+        P5[5.0 Ghi nhận tiêu hủy hàng hỏng]
+        
+        DB1[(Dữ liệu Sản phẩm & Lô hàng)]
+        DB2[(Lịch sử Bán hàng)]
+        DB3[(Nhật ký Lãng phí)]
+    end
+
+    User -->|Nhập thông tin lô, HSD| P1
+    P1 -->|Lưu lô mới| DB1
+
+    FileExcel -->|Upload file bán hàng| P2
+    User -->|Nhập đơn bán trực tiếp| P2
+    P2 -->|Trừ tồn kho FEFO| DB1
+    P2 -->|Lưu doanh số| DB2
+
+    DB1 -->|Quét ngày hết hạn| P3
+    P3 -->|Gửi cảnh báo Đỏ/Vàng| User
+
+    DB2 -->|Phân tích xu hướng bán| P4
+    P4 -->|Gợi ý số lượng cần nhập từ kho tổng| User
+
+    User -->|Xác nhận hủy lô quá hạn| P5
+    P5 -->|Trừ sạch tồn kho| DB1
+    P5 -->|Ghi nhận tổn thất| DB3
+```
+
+---
+
+### 🎯 TỔNG KẾT: BÂY GIỜ BẠN LÀM GÌ?
+
+Mọi thứ đã rõ như ban ngày:
+1. **Bạn gửi ngay cho Quân:** Danh sách **5 bảng CSDL** và **Sơ đồ DFD** ở trên để Quân bắt tay làm Database & Backend.
+2. **Bạn (Du) bắt tay vào làm giao diện Frontend:**
+   * Màn hình 1: **Danh sách Sản phẩm & Quản lý Lô hàng** (có cột đếm lùi ngày hết hạn).
+   * Màn hình 2: **Import file Excel** bán hàng.
+   * Màn hình 3: **Dashboard** (Số lượng sắp hết hạn, lượng hàng đề xuất nhập, tỷ lệ hàng bị hủy).

@@ -1,0 +1,11 @@
+transaction_code,sku,product_name,quantity_sold,sale_price,sale_date,weather,is_holiday
+HD-IMP-001,8934567890101,Sữa tươi tiệt trùng Vinamilk 100% Không đường 1L,12,36000,2026-09-10,SUNNY,FALSE
+HD-IMP-002,8934567890103,Sữa chua ăn Vinamilk Nha Đam 100g,20,8500,2026-09-10,SUNNY,FALSE
+HD-IMP-003,8934567890201,Bánh mì Sandwich tươi Kinh Đô 250g,8,22000,2026-09-11,RAINY,FALSE
+HD-IMP-004,8934567890401,Mì Hảo Hảo Tôm chua cay 75g,50,5000,2026-09-11,RAINY,FALSE
+HD-IMP-005,8934567890301,Nước ngọt Coca-Cola Sleek lon 320ml,45,11000,2026-09-12,SUNNY,TRUE
+HD-IMP-006,8934567890104,Sữa chua uống men sống Probi 130ml,15,10000,2026-09-12,SUNNY,TRUE
+HD-IMP-007,8934567890501,Xúc xích tiệt trùng Vissan Bò 4 cây 160g,18,24000,2026-09-13,NORMAL,FALSE
+HD-IMP-008,8934567890102,Sữa tươi tiệt trùng Vinamilk 100% Có đường 1L,25,36000,2026-09-13,NORMAL,FALSE
+HD-IMP-009,8934567890303,Nước khoáng thiên nhiên Aquafina 500ml,30,7000,2026-09-14,SUNNY,FALSE
+HD-IMP-010,8934567890202,Bánh mì hoa cúc Harrys Pháp 500g,5,130000,2026-09-14,NORMAL,FALSE
