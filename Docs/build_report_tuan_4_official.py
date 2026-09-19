@@ -320,10 +320,15 @@ def build_report_tuan_4_official():
     p_img3.paragraph_format.space_after = Pt(8)
     p_img3.add_run().add_picture(r"c:\thuyet minh\Docs\Diagram_Images\dfd_1.png", width=Inches(6.2))
 
-    # Save to BAO_CAO_TIEN_DO_TUAN_4.docx
+    # Save to BAO_CAO_TIEN_DO_TUAN_4.docx (Handle Word lock gracefully)
     output_path = r"c:\thuyet minh\Docs\BAO_CAO_TIEN_DO_TUAN_4.docx"
-    doc.save(output_path)
-    print(f"Successfully generated official report: {output_path}")
+    try:
+        doc.save(output_path)
+        print(f"Successfully generated official report: {output_path}")
+    except PermissionError:
+        alt_path = r"c:\thuyet minh\Docs\BAO_CAO_TIEN_DO_TUAN_4_CAP_NHAT.docx"
+        doc.save(alt_path)
+        print(f"File dang mo trong Word. Da luu vao: {alt_path}")
 
 if __name__ == "__main__":
     build_report_tuan_4_official()
