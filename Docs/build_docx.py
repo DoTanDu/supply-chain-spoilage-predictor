@@ -300,33 +300,33 @@ def main():
     add_bullet_p(doc, "Cửa hàng trưởng / Admin (Store Manager): ", "Toàn quyền quản lý danh mục sản phẩm, cấu hình ngưỡng cảnh báo, import file Excel lịch sử giao dịch, xem Dashboard phân tích doanh thu và duyệt đơn đề xuất đặt hàng gửi lên Kho tổng.")
 
     add_heading_2(doc, "2.2. Sơ đồ Use Case của Hệ thống")
-    add_image_with_caption(doc, r"c:\thuyet minh\extracted_images\use_case.png", "Hình 1: Sơ đồ Use Case Hệ thống Quản trị Bán lẻ Chống lãng phí")
+    add_image_with_caption(doc, r"c:\thuyet minh\Docs\Diagram_Images\use_case.png", "Hình 1: Sơ đồ Use Case Hệ thống Quản trị Bán lẻ Chống lãng phí (Chi tiết 6 phân hệ tác nghiệp)")
 
     add_body_p(doc, "Bảng đặc tả tóm tắt các Use Case chính trong hệ thống:")
     tbl_uc = doc.add_table(rows=1, cols=3)
     uc_widths = [1.8, 1.2, 3.5]
     uc_headers = ["Tên Use Case", "Tác Nhân Chính", "Mô Tả Tóm Tắt Luồng Xử Lý"]
     uc_data = [
-        ["Đăng nhập hệ thống", "Staff, Manager", "Xác thực tài khoản và trả về JWT Token kèm phân quyền tương ứng."],
-        ["Nhập lô hàng từ Kho tổng", "Staff", "Ghi nhận đợt hàng về, lưu thông tin lô và số lượng vào kho D1."],
-        ["Bán hàng lẻ / Trừ kho FEFO", "Staff", "Nhập sản phẩm bán, hệ thống tự động trừ tồn của lô có HSD gần nhất."],
-        ["Import Excel lịch sử bán", "Manager", "Đọc file Excel bán hàng và nạp hàng loạt vào kho dữ liệu bán hàng D2."],
-        ["Theo dõi HSD & Cảnh báo", "Staff, Manager", "Hệ thống tự động tính ngày còn lại và hiển thị cảnh báo Đỏ/Vàng."],
-        ["Ghi nhận tiêu hủy hàng", "Staff", "Xác nhận hủy lô quá hạn, đưa tồn về 0 và ghi sổ hao hụt D3."],
-        ["Xem đề xuất đặt hàng", "Manager", "Xem danh sách gợi ý số lượng cần đặt từ Kho tổng dựa trên ROP và mùa vụ."],
-        ["Xem Dashboard & Báo cáo", "Manager", "Xem biểu đồ doanh thu, tỷ lệ hao hụt hàng hóa và xuất báo cáo định kỳ."],
-        ["Quản lý danh mục & Ngưỡng", "Manager", "Thêm/sửa sản phẩm, đơn vị tính và cấu hình số ngày cảnh báo cận date."]
+        ["Đăng nhập hệ thống (JWT)", "Staff, Manager", "Xác thực tài khoản và trả về JWT Token kèm phân quyền tương ứng."],
+        ["Tiếp nhận & Nhập lô từ Kho tổng", "Staff", "Kiểm đếm HSD thực tế, lưu thông tin lô, kích hoạt Shelf-life, in tem nhãn kệ."],
+        ["Bán hàng lẻ / Trừ kho FEFO", "Staff", "Quét mã vạch POS, tự động quét chọn lô HSD gần nhất trừ tồn, lưu lịch sử và biến thời tiết/lễ."],
+        ["Giám sát HSD & Cảnh báo Spoilage", "Staff, Manager", "Quét tự động đếm lùi ngày HSD, phân loại 3 mức RSL, đảo hàng, dán tem giảm giá, khóa mã khi hết hạn."],
+        ["Quy trình Tiêu hủy hàng hỏng", "Staff, Manager", "Nhân viên lập phiếu hủy, Quản lý duyệt, hệ thống trừ tồn về 0 và hạch toán thiệt hại tài chính."],
+        ["Dự báo & Đề xuất Đặt hàng", "Manager, DC", "Phân tích tốc độ bán d và hệ số K, tính ROP, cảnh báo DOS>DUE, sinh đề xuất và gửi đơn về Kho tổng."],
+        ["Quản lý Danh mục & Cấu hình", "Manager", "CRUD sản phẩm, cấu hình số ngày cảnh báo cận date riêng từng nhóm hàng và tồn kho an toàn."],
+        ["Import Excel lịch sử bán", "Manager", "Đọc file Excel bán hàng và nạp hàng loạt vào kho dữ liệu bán hàng."],
+        ["Dashboard Thống kê & Báo cáo", "Manager", "Xem biểu đồ doanh thu, tỷ lệ hao hụt hàng hóa (Spoilage Rate %) và xuất báo cáo kiểm kê định kỳ."]
     ]
     format_table(tbl_uc, uc_widths, uc_headers, uc_data)
 
     add_heading_2(doc, "2.3. Sơ đồ Luồng Dữ liệu DFD Mức 0 (Sơ đồ ngữ cảnh)")
-    add_image_with_caption(doc, r"c:\thuyet minh\extracted_images\dfd_0.png", "Hình 2: Sơ đồ Luồng Dữ liệu DFD Mức 0 (Context Diagram)")
+    add_image_with_caption(doc, r"c:\thuyet minh\Docs\Diagram_Images\dfd_0.png", "Hình 2: Sơ đồ Luồng Dữ liệu DFD Mức 0 (Context Diagram)")
     add_body_p(doc, "Thuyết minh luồng dữ liệu mức ngữ cảnh:")
     add_bullet_p(doc, "Tác nhân Người dùng (Nhân viên & Quản lý): ", "Gửi vào hệ thống thông tin lô hàng nhập, giao dịch bán lẻ hoặc file Excel bán hàng; nhận lại từ hệ thống các cảnh báo cận date, danh sách tồn kho và báo cáo tỷ lệ hao hụt.")
     add_bullet_p(doc, "Thực thể Kho tổng (DC): ", "Cung cấp hàng hóa kèm thông tin hạn sử dụng về cho hệ thống cửa hàng; nhận về Đơn đề xuất nhập hàng tối ưu do hệ thống tự động tính toán.")
 
     add_heading_2(doc, "2.4. Sơ đồ Luồng Dữ liệu DFD Mức 1 (Phân rã chức năng)")
-    add_image_with_caption(doc, r"c:\thuyet minh\extracted_images\dfd_1.png", "Hình 3: Sơ đồ Luồng Dữ liệu DFD Mức 1 chi tiết 5 tiến trình và 3 kho dữ liệu")
+    add_image_with_caption(doc, r"c:\thuyet minh\Docs\Diagram_Images\dfd_1.png", "Hình 3: Sơ đồ Luồng Dữ liệu DFD Mức 1 chi tiết 5 tiến trình và 3 kho dữ liệu")
     add_body_p(doc, "Thuyết minh chi tiết 5 tiến trình xử lý và 3 kho lưu trữ dữ liệu:")
     add_bullet_p(doc, "Tiến trình 1.0 (Nhập lô từ Kho tổng): ", "Nhận thông tin lô và HSD từ Kho tổng và xác nhận từ nhân viên, tiến hành ghi bản ghi lô mới vào Kho D1 (Sản phẩm & Lô hàng).")
     add_bullet_p(doc, "Tiến trình 2.0 (Bán hàng lẻ theo FEFO): ", "Khi có giao dịch bán hoặc upload Excel, tiến trình truy vấn Kho D1 để tìm lô có HSD gần nhất để trừ tồn kho; đồng thời ghi lịch sử giao dịch bán vào Kho D2.")
@@ -446,7 +446,7 @@ def main():
     add_bullet_p(doc, "3. Skill 'Daily Retail Assistant' (Trợ lý Hỏi đáp Tồn kho & Date): ", "Tích hợp Chatbot cho phép Cửa hàng trưởng dùng câu hỏi tự nhiên như: 'Hôm nay có lô nào sắp hết hạn không?' hoặc 'Mặt hàng nào đang có nguy cơ lãng phí cao nhất?' và nhận câu trả lời tức thì kèm bảng số liệu trích xuất từ CSDL.")
 
     # Save document
-    output_path = r"c:\thuyet minh\SƠ ĐỒ USE CASE.docx"
+    output_path = r"c:\thuyet minh\Docs\BAO_CAO_NGHIEP_VU_VA_KIEN_TRUC_NOP_THAY.docx"
     doc.save(output_path)
     print(f"Document saved successfully to {output_path}!")
 
