@@ -4,6 +4,11 @@ import matplotlib.patches as patches
 from matplotlib.patches import FancyBboxPatch
 import numpy as np
 
+# Cấu hình font chữ chuẩn Unicode tiếng Việt của Windows (Arial / Segoe UI)
+plt.rcParams['font.sans-serif'] = ['Arial', 'Segoe UI', 'Tahoma', 'Calibri']
+plt.rcParams['font.family'] = 'sans-serif'
+plt.rcParams['axes.unicode_minus'] = False
+
 def draw_dfd_1_diagram():
     # Kích thước rộng rãi, độ phân giải cao 200 DPI
     fig, ax = plt.subplots(figsize=(26, 32), dpi=200)
