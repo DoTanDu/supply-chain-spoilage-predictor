@@ -30,7 +30,8 @@ export default function DashboardView({
   const expiredBatches = batches.filter(b => b.status === 'EXPIRED');
 
   const totalDisposalLoss = liveStats ? liveStats.totalDisposalLoss : disposals.reduce((sum, d) => sum + d.totalLoss, 0);
-  const spoilageRate = liveStats ? liveStats.spoilageRate : ((totalDisposalLoss / 16600000) * 100).toFixed(2);
+  const totalReceiptCost = liveStats?.totalReceiptCost || batches.reduce((sum, b) => sum + ((b.initialQuantity || b.quantity) * b.costPrice), 0) || 1;
+  const spoilageRate = liveStats ? liveStats.spoilageRate : ((totalDisposalLoss / totalReceiptCost) * 100).toFixed(2);
   const totalSalesRevenue = liveStats?.totalSalesRevenue || 0;
   const totalSalesCount = liveStats?.totalSalesCount || 0;
 
