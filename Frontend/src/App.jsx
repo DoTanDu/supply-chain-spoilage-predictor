@@ -50,7 +50,9 @@ export default function App() {
       if (prods && prods.length) setProducts(prods);
       if (bats && bats.length) {
         setBatches(bats);
-        setRecentIntakes(bats.slice(0, 4));
+        // Sort by id descending so the latest received batches appear first
+        const sortedByRecent = [...bats].sort((a, b) => b.id - a.id);
+        setRecentIntakes(sortedByRecent.slice(0, 8));
       }
       if (disps) setDisposals(disps);
       if (logs) setAuditLogs(logs);
@@ -151,14 +153,12 @@ export default function App() {
   // Handler: Add new batch from DC Intake (Write to SQL Server)
   const handleAddBatch = async (newBatch) => {
     try {
-      await api.apiAddBatch(newBatch);
+      const res = await api.apiAddBatch(newBatch);
       await loadLiveDatabaseData();
+      return res;
     } catch (err) {
-      setBatches([newBatch, ...batches]);
-      setRecentIntakes([newBatch, ...recentIntakes]);
-      setProducts(products.map(p => 
-        p.id === newBatch.productId ? { ...p, totalStock: p.totalStock + newBatch.quantity } : p
-      ));
+      console.error("Error adding batch:", err);
+      return { success: false, message: err.message };
     }
   };
 

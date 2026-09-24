@@ -56,11 +56,18 @@ export default function DcIntakeView({
   recentIntakes 
 }) {
   const [selectedProductId, setSelectedProductId] = useState(products[0]?.id || 1);
+  const selectedProd = products.find(p => p.id === selectedProductId) || products[0];
+
   const [batchCode, setBatchCode] = useState(`BAT-DC-${Date.now().toString().slice(-6)}`);
   const [importDate, setImportDate] = useState('2026-09-24');
   const [expiryDate, setExpiryDate] = useState('2026-11-24');
   const [quantity, setQuantity] = useState(30);
-  const [costPrice, setCostPrice] = useState(28000);
+  const [costPrice, setCostPrice] = useState(selectedProd?.costPrice || 28000);
+  const [retailPrice, setRetailPrice] = useState(selectedProd?.price || 36000);
+  const [updateRetailPrice, setUpdateRetailPrice] = useState(false);
+  const [newRetailPrice, setNewRetailPrice] = useState(selectedProd?.price || 36000);
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -97,12 +104,15 @@ export default function DcIntakeView({
     return matchesCat && matchesSearch;
   });
 
-  // Auto adjust cost price when product changes
+  // Auto adjust cost price and retail price when product changes
   const handleProductChange = (productId) => {
     setSelectedProductId(Number(productId));
     const prod = products.find(p => p.id === Number(productId));
     if (prod) {
       setCostPrice(prod.costPrice);
+      setRetailPrice(prod.price);
+      setNewRetailPrice(prod.price);
+      setUpdateRetailPrice(false);
       const imp = new Date(importDate);
       imp.setDate(imp.getDate() + (prod.shelfLifeDays || 30));
       setExpiryDate(imp.toISOString().split('T')[0]);
@@ -120,7 +130,7 @@ export default function DcIntakeView({
     setSuccessMsg(`Đã chọn sản phẩm "${prod.name}" từ danh mục để tiếp nhận lô hàng!`);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
@@ -141,6 +151,8 @@ export default function DcIntakeView({
       return;
     }
 
+    setIsSubmitting(true);
+
     const newBatch = {
       id: Date.now(),
       productId: prod.id,
@@ -152,12 +164,27 @@ export default function DcIntakeView({
       quantity: Number(quantity),
       costPrice: Number(costPrice),
       status: 'SAFE',
-      category: prod.category
+      category: prod.category,
+      updateSellingPrice: updateRetailPrice,
+      sellingPrice: updateRetailPrice ? Number(newRetailPrice) : prod.price
     };
 
-    onAddBatch(newBatch);
-    setSuccessMsg(`Nhập thành công Lô ${batchCode} cho sản phẩm ${prod.name} vào SQL Server!`);
-    setBatchCode(`BAT-DC-${Date.now().toString().slice(-6)}`);
+    try {
+      const res = await onAddBatch(newBatch);
+      if (res && res.success === false) {
+        setErrorMsg(res.message || 'Lỗi ghi nhận lô hàng vào CSDL!');
+      } else {
+        const priceNotice = updateRetailPrice 
+          ? ` và đồng bộ Giá bán lẻ POS thành ${Number(newRetailPrice).toLocaleString('vi-VN')} đ`
+          : '';
+        setSuccessMsg(`Tiếp nhận thành công Lô ${batchCode} cho sản phẩm "${prod.name}" (${quantity} ${prod.unit}, giá vốn ${Number(costPrice).toLocaleString('vi-VN')} đ/SP)${priceNotice}!`);
+        setBatchCode(`BAT-DC-${Date.now().toString().slice(-6)}`);
+      }
+    } catch (err) {
+      setErrorMsg(`Lỗi kết nối CSDL: ${err.message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Handle Save New Product to Database
@@ -195,7 +222,7 @@ export default function DcIntakeView({
   };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '520px 1fr', gap: '24px', alignItems: 'start' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '540px 1fr', gap: '24px', alignItems: 'start' }}>
       
       {/* Intake Form */}
       <div className="glass-panel" style={{ padding: '24px' }}>
@@ -222,14 +249,14 @@ export default function DcIntakeView({
         </div>
 
         {errorMsg && (
-          <div style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.4)', color: '#f87171', padding: '10px 14px', borderRadius: '10px', fontSize: '0.825rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <AlertCircle size={16} /> {errorMsg}
+          <div style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.4)', color: '#f87171', padding: '12px 14px', borderRadius: '10px', fontSize: '0.85rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <AlertCircle size={18} /> {errorMsg}
           </div>
         )}
 
         {successMsg && (
-          <div style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.4)', color: '#34d399', padding: '10px 14px', borderRadius: '10px', fontSize: '0.825rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <CheckCircle2 size={16} /> {successMsg}
+          <div style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.4)', color: '#34d399', padding: '12px 14px', borderRadius: '10px', fontSize: '0.85rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <CheckCircle2 size={18} /> {successMsg}
           </div>
         )}
 
@@ -274,7 +301,7 @@ export default function DcIntakeView({
                 type="text"
                 className="form-input"
                 style={{ padding: '6px 12px 6px 30px', fontSize: '0.8rem' }}
-                placeholder="Lọc nhanh theo tên hoặc SKU..."
+                placeholder="Lọc nhanh (VD: sua vinamilk, banh mi, coca...)"
                 value={searchProduct}
                 onChange={(e) => setSearchProduct(e.target.value)}
               />
@@ -337,43 +364,113 @@ export default function DcIntakeView({
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px', display: 'block' }}>
-                Số lượng tiếp nhận:
-              </label>
-              <input 
-                type="number" 
-                className="form-input"
-                min="1"
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                required
-              />
+          <div>
+            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px', display: 'block' }}>
+              Số lượng tiếp nhận ({selectedProd?.unit || 'Hộp'}):
+            </label>
+            <input 
+              type="number" 
+              className="form-input"
+              min="1"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              required
+            />
+          </div>
+
+          {/* Pricing Architecture: Cost Price vs Retail POS Price */}
+          <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '14px' }}>
+            <div style={{ fontSize: '0.825rem', fontWeight: 700, color: '#ffffff', marginBottom: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>💰 Hạch Toán Giá Vốn & Giá Bán Lẻ POS</span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Đơn vị: VNĐ / {selectedProd?.unit || 'SP'}</span>
             </div>
 
-            <div>
-              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px', display: 'block' }}>
-                Giá vốn nhập (VNĐ):
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', alignItems: 'start' }}>
+              <div>
+                <label style={{ fontSize: '0.775rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
+                  Giá vốn nhập Lô này:
+                </label>
+                <input 
+                  type="number" 
+                  className="form-input"
+                  min="500"
+                  step="500"
+                  value={costPrice}
+                  onChange={(e) => setCostPrice(e.target.value)}
+                  required
+                />
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: '2px', display: 'block' }}>
+                  Lưu vào CSDL cho riêng Lô này
+                </span>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.775rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
+                  Giá bán niêm yết hiện tại (POS):
+                </label>
+                <div style={{ padding: '8px 12px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', borderRadius: '8px', fontWeight: 700, color: 'var(--safe-green)', fontSize: '0.9rem' }}>
+                  {Number(retailPrice).toLocaleString('vi-VN')} đ
+                </div>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: '2px', display: 'block' }}>
+                  Khách hàng thanh toán tại quầy
+                </span>
+              </div>
+            </div>
+
+            {/* Price Adjustment Option */}
+            <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, color: updateRetailPrice ? 'var(--safe-green)' : '#cbd5e1' }}>
+                <input 
+                  type="checkbox"
+                  checked={updateRetailPrice}
+                  onChange={(e) => setUpdateRetailPrice(e.target.checked)}
+                  style={{ width: '16px', height: '16px', accentColor: 'var(--safe-green)', cursor: 'pointer' }}
+                />
+                <span>Hàng nhập khác giá? Cập nhật luôn Giá bán lẻ mới tại quầy POS</span>
               </label>
-              <input 
-                type="number" 
-                className="form-input"
-                min="1000"
-                step="500"
-                value={costPrice}
-                onChange={(e) => setCostPrice(e.target.value)}
-                required
-              />
+
+              {updateRetailPrice && (
+                <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', alignItems: 'center', background: 'rgba(16, 185, 129, 0.05)', padding: '10px', borderRadius: '8px', border: '1px dashed var(--safe-green)' }}>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                      Giá bán lẻ POS mới (VNĐ):
+                    </label>
+                    <input 
+                      type="number"
+                      className="form-input"
+                      value={newRetailPrice}
+                      onChange={(e) => setNewRetailPrice(e.target.value)}
+                      min={costPrice}
+                      step="500"
+                      required
+                    />
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                    Lãi gộp dự kiến: <strong style={{ color: 'var(--safe-green)' }}>{(Number(newRetailPrice) - Number(costPrice)).toLocaleString('vi-VN')} đ</strong>
+                    <div>Biên LN: <strong style={{ color: '#ffffff' }}>{Number(newRetailPrice) > 0 ? (((Number(newRetailPrice) - Number(costPrice)) / Number(newRetailPrice)) * 100).toFixed(1) : 0}%</strong></div>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ fontSize: '0.725rem', color: 'var(--text-dim)', marginTop: '8px', lineHeight: '1.4' }}>
+                💡 <em>Hạch toán FEFO: Lô cũ (cận date hơn) luôn được ưu tiên xuất bán trước theo giá vốn cũ. Khi hết lô cũ, hệ thống tự động trừ sang lô mới với giá vốn mới.</em>
+              </div>
             </div>
           </div>
 
           <button 
             type="submit" 
             className="btn btn-primary"
-            style={{ width: '100%', padding: '12px', marginTop: '4px' }}
+            style={{ width: '100%', padding: '12px', marginTop: '4px', opacity: isSubmitting ? 0.7 : 1, cursor: isSubmitting ? 'not-allowed' : 'pointer' }}
+            disabled={isSubmitting}
           >
-            <ArrowDownToLine size={18} /> Xác Nhận Tiếp Nhận Lô Hàng Vào SQL
+            {isSubmitting ? (
+              <span>⏳ Đang ghi nhận vào SQL Server...</span>
+            ) : (
+              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                <ArrowDownToLine size={18} /> Xác Nhận Tiếp Nhận Lô Hàng Vào SQL
+              </span>
+            )}
           </button>
         </form>
       </div>
@@ -399,13 +496,23 @@ export default function DcIntakeView({
                 <th>Ngày Nhập</th>
                 <th>HSD</th>
                 <th>Số Lượng</th>
-                <th>Tổng Tiền Vốn</th>
+                <th>Giá Vốn Lô</th>
+                <th>Tổng Vốn</th>
               </tr>
             </thead>
             <tbody>
               {recentIntakes.map((b, idx) => (
-                <tr key={idx}>
-                  <td style={{ fontWeight: 700, color: '#ffffff' }}>{b.batchCode}</td>
+                <tr key={idx} style={{ background: idx === 0 ? 'rgba(16, 185, 129, 0.06)' : 'transparent' }}>
+                  <td>
+                    <div style={{ fontWeight: 700, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {b.batchCode}
+                      {idx === 0 && (
+                        <span className="badge badge-safe" style={{ fontSize: '0.65rem', padding: '2px 6px' }}>
+                          Mới nhập
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td>
                     <div style={{ fontWeight: 600 }}>{b.productName}</div>
                     <div style={{ fontSize: '0.725rem', color: 'var(--text-dim)' }}>{b.category}</div>
@@ -413,7 +520,10 @@ export default function DcIntakeView({
                   <td style={{ color: 'var(--text-muted)' }}>{b.importDate}</td>
                   <td style={{ color: 'var(--safe-green)', fontWeight: 600 }}>{b.expiryDate}</td>
                   <td><strong>{b.initialQuantity || b.quantity}</strong></td>
-                  <td>{((b.initialQuantity || b.quantity) * b.costPrice).toLocaleString('vi-VN')} đ</td>
+                  <td style={{ color: '#cbd5e1' }}>{Number(b.costPrice).toLocaleString('vi-VN')} đ</td>
+                  <td style={{ fontWeight: 700, color: 'var(--safe-green)' }}>
+                    {((b.initialQuantity || b.quantity) * b.costPrice).toLocaleString('vi-VN')} đ
+                  </td>
                 </tr>
               ))}
             </tbody>

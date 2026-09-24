@@ -164,6 +164,14 @@ async function getDashboardStats() {
 
 // 6. Receive Batch from DC into SQL Server
 async function insertBatch(batch) {
+  const updateProductSql = batch.updateSellingPrice && Number(batch.sellingPrice) > 0
+    ? `UPDATE products SET selling_price = ${batch.sellingPrice}, cost_price = ${batch.costPrice} WHERE id = ${batch.productId};`
+    : `UPDATE products SET cost_price = ${batch.costPrice} WHERE id = ${batch.productId};`;
+
+  const priceLogDesc = batch.updateSellingPrice && Number(batch.sellingPrice) > 0
+    ? `, Cập nhật giá bán lẻ POS: ${Number(batch.sellingPrice).toLocaleString('vi-VN')} đ`
+    : '';
+
   const sql = `
     BEGIN TRANSACTION;
       INSERT INTO batches (
@@ -174,10 +182,12 @@ async function insertBatch(batch) {
         ${batch.quantity}, ${batch.quantity}, ${batch.costPrice}, 0, 'ACTIVE'
       );
 
+      ${updateProductSql}
+
       INSERT INTO system_audit_logs (user_id, action_type, description, ip_address)
       VALUES (
         2, N'Nhập lô từ DC',
-        N'Đã nhập lô ${batch.batchCode} với số lượng ${batch.quantity}, HSD: ${batch.expiryDate}', '127.0.0.1'
+        N'Đã nhập lô ${batch.batchCode} cho SP ID ${batch.productId} (${batch.quantity} cái, giá vốn: ${Number(batch.costPrice).toLocaleString('vi-VN')} đ)${priceLogDesc}', '127.0.0.1'
       );
     COMMIT TRANSACTION;
   `;
