@@ -136,7 +136,7 @@ export default function App() {
       const newLog = {
         id: Date.now(),
         time: new Date().toLocaleTimeString('vi-VN') + ' ' + new Date().toLocaleDateString('vi-VN'),
-        user: currentRole === 'STORE_MANAGER' ? 'Đỗ Tấn Du (Manager)' : 'Đoàn Minh Quân (Staff)',
+        user: currentRole === 'STORE_MANAGER' ? 'Cửa hàng trưởng (Quản lý)' : 'Nhân viên (Thu ngân)',
         action: 'Bán hàng POS (FEFO)',
         details: `Đơn ${orderId}: Tổng ${totalSaleAmount.toLocaleString('vi-VN')} đ. Đã trừ ${fefoDeductions.length} lượt lô theo FEFO.`
       };
@@ -229,7 +229,7 @@ export default function App() {
       await loadLiveDatabaseData();
     } catch (err) {
       setDisposals(disposals.map(d => 
-        d.id === disposalId ? { ...d, status: 'APPROVED', approvedBy: 'Đỗ Tấn Du (Store Manager)' } : d
+        d.id === disposalId ? { ...d, status: 'APPROVED', approvedBy: 'Cửa hàng trưởng (Quản lý)' } : d
       ));
     }
   };
@@ -278,7 +278,7 @@ export default function App() {
       const newLog = {
         id: Date.now(),
         time: new Date().toLocaleTimeString('vi-VN') + ' ' + new Date().toLocaleDateString('vi-VN'),
-        user: currentRole === 'STORE_MANAGER' ? 'Đỗ Tấn Du (Manager)' : 'Đoàn Minh Quân (Staff)',
+        user: currentRole === 'STORE_MANAGER' ? 'Cửa hàng trưởng (Quản lý)' : 'Nhân viên (Thu ngân)',
         action: 'Tiếp nhận hàng từ DC',
         details: `Đơn ${poCode}: Kho tổng DC đã giao +${qty} ${product.unit} ${product.name} (Lô ${batchCode}, HSD: ${expiryStr}). Tồn kho đã tăng thêm!`
       };
@@ -302,7 +302,7 @@ export default function App() {
         setWeather={setWeather}
         isConnectedToSql={isConnectedToSql}
         batches={batches}
-        onNavigateToFefo={() => setActiveTab('FEFO_MONITOR')}
+        onNavigateToFefo={() => setActiveTab('fefo-monitor')}
         onQuickDiscount={handleQuickDiscount}
         onRotateShelf={handleRotateShelf}
       />

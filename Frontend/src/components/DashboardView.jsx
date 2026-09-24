@@ -34,12 +34,35 @@ export default function DashboardView({
   const totalSalesRevenue = liveStats?.totalSalesRevenue || 0;
   const totalSalesCount = liveStats?.totalSalesCount || 0;
 
-  // High Risk Spoilage Products (DOS > DUE)
-  const highRiskItems = [
-    { name: "Bánh mì tươi Sandwich Kinh Đô", dos: "1.9 ngày", due: "2 ngày", risk: "RẤT CAO", action: "Giảm 30% xả nhanh" },
-    { name: "Thịt ức gà tươi phi lê CP Fresh", dos: "1.8 ngày", due: "2 ngày", risk: "CAO", action: "Ưu tiên đầu kệ" },
-    { name: "Sữa chua Ba Vì có đường 100g", dos: "4.3 ngày", due: "8 ngày", risk: "TRUNG BÌNH", action: "Theo dõi FEFO" }
-  ];
+  // Real-time Dynamic High Risk Spoilage Products (DOS > DUE)
+  const highRiskItems = products.map(p => {
+    const prodBatches = batches.filter(b => b.productId === p.id && b.status !== 'EXPIRED' && b.quantity > 0);
+    const stock = prodBatches.reduce((sum, b) => sum + b.quantity, 0);
+    if (stock === 0) return null;
+
+    const nearestBatch = prodBatches.sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate))[0];
+    if (!nearestBatch) return null;
+
+    const dueDays = Math.max(0, Math.ceil((new Date(nearestBatch.expiryDate) - new Date('2026-09-24')) / (1000 * 3600 * 24)));
+    const isDiscounted = nearestBatch.isDiscounted || (nearestBatch.discountPercent > 0);
+    const effectiveDemand = isDiscounted ? (p.dailyDemand * 1.5) : (p.dailyDemand || 1);
+    const dos = Number((stock / effectiveDemand).toFixed(1));
+
+    if (dos > dueDays && dueDays <= 14) {
+      return {
+        id: p.id,
+        name: p.name,
+        batchId: nearestBatch.id,
+        batchCode: nearestBatch.batchCode,
+        dos: `${dos} ngày`,
+        due: `${dueDays} ngày`,
+        risk: dueDays <= 3 ? "RẤT CAO" : dueDays <= 7 ? "CAO" : "TRUNG BÌNH",
+        isDiscounted,
+        action: isDiscounted ? "Đã giảm giá 30%" : (dueDays <= 3 ? "Giảm 30% xả nhanh" : "Ưu tiên đầu kệ")
+      };
+    }
+    return null;
+  }).filter(Boolean);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -260,10 +283,10 @@ export default function DashboardView({
                   <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--safe-green)' }}></span>
                   An Toàn (RSL &gt; 20%)
                 </span>
-                <strong>{safeBatches.length} lô ({Math.round(safeBatches.length / batches.length * 100)}%)</strong>
+                <strong>{safeBatches.length} lô ({batches.length ? Math.round(safeBatches.length / batches.length * 100) : 0}%)</strong>
               </div>
               <div style={{ height: '8px', background: 'rgba(255,255,255,0.06)', borderRadius: '999px', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${(safeBatches.length / batches.length) * 100}%`, background: 'var(--safe-green)' }}></div>
+                <div style={{ height: '100%', width: `${batches.length ? (safeBatches.length / batches.length) * 100 : 0}%`, background: 'var(--safe-green)' }}></div>
               </div>
             </div>
 
@@ -274,10 +297,10 @@ export default function DashboardView({
                   <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--warning-yellow)' }}></span>
                   Cận Date Nhẹ (10% - 20%)
                 </span>
-                <strong>{warningBatches.length} lô ({Math.round(warningBatches.length / batches.length * 100)}%)</strong>
+                <strong>{warningBatches.length} lô ({batches.length ? Math.round(warningBatches.length / batches.length * 100) : 0}%)</strong>
               </div>
               <div style={{ height: '8px', background: 'rgba(255,255,255,0.06)', borderRadius: '999px', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${(warningBatches.length / batches.length) * 100}%`, background: 'var(--warning-yellow)' }}></div>
+                <div style={{ height: '100%', width: `${batches.length ? (warningBatches.length / batches.length) * 100 : 0}%`, background: 'var(--warning-yellow)' }}></div>
               </div>
             </div>
 
@@ -288,10 +311,10 @@ export default function DashboardView({
                   <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--danger-red)' }}></span>
                   Khẩn Cấp (RSL ≤ 10% hoặc ≤ 3 ngày)
                 </span>
-                <strong style={{ color: '#ef4444' }}>{criticalBatches.length} lô ({Math.round(criticalBatches.length / batches.length * 100)}%)</strong>
+                <strong style={{ color: '#ef4444' }}>{criticalBatches.length} lô ({batches.length ? Math.round(criticalBatches.length / batches.length * 100) : 0}%)</strong>
               </div>
               <div style={{ height: '8px', background: 'rgba(255,255,255,0.06)', borderRadius: '999px', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${(criticalBatches.length / batches.length) * 100}%`, background: 'var(--danger-red)' }}></div>
+                <div style={{ height: '100%', width: `${batches.length ? (criticalBatches.length / batches.length) * 100 : 0}%`, background: 'var(--danger-red)' }}></div>
               </div>
             </div>
 
@@ -302,10 +325,10 @@ export default function DashboardView({
                   <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--expired-purple)' }}></span>
                   Đã Hết Hạn (Khóa POS, Chờ hủy)
                 </span>
-                <strong style={{ color: '#a855f7' }}>{expiredBatches.length} lô ({Math.round(expiredBatches.length / batches.length * 100)}%)</strong>
+                <strong style={{ color: '#a855f7' }}>{expiredBatches.length} lô ({batches.length ? Math.round(expiredBatches.length / batches.length * 100) : 0}%)</strong>
               </div>
               <div style={{ height: '8px', background: 'rgba(255,255,255,0.06)', borderRadius: '999px', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${(expiredBatches.length / batches.length) * 100}%`, background: 'var(--expired-purple)' }}></div>
+                <div style={{ height: '100%', width: `${batches.length ? (expiredBatches.length / batches.length) * 100 : 0}%`, background: 'var(--expired-purple)' }}></div>
               </div>
             </div>
 
@@ -327,41 +350,58 @@ export default function DashboardView({
           </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {highRiskItems.map((item, idx) => (
-              <div 
-                key={idx}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '10px 14px',
-                  background: 'rgba(255, 255, 255, 0.03)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '10px',
-                  fontSize: '0.825rem'
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 700, color: '#ffffff' }}>{item.name}</div>
-                  <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>
-                    Cần bán: <strong>{item.dos}</strong> | Còn hạn: <strong style={{ color: '#f87171' }}>{item.due}</strong>
+            {highRiskItems.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '24px 10px', color: 'var(--safe-green)', background: 'rgba(16, 185, 129, 0.05)', borderRadius: '10px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+                <ShieldCheck size={28} style={{ margin: '0 auto 6px' }} />
+                <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>An toàn tối ưu: Không có nguy cơ hư hỏng!</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>Tất cả các sản phẩm trên quầy đều kịp bán hết trước hạn dùng (DOS ≤ DUE).</div>
+              </div>
+            ) : (
+              highRiskItems.map((item, idx) => (
+                <div 
+                  key={idx}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '10px 14px',
+                    background: 'rgba(255, 255, 255, 0.03)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '10px',
+                    fontSize: '0.825rem'
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 700, color: '#ffffff' }}>{item.name}</div>
+                    <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>
+                      Cần bán: <strong>{item.dos}</strong> | Còn hạn: <strong style={{ color: '#f87171' }}>{item.due}</strong> ({item.batchCode})
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span className={`badge badge-${item.risk === 'RẤT CAO' ? 'danger' : 'warning'}`} style={{ fontSize: '0.65rem' }}>
+                      {item.risk}
+                    </span>
+                    {item.isDiscounted ? (
+                      <span className="badge badge-safe" style={{ fontSize: '0.65rem' }}>
+                        ✓ Đã Giảm 30%
+                      </span>
+                    ) : (
+                      <button 
+                        className="btn btn-warning"
+                        style={{ fontSize: '0.725rem', padding: '4px 8px' }}
+                        onClick={() => {
+                          onQuickDiscount(item.batchId);
+                          alert(`Đã áp dụng giảm giá 30% xả nhanh cho Lô ${item.batchCode} (${item.name})!`);
+                        }}
+                      >
+                        <Zap size={12} /> {item.action}
+                      </button>
+                    )}
                   </div>
                 </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span className={`badge badge-${item.risk === 'RẤT CAO' ? 'danger' : 'warning'}`} style={{ fontSize: '0.65rem' }}>
-                    {item.risk}
-                  </span>
-                  <button 
-                    className="btn btn-secondary"
-                    style={{ fontSize: '0.725rem', padding: '4px 8px' }}
-                    onClick={() => setActiveTab('fefo-monitor')}
-                  >
-                    {item.action}
-                  </button>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
 
         </div>

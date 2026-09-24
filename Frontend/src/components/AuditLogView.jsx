@@ -1,14 +1,27 @@
 import React, { useState } from 'react';
 import { ScrollText, Search, ShieldCheck } from 'lucide-react';
 
+// Helper: Normalize Vietnamese strings without diacritics
+function stripVietnamese(str) {
+  if (!str) return '';
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'd').toLowerCase().trim();
+}
+
 export default function AuditLogView({ auditLogs }) {
   const [search, setSearch] = useState('');
 
-  const filteredLogs = auditLogs.filter(log => 
-    log.user.toLowerCase().includes(search.toLowerCase()) ||
-    log.action.toLowerCase().includes(search.toLowerCase()) ||
-    log.details.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredLogs = (auditLogs || []).filter(log => {
+    if (!search.trim()) return true;
+    const normSearch = stripVietnamese(search);
+    const normUser = stripVietnamese(log?.user || '');
+    const normAction = stripVietnamese(log?.action || '');
+    const normDetails = stripVietnamese(log?.details || '');
+    const tokens = normSearch.split(/\s+/).filter(Boolean);
+
+    return tokens.every(tok => 
+      normUser.includes(tok) || normAction.includes(tok) || normDetails.includes(tok)
+    );
+  });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>

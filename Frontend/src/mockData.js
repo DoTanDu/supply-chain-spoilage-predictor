@@ -203,7 +203,7 @@ export const initialDisposals = [
     costPrice: 13500,
     totalLoss: 54000,
     reason: "Quá hạn sử dụng (EXPIRED)",
-    approvedBy: "Đỗ Tấn Du (Store Manager)",
+    approvedBy: "Cửa hàng trưởng (Quản lý)",
     status: "APPROVED"
   },
   {
@@ -215,7 +215,7 @@ export const initialDisposals = [
     costPrice: 34000,
     totalLoss: 68000,
     reason: "Rách bao bì chân không (DAMAGED_SHELF)",
-    approvedBy: "Đỗ Tấn Du (Store Manager)",
+    approvedBy: "Cửa hàng trưởng (Quản lý)",
     status: "APPROVED"
   }
 ];
@@ -224,21 +224,21 @@ export const initialAuditLogs = [
   {
     id: 1,
     time: "2026-09-24 19:45:10",
-    user: "Đoàn Minh Quân (Staff)",
+    user: "Nhân viên (Thu ngân)",
     action: "Bán hàng POS (FEFO)",
     details: "Đơn HD-0924-004: Trừ 2 lon Coca-Cola Sleek từ Lô BAT-CC-20260510"
   },
   {
     id: 2,
     time: "2026-09-24 18:20:30",
-    user: "Đỗ Tấn Du (Manager)",
+    user: "Cửa hàng trưởng (Quản lý)",
     action: "Duyệt Tiêu hủy",
     details: "Phê duyệt phiếu tiêu hủy DISP-20260923-01: Hủy 4 gói Bánh mì hết hạn"
   },
   {
     id: 3,
     time: "2026-09-24 16:15:00",
-    user: "Đoàn Minh Quân (Staff)",
+    user: "Nhân viên (Thu ngân)",
     action: "Nhập lô từ DC",
     details: "Nhập Lô BAT-BV-20260915: 30 hũ Sữa chua Ba Vì, HSD: 30/10/2026"
   },

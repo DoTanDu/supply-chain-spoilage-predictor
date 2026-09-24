@@ -43,7 +43,13 @@ export default function PosCheckoutView({
   // Helper: compute unexpired available stock for a product
   const getAvailableStock = (productId) => {
     return batches
-      .filter(b => b.productId === productId && b.status !== 'EXPIRED' && b.quantity > 0)
+      .filter(b => 
+        b.productId === productId && 
+        b.status !== 'EXPIRED' && 
+        b.status !== 'DISPOSED' && 
+        b.quantity > 0 &&
+        (!b.expiryDate || new Date(b.expiryDate) >= new Date('2026-09-24'))
+      )
       .reduce((sum, b) => sum + b.quantity, 0);
   };
 
