@@ -5,6 +5,7 @@ Chào Quân (hoặc thành viên trong nhóm), để đưa toàn bộ Cơ sở d
 ---
 
 ## CÁCH 1: MỞ TRỰC TIẾP TRONG SSMS (Khuyên dùng - Mất 10 giây)
+
 1. Bạn tải/clone code từ GitHub về máy.
 2. Mở phần mềm **SQL Server Management Studio (SSMS)** lên $\rightarrow$ Kết nối vào Server máy bạn (ví dụ: `(localdb)\mssqllocaldb` hoặc `.\SQLEXPRESS` hoặc `.` hoặc `localhost`).
 3. Trong SSMS, bấm tổ hợp phím **`Ctrl + O`** (hoặc chọn menu `File` $\rightarrow$ `Open` $\rightarrow$ `File...`).
@@ -18,6 +19,7 @@ Chào Quân (hoặc thành viên trong nhóm), để đưa toàn bộ Cơ sở d
 ---
 
 ## CÁCH 2: NHẤP ĐÚP CHUỘT 1-CLICK (Tự động 100%)
+
 1. Vào thư mục `Database/`.
 2. Nhấp đúp chuột vào file:
    ```text
@@ -28,6 +30,7 @@ Chào Quân (hoặc thành viên trong nhóm), để đưa toàn bộ Cơ sở d
 ---
 
 ## NẾU BẠN HỎI VỀ: "FILE ĐỂ KẾT NỐI VÀO SQL"
+
 - Trong các dự án phần mềm, để ứng dụng Web / Backend kết nối được vào SQL Server của từng máy, người ta dùng file cấu hình môi trường **`.env`**.
 - File `.env` mẫu nằm ở thư mục `Backend/.env.example` hoặc `Backend/.env`:
   ```env
