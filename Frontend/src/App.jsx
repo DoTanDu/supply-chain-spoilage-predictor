@@ -35,6 +35,7 @@ export default function App() {
     condition: 'SUNNY',
     isHoliday: false
   });
+  const [preselectedDisposalBatchId, setPreselectedDisposalBatchId] = useState(null);
 
   // Load Real Data from Microsoft SQL Server LocalDB via Backend API
   const loadLiveDatabaseData = async () => {
@@ -309,6 +310,7 @@ export default function App() {
               onQuickDiscount={handleQuickDiscount}
               onRotateShelf={handleRotateShelf}
               onOpenDisposalModal={(batch) => {
+                setPreselectedDisposalBatchId(batch.id);
                 setActiveTab('spoilage-disposal');
               }}
             />
@@ -339,6 +341,7 @@ export default function App() {
               currentRole={currentRole}
               onCreateDisposal={handleCreateDisposal}
               onApproveDisposal={handleApproveDisposal}
+              preselectedBatchId={preselectedDisposalBatchId}
             />
           )}
 

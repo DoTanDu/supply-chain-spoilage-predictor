@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Trash2, 
   AlertTriangle, 
@@ -26,7 +26,8 @@ export default function SpoilageDisposalView({
   batches, 
   currentRole, 
   onCreateDisposal, 
-  onApproveDisposal 
+  onApproveDisposal,
+  preselectedBatchId
 }) {
   // Eligible batches for disposal (has quantity > 0)
   const availableBatches = batches.filter(b => b.quantity > 0);
@@ -36,6 +37,7 @@ export default function SpoilageDisposalView({
   const [statusFilter, setStatusFilter] = useState('ALL'); // ALL, EXPIRED, CRITICAL, WARNING, SAFE
 
   const [selectedBatchId, setSelectedBatchId] = useState(() => {
+    if (preselectedBatchId) return Number(preselectedBatchId);
     // Default to the first expired or critical batch, or first batch
     const priority = availableBatches.find(b => b.status === 'EXPIRED') || 
                      availableBatches.find(b => b.status === 'CRITICAL') || 
@@ -43,10 +45,28 @@ export default function SpoilageDisposalView({
     return priority ? priority.id : 101;
   });
 
-  const [disposalQty, setDisposalQty] = useState(2);
+  const [disposalQty, setDisposalQty] = useState(() => {
+    const initId = preselectedBatchId ? Number(preselectedBatchId) : selectedBatchId;
+    const b = batches.find(x => x.id === initId);
+    return b ? b.quantity : 1;
+  });
+
   const [reason, setReason] = useState('EXPIRED');
   const [notes, setNotes] = useState('');
   const [bannerMsg, setBannerMsg] = useState('');
+
+  // Auto-sync when user navigates from FEFO Monitor by clicking "Hủy Lô"
+  useEffect(() => {
+    if (preselectedBatchId) {
+      setSelectedBatchId(Number(preselectedBatchId));
+      const targetBatch = batches.find(b => b.id === Number(preselectedBatchId));
+      if (targetBatch) {
+        setDisposalQty(targetBatch.quantity); // Default to full remaining quantity for disposal
+        if (targetBatch.status === 'EXPIRED') setReason('EXPIRED');
+        else if (targetBatch.status === 'CRITICAL') setReason('COLD_CHAIN_FAIL');
+      }
+    }
+  }, [preselectedBatchId, batches]);
 
   // Filtered batches according to search and status filter
   const filteredBatches = availableBatches.filter(b => {
@@ -68,7 +88,8 @@ export default function SpoilageDisposalView({
 
   const handleSelectBatch = (batch) => {
     setSelectedBatchId(batch.id);
-    setDisposalQty(Math.min(batch.quantity, 1));
+    // When selecting a batch, default disposal quantity to its remaining stock
+    setDisposalQty(batch.quantity);
     if (batch.status === 'EXPIRED') setReason('EXPIRED');
     else if (batch.status === 'CRITICAL') setReason('COLD_CHAIN_FAIL');
   };

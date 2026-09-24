@@ -165,7 +165,9 @@ async function getDashboardStats() {
       ISNULL((SELECT COUNT(*) FROM batches WHERE current_quantity > 0 AND DATEDIFF(day, GETDATE(), expiry_date) > 7), 0) AS safeBatchesCount,
       ISNULL((SELECT COUNT(*) FROM batches WHERE DATEDIFF(day, GETDATE(), expiry_date) < 0 OR status = 'EXPIRED'), 0) AS expiredBatchesCount,
       ISNULL((SELECT SUM(cost_loss) FROM spoilage_records), 0) AS totalDisposalLoss,
-      ISNULL((SELECT SUM(total_cost) FROM goods_receipts), 16600000) AS totalReceiptCost
+      ISNULL((SELECT SUM(total_cost) FROM goods_receipts), 16600000) AS totalReceiptCost,
+      ISNULL((SELECT SUM(total_amount) FROM sales_history), 0) AS totalSalesRevenue,
+      ISNULL((SELECT COUNT(DISTINCT transaction_code) FROM sales_history), 0) AS totalSalesCount
   `;
   const res = await queryJson(sql);
   const data = res[0] || {};
