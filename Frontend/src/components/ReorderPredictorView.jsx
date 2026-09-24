@@ -10,10 +10,16 @@ import {
   HelpCircle,
   PackageCheck,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Zap
 } from 'lucide-react';
 
-export default function ReorderPredictorView({ products, batches, onSendPo }) {
+export default function ReorderPredictorView({ 
+  products, 
+  batches, 
+  onSendPo,
+  onQuickDiscount 
+}) {
   const [leadTime] = useState(2); // Lead time from DC: 2 days
   const [createdPoMsg, setCreatedPoMsg] = useState('');
   const [loadingProductId, setLoadingProductId] = useState(null);
@@ -37,14 +43,19 @@ export default function ReorderPredictorView({ products, batches, onSendPo }) {
       dueDays = Math.max(0, Math.ceil((exp - now) / (1000 * 60 * 60 * 24)));
     }
 
+    // If nearest batch is discounted, sales velocity is boosted by 50% (K_discount = 1.5)
+    const isDiscounted = nearestBatch?.isDiscounted || (nearestBatch?.discountPercent > 0);
+    const effectiveDemand = isDiscounted ? (prod.dailyDemand * 1.5) : (prod.dailyDemand || 1);
+
     // Days of Supply: DOS = Stock / dailyDemand
-    const dos = Number((availableStock / (prod.dailyDemand || 1)).toFixed(1));
+    const dos = Number((availableStock / effectiveDemand).toFixed(1));
 
     // ROP = (dailyDemand * LeadTime) + SafetyStock
     const calculatedRop = Math.round((prod.dailyDemand * leadTime) + prod.safetyStock);
 
     const isReorderNeeded = availableStock <= calculatedRop;
-    const isSpoilageRisk = dos > dueDays && availableStock > 0;
+    // Spoilage risk exists if standard DOS > dueDays and not yet discounted, or even with discount DOS > dueDays
+    const isSpoilageRisk = (dos > dueDays || (availableStock / (prod.dailyDemand || 1) > dueDays && !isDiscounted)) && availableStock > 0 && dueDays <= 7;
 
     return {
       availableStock,
@@ -52,6 +63,7 @@ export default function ReorderPredictorView({ products, batches, onSendPo }) {
       dos,
       dueDays,
       nearestBatch,
+      isDiscounted,
       isReorderNeeded,
       isSpoilageRisk
     };
@@ -62,12 +74,26 @@ export default function ReorderPredictorView({ products, batches, onSendPo }) {
     try {
       const res = await onSendPo(prod, suggestedQty);
       if (res && res.success) {
-        setCreatedPoMsg(`✓ Đã tiếp nhận Lô hàng mới từ Kho tổng DC: Cấp +${suggestedQty} ${prod.unit} "${prod.name}" (Lô: ${res.batchCode}) vào SQL Server! Tồn kho đã tăng từ 0 lên ${suggestedQty}.`);
+        setCreatedPoMsg(`✓ Đã tiếp nhận Lô hàng mới từ Kho tổng DC: Cấp +${suggestedQty} ${prod.unit} "${prod.name}" (Lô: ${res.batchCode}, HSD chuẩn: ${prod.shelfLifeDays || 30} ngày) vào SQL Server! Tồn kho đã tăng từ 0 lên ${suggestedQty}.`);
       } else {
         setCreatedPoMsg(`✓ Đã tạo lệnh PO tiếp tế gửi về Kho tổng DC cho ${suggestedQty} ${prod.unit} "${prod.name}"!`);
       }
     } catch (err) {
       setCreatedPoMsg(`Lỗi tiếp nhận hàng DC: ${err.message}`);
+    } finally {
+      setLoadingProductId(null);
+      setTimeout(() => setCreatedPoMsg(''), 7000);
+    }
+  };
+
+  const handleApplyDiscount = async (prod, batch) => {
+    if (!batch || !onQuickDiscount) return;
+    setLoadingProductId(prod.id);
+    try {
+      await onQuickDiscount(batch.id);
+      setCreatedPoMsg(`⚡ Đã kích hoạt GIẢM GIÁ 30% xả hàng cho Lô ${batch.batchCode} (${prod.name}) vào SQL Server! Tốc độ bán được kích cầu tăng 50% để giải phóng hàng trước khi quá hạn.`);
+    } catch (err) {
+      setCreatedPoMsg(`Lỗi khi kích hoạt giảm giá: ${err.message}`);
     } finally {
       setLoadingProductId(null);
       setTimeout(() => setCreatedPoMsg(''), 7000);
@@ -142,7 +168,7 @@ export default function ReorderPredictorView({ products, batches, onSendPo }) {
                 <TrendingUp size={16} /> 3. Điểm đặt hàng (ROP - Reorder Point)
               </div>
               <div style={{ color: 'var(--text-muted)', lineHeight: '1.4' }}>
-                <strong>ROP = (d × L) + SS</strong>. Khi tồn kho ≤ ROP, hệ thống bật nút <strong>Đặt DC</strong> để cấp thêm hàng về kịp lúc trước khi kệ hàng bị cạn sạch!
+                <strong>ROP = (d × L) + SS</strong>. Khi tồn kho ≤ ROP, hệ thống bật nút <strong>Đặt DC</strong>. Hạn sử dụng của lô nhập mới được lấy chính xác theo hạn chuẩn từng sản phẩm (VD: Bánh mì 7 ngày, Sữa 180 ngày).
               </div>
             </div>
           </div>
@@ -196,11 +222,20 @@ export default function ReorderPredictorView({ products, batches, onSendPo }) {
                         <span>{prod.image}</span>
                         <span>{prod.name}</span>
                       </div>
-                      <div style={{ fontSize: '0.725rem', color: 'var(--text-dim)' }}>
-                        Đơn vị tính: {prod.unit} | SKU: {prod.sku}
+                      <div style={{ fontSize: '0.725rem', color: 'var(--text-dim)', display: 'flex', gap: '8px' }}>
+                        <span>ĐVT: {prod.unit}</span>
+                        <span>• SKU: {prod.sku}</span>
+                        <span>• HSD chuẩn: <strong style={{ color: '#38bdf8' }}>{prod.shelfLifeDays || 30} ngày</strong></span>
                       </div>
                     </td>
-                    <td><strong>{prod.dailyDemand}</strong> {prod.unit}/ngày</td>
+                    <td>
+                      <strong>{prod.dailyDemand}</strong> {prod.unit}/ngày
+                      {analysis.isDiscounted && (
+                        <div style={{ fontSize: '0.675rem', color: '#f59e0b', fontWeight: 600 }}>
+                          (Đã kích cầu: {(prod.dailyDemand * 1.5).toFixed(1)}/ngày)
+                        </div>
+                      )}
+                    </td>
                     <td>{prod.safetyStock} {prod.unit}</td>
                     <td>
                       <span className="badge badge-blue">
@@ -226,8 +261,15 @@ export default function ReorderPredictorView({ products, batches, onSendPo }) {
                     </td>
                     <td>
                       {analysis.isSpoilageRisk && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#ef4444', fontSize: '0.75rem', fontWeight: 700 }}>
-                          <AlertTriangle size={14} /> Nguy cơ Spoilage (DOS &gt; DUE)
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#ef4444', fontSize: '0.75rem', fontWeight: 700 }}>
+                            <AlertTriangle size={14} /> Nguy cơ Spoilage (DOS &gt; DUE)
+                          </div>
+                          {analysis.isDiscounted && (
+                            <span className="badge badge-warning" style={{ fontSize: '0.65rem' }}>
+                              ⚡ Đã Xả Hàng -30%
+                            </span>
+                          )}
                         </div>
                       )}
 
@@ -262,13 +304,28 @@ export default function ReorderPredictorView({ products, batches, onSendPo }) {
                           )}
                         </button>
                       ) : analysis.isSpoilageRisk ? (
-                        <button
-                          className="btn btn-warning"
-                          style={{ fontSize: '0.75rem', padding: '5px 12px' }}
-                          onClick={() => alert(`Khuyến nghị xả hàng: Đã gửi thông báo đẩy bán khuyến mãi 20% cho sản phẩm ${prod.name}!`)}
-                        >
-                          Giảm giá kích cầu
-                        </button>
+                        analysis.isDiscounted ? (
+                          <span style={{ fontSize: '0.725rem', color: '#f59e0b', fontWeight: 700, background: 'rgba(245, 158, 11, 0.15)', padding: '4px 8px', borderRadius: '6px', border: '1px solid rgba(245, 158, 11, 0.3)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <Zap size={13} /> Đã Giảm 30%
+                          </span>
+                        ) : (
+                          <button
+                            className="btn btn-warning"
+                            style={{ fontSize: '0.75rem', padding: '5px 12px' }}
+                            onClick={() => handleApplyDiscount(prod, analysis.nearestBatch)}
+                            disabled={isItemLoading}
+                          >
+                            {isItemLoading ? (
+                              <>
+                                <RotateCw size={13} className="animate-spin" /> Đang giảm...
+                              </>
+                            ) : (
+                              <>
+                                <Zap size={13} /> Giảm giá kích cầu
+                              </>
+                            )}
+                          </button>
+                        )
                       ) : (
                         <span style={{ fontSize: '0.75rem', color: 'var(--safe-green)', fontWeight: 600 }}>
                           ✓ Ổn định

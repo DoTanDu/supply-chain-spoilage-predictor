@@ -253,9 +253,10 @@ export default function App() {
     const poCode = `PO-DC-${Date.now().toString().slice(-4)}`;
     const batchCode = `BAT-DC-${Date.now().toString().slice(-6)}`;
     
-    // Default shelf life: 45 days from today
+    // Dynamic shelf life from product's standard shelf life (e.g., Bread = 7d, Milk = 180d)
+    const shelfLife = Number(product.shelfLifeDays) > 0 ? Number(product.shelfLifeDays) : 30;
     const expDate = new Date();
-    expDate.setDate(expDate.getDate() + 45);
+    expDate.setDate(expDate.getDate() + shelfLife);
     const expiryStr = expDate.toISOString().split('T')[0];
     const importStr = new Date().toISOString().split('T')[0];
 
@@ -378,6 +379,7 @@ export default function App() {
               products={products}
               batches={batches}
               onSendPo={handleSendPo}
+              onQuickDiscount={handleQuickDiscount}
             />
           )}
 
