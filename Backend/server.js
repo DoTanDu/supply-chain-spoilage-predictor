@@ -131,6 +131,17 @@ app.patch('/api/batches/:id/discount', async (req, res) => {
   }
 });
 
+// 10b. Rotate Shelf according to FEFO (Update Batch and Log in SQL Server)
+app.patch('/api/batches/:id/rotate', async (req, res) => {
+  try {
+    const batchId = req.params.id;
+    await db.rotateBatch(batchId);
+    res.json({ success: true, message: `Đã ghi nhận Đảo Lô ${batchId} ra mặt tiền kệ theo FEFO vào CSDL SQL Server!` });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
 // Helper: String normalization and near-duplicate detector
 function stripVietnamese(str) {
   if (!str) return '';

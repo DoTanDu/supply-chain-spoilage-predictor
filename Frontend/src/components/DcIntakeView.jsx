@@ -379,16 +379,21 @@ export default function DcIntakeView({
           </div>
 
           {/* Pricing Architecture: Cost Price vs Retail POS Price */}
-          <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '14px' }}>
-            <div style={{ fontSize: '0.825rem', fontWeight: 700, color: '#ffffff', marginBottom: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span>💰 Hạch Toán Giá Vốn & Giá Bán Lẻ POS</span>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Đơn vị: VNĐ / {selectedProd?.unit || 'SP'}</span>
+          <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid var(--safe-green)', borderRadius: '12px', padding: '16px' }}>
+            <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#ffffff', marginBottom: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                💰 Hạch Toán: Giá Vốn Nhập Kho vs Giá Bán Lẻ POS
+              </span>
+              <span style={{ fontSize: '0.725rem', color: 'var(--safe-green)', background: 'rgba(16, 185, 129, 0.1)', padding: '2px 8px', borderRadius: '6px' }}>
+                Đơn vị: VNĐ / {selectedProd?.unit || 'SP'}
+              </span>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', alignItems: 'start' }}>
-              <div>
-                <label style={{ fontSize: '0.775rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
-                  Giá vốn nhập Lô này:
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', alignItems: 'start' }}>
+              {/* Cost Price Card */}
+              <div style={{ background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '10px', padding: '10px' }}>
+                <label style={{ fontSize: '0.775rem', fontWeight: 700, color: '#60a5fa', marginBottom: '4px', display: 'block' }}>
+                  1. Giá vốn nhập Lô này (Cost):
                 </label>
                 <input 
                   type="number" 
@@ -397,63 +402,106 @@ export default function DcIntakeView({
                   step="500"
                   value={costPrice}
                   onChange={(e) => setCostPrice(e.target.value)}
+                  style={{ fontWeight: 700, color: '#ffffff', borderColor: '#3b82f6' }}
                   required
                 />
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: '2px', display: 'block' }}>
-                  Lưu vào CSDL cho riêng Lô này
+                <span style={{ fontSize: '0.7rem', color: '#93c5fd', marginTop: '4px', display: 'block', lineHeight: '1.3' }}>
+                  Tiền vốn cửa hàng trả cho Kho DC. Lưu riêng cho Lô {batchCode}.
                 </span>
               </div>
 
-              <div>
-                <label style={{ fontSize: '0.775rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
-                  Giá bán niêm yết hiện tại (POS):
+              {/* Retail Selling Price Card */}
+              <div style={{ background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '10px', padding: '10px' }}>
+                <label style={{ fontSize: '0.775rem', fontWeight: 700, color: '#34d399', marginBottom: '4px', display: 'block' }}>
+                  2. Giá bán lẻ niêm yết (POS):
                 </label>
-                <div style={{ padding: '8px 12px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', borderRadius: '8px', fontWeight: 700, color: 'var(--safe-green)', fontSize: '0.9rem' }}>
-                  {Number(retailPrice).toLocaleString('vi-VN')} đ
+                <div style={{ padding: '8px 12px', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(16, 185, 129, 0.4)', borderRadius: '8px', fontWeight: 800, color: 'var(--safe-green)', fontSize: '1rem' }}>
+                  {updateRetailPrice ? Number(newRetailPrice).toLocaleString('vi-VN') : Number(retailPrice).toLocaleString('vi-VN')} đ
                 </div>
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: '2px', display: 'block' }}>
-                  Khách hàng thanh toán tại quầy
+                <span style={{ fontSize: '0.7rem', color: '#6ee7b7', marginTop: '4px', display: 'block', lineHeight: '1.3' }}>
+                  Giá khách hàng chi trả khi quét mã thanh toán tại quầy POS.
                 </span>
               </div>
             </div>
 
-            {/* Price Adjustment Option */}
-            <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, color: updateRetailPrice ? 'var(--safe-green)' : '#cbd5e1' }}>
-                <input 
-                  type="checkbox"
-                  checked={updateRetailPrice}
-                  onChange={(e) => setUpdateRetailPrice(e.target.checked)}
-                  style={{ width: '16px', height: '16px', accentColor: 'var(--safe-green)', cursor: 'pointer' }}
-                />
-                <span>Hàng nhập khác giá? Cập nhật luôn Giá bán lẻ mới tại quầy POS</span>
-              </label>
+            {/* Price Decision Choices */}
+            <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+              <div style={{ fontSize: '0.785rem', fontWeight: 700, color: '#e2e8f0', marginBottom: '8px' }}>
+                Bạn muốn áp dụng Giá bán lẻ tại quầy POS như thế nào?
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setUpdateRetailPrice(false)}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: !updateRetailPrice ? '2px solid var(--safe-green)' : '1px solid var(--border-color)',
+                    background: !updateRetailPrice ? 'rgba(16, 185, 129, 0.15)' : 'rgba(0,0,0,0.2)',
+                    color: !updateRetailPrice ? '#ffffff' : 'var(--text-muted)',
+                    textAlign: 'left',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <div style={{ fontWeight: 700, fontSize: '0.785rem', color: !updateRetailPrice ? 'var(--safe-green)' : 'inherit' }}>
+                    ● Giữ nguyên giá bán {Number(retailPrice).toLocaleString('vi-VN')} đ
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: '2px' }}>
+                    Lãi: {(retailPrice - costPrice).toLocaleString('vi-VN')} đ/SP
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setUpdateRetailPrice(true)}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: updateRetailPrice ? '2px solid #38bdf8' : '1px solid var(--border-color)',
+                    background: updateRetailPrice ? 'rgba(56, 189, 248, 0.15)' : 'rgba(0,0,0,0.2)',
+                    color: updateRetailPrice ? '#ffffff' : 'var(--text-muted)',
+                    textAlign: 'left',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <div style={{ fontWeight: 700, fontSize: '0.785rem', color: updateRetailPrice ? '#38bdf8' : 'inherit' }}>
+                    {updateRetailPrice ? '●' : '○'} Đổi Giá bán lẻ mới cho POS
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: '2px' }}>
+                    Đồng bộ giá mới sang quầy thu ngân
+                  </div>
+                </button>
+              </div>
 
               {updateRetailPrice && (
-                <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', alignItems: 'center', background: 'rgba(16, 185, 129, 0.05)', padding: '10px', borderRadius: '8px', border: '1px dashed var(--safe-green)' }}>
-                  <div>
-                    <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
-                      Giá bán lẻ POS mới (VNĐ):
-                    </label>
-                    <input 
-                      type="number"
-                      className="form-input"
-                      value={newRetailPrice}
-                      onChange={(e) => setNewRetailPrice(e.target.value)}
-                      min={costPrice}
-                      step="500"
-                      required
-                    />
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                    Lãi gộp dự kiến: <strong style={{ color: 'var(--safe-green)' }}>{(Number(newRetailPrice) - Number(costPrice)).toLocaleString('vi-VN')} đ</strong>
-                    <div>Biên LN: <strong style={{ color: '#ffffff' }}>{Number(newRetailPrice) > 0 ? (((Number(newRetailPrice) - Number(costPrice)) / Number(newRetailPrice)) * 100).toFixed(1) : 0}%</strong></div>
+                <div style={{ marginTop: '12px', background: 'rgba(56, 189, 248, 0.08)', padding: '12px', borderRadius: '8px', border: '1px dashed #38bdf8' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', alignItems: 'center' }}>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#7dd3fc', display: 'block', marginBottom: '4px' }}>
+                        Nhập Giá bán lẻ POS mới (VNĐ):
+                      </label>
+                      <input 
+                        type="number"
+                        className="form-input"
+                        value={newRetailPrice}
+                        onChange={(e) => setNewRetailPrice(e.target.value)}
+                        min={costPrice}
+                        step="500"
+                        style={{ borderColor: '#38bdf8', fontWeight: 700 }}
+                        required
+                      />
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                      Lãi gộp dự kiến: <strong style={{ color: 'var(--safe-green)' }}>{(Number(newRetailPrice) - Number(costPrice)).toLocaleString('vi-VN')} đ</strong>
+                      <div>Biên LN: <strong style={{ color: '#ffffff' }}>{Number(newRetailPrice) > 0 ? (((Number(newRetailPrice) - Number(costPrice)) / Number(newRetailPrice)) * 100).toFixed(1) : 0}%</strong></div>
+                    </div>
                   </div>
                 </div>
               )}
 
-              <div style={{ fontSize: '0.725rem', color: 'var(--text-dim)', marginTop: '8px', lineHeight: '1.4' }}>
-                💡 <em>Hạch toán FEFO: Lô cũ (cận date hơn) luôn được ưu tiên xuất bán trước theo giá vốn cũ. Khi hết lô cũ, hệ thống tự động trừ sang lô mới với giá vốn mới.</em>
+              <div style={{ fontSize: '0.725rem', color: 'var(--text-dim)', marginTop: '10px', lineHeight: '1.4' }}>
+                💡 <em><strong>Kế toán FEFO:</strong> Khi bán hàng, các lô cũ (giá vốn cũ) luôn được tự động xuất bán trước. Khi hết lô cũ, hệ thống sẽ tự động trừ kho sang lô mới (giá vốn {Number(costPrice).toLocaleString('vi-VN')} đ).</em>
               </div>
             </div>
           </div>

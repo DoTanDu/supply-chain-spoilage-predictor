@@ -177,21 +177,19 @@ export default function App() {
     }
   };
 
-  // Handler: Rotate Shelf
-  const handleRotateShelf = (batchId) => {
+  // Handler: Rotate Shelf (Persist to SQL Server and update UI)
+  const handleRotateShelf = async (batchId) => {
     const targetBatch = batches.find(b => b.id === batchId);
     if (!targetBatch) return;
 
-    alert(`Đã ghi nhận hành động: Đảo Lô ${targetBatch.batchCode} (${targetBatch.productName}) ra vị trí ưu tiên mặt trước kệ hàng theo FEFO!`);
-    
-    const newLog = {
-      id: Date.now(),
-      time: new Date().toLocaleTimeString('vi-VN') + ' ' + new Date().toLocaleDateString('vi-VN'),
-      user: currentRole === 'STORE_MANAGER' ? 'Đỗ Tấn Du (Manager)' : 'Đoàn Minh Quân (Staff)',
-      action: 'Đảo hàng FEFO',
-      details: `Nhân viên đã đảo Lô ${targetBatch.batchCode} ra đầu kệ để kích thích khách lấy trước.`
-    };
-    setAuditLogs([newLog, ...auditLogs]);
+    try {
+      await api.apiRotateShelf(batchId);
+      await loadLiveDatabaseData();
+    } catch (err) {
+      setBatches(batches.map(b => 
+        b.id === batchId ? { ...b, isShelfRotated: 1 } : b
+      ));
+    }
   };
 
   // Handler: Create Disposal Record (Write to SQL Server)
@@ -273,6 +271,10 @@ export default function App() {
         weather={weather}
         setWeather={setWeather}
         isConnectedToSql={isConnectedToSql}
+        batches={batches}
+        onNavigateToFefo={() => setActiveTab('FEFO_MONITOR')}
+        onQuickDiscount={handleQuickDiscount}
+        onRotateShelf={handleRotateShelf}
       />
 
       {/* Main Container */}

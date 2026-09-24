@@ -82,6 +82,7 @@ async function getBatches() {
       b.import_price AS costPrice,
       b.discount_percent AS discountPercent,
       CASE WHEN b.discount_percent > 0 THEN 1 ELSE 0 END AS isDiscounted,
+      ISNULL(b.is_shelf_rotated, 0) AS isShelfRotated,
       CASE 
         WHEN b.current_quantity <= 0 THEN 'DISPOSED'
         WHEN DATEDIFF(day, GETDATE(), b.expiry_date) < 0 THEN 'EXPIRED'
@@ -95,6 +96,22 @@ async function getBatches() {
     ORDER BY b.expiry_date ASC, b.id ASC
   `;
   return await queryJson(sql);
+}
+
+// Rotate Batch on Shelf (Mark as front-facing according to FEFO)
+async function rotateBatch(batchId) {
+  const sql = `
+    UPDATE batches 
+    SET is_shelf_rotated = 1 
+    WHERE id = ${batchId};
+
+    INSERT INTO system_audit_logs (user_id, action_type, description, ip_address)
+    SELECT 2, N'Đảo hàng FEFO', 
+      N'Nhân viên đã đảo Lô ' + batch_code + N' ra mặt tiền đầu kệ trưng bày để khách mua trước', '127.0.0.1'
+    FROM batches WHERE id = ${batchId};
+  `;
+  await executeSql(sql);
+  return { success: true };
 }
 
 // 3. Get Disposals from Database
@@ -315,5 +332,6 @@ module.exports = {
   getDashboardStats,
   insertBatch,
   recordDisposal,
-  processFefoSale
+  processFefoSale,
+  rotateBatch
 };

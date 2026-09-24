@@ -74,3 +74,11 @@ export async function apiApplyDiscount(batchId, percent = 30) {
   });
   return await res.json();
 }
+
+export async function apiRotateShelf(batchId) {
+  const res = await fetch(`${API_BASE}/batches/${batchId}/rotate`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' }
+  });
+  return await res.json();
+}

@@ -116,6 +116,16 @@ export default function FefoMonitorView({
         </div>
       </div>
 
+      {/* FEFO Explanatory Info Card */}
+      <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '12px 16px', marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+        <div style={{ fontSize: '0.8rem', color: '#cbd5e1', lineHeight: '1.4' }}>
+          💡 <strong style={{ color: 'var(--safe-green)' }}>Nghiệp vụ Đảo Kệ (Shelf Rotation):</strong> Khi phát hiện lô hàng cận date, nhân viên xếp lô đó ra <strong>mặt tiền trước kệ</strong> để khách hàng với tay mua trước. Bấm nút <strong>"Đảo Kệ"</strong> để hệ thống ghi nhận vết kiểm soát vào CSDL SQL Server.
+        </div>
+        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+          Quy tắc xuất bán tự động: <strong style={{ color: '#ffffff' }}>FEFO (First Expired, First Out)</strong>
+        </div>
+      </div>
+
       {/* Batches Table */}
       <div className="glass-panel" style={{ overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
@@ -196,10 +206,15 @@ export default function FefoMonitorView({
                             ⚡ -{batch.discountPercent || 30}% Xả Hàng
                           </span>
                         )}
+                        {batch.isShelfRotated ? (
+                          <span className="badge badge-safe" style={{ fontSize: '0.65rem', background: 'rgba(16, 185, 129, 0.15)', borderColor: 'var(--safe-green)', color: '#34d399' }}>
+                            ✓ Đã xếp đầu kệ
+                          </span>
+                        ) : null}
                       </div>
                     </td>
                     <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                      <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', alignItems: 'center' }}>
                         {isCritical && (
                           <button
                             className="btn btn-warning"
@@ -213,14 +228,36 @@ export default function FefoMonitorView({
                         )}
 
                         {(isCritical || isWarning) && (
-                          <button
-                            className="btn btn-secondary"
-                            style={{ fontSize: '0.725rem', padding: '4px 10px' }}
-                            onClick={() => onRotateShelf(batch.id)}
-                            title="Đảo lô hàng ra mặt trước kệ để khách mua trước"
-                          >
-                            <RotateCw size={13} /> Đảo Kệ
-                          </button>
+                          batch.isShelfRotated ? (
+                            <span 
+                              style={{ 
+                                fontSize: '0.725rem', 
+                                padding: '4px 8px', 
+                                color: 'var(--safe-green)', 
+                                background: 'rgba(16, 185, 129, 0.12)', 
+                                border: '1px solid rgba(16, 185, 129, 0.3)', 
+                                borderRadius: '6px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                fontWeight: 600
+                              }}
+                              title="Lô này đã được nhân viên đảo ra mặt trước kệ để khách mua trước"
+                            >
+                              <CheckCircle2 size={13} /> Đã ở đầu kệ
+                            </span>
+                          ) : (
+                            <button
+                              className="btn btn-secondary"
+                              style={{ fontSize: '0.725rem', padding: '4px 10px' }}
+                              onClick={() => {
+                                onRotateShelf(batch.id);
+                              }}
+                              title="Đảo lô hàng ra mặt trước kệ để khách mua trước"
+                            >
+                              <RotateCw size={13} /> Đảo Kệ
+                            </button>
+                          )
                         )}
 
                         {isExpired && (

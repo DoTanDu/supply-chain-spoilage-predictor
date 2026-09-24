@@ -152,8 +152,16 @@ export default function PosCheckoutView({
                 </div>
 
                 <div>
-                  <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--safe-green)', marginBottom: '8px' }}>
-                    {prod.price.toLocaleString('vi-VN')} đ
+                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '2px' }}>
+                    <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--safe-green)' }}>
+                      {prod.price.toLocaleString('vi-VN')} đ
+                    </div>
+                    <span style={{ fontSize: '0.675rem', color: 'var(--text-muted)' }}>Giá bán lẻ POS</span>
+                  </div>
+
+                  <div style={{ fontSize: '0.685rem', color: '#94a3b8', background: 'rgba(255,255,255,0.03)', padding: '3px 6px', borderRadius: '6px', marginBottom: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    Giá vốn nhập DC: <strong style={{ color: '#cbd5e1' }}>{prod.costPrice ? prod.costPrice.toLocaleString('vi-VN') + ' đ' : 'N/A'}</strong> 
+                    <span style={{ color: 'var(--safe-green)', marginLeft: '4px' }}>(Lãi: {(prod.price - (prod.costPrice || 0)).toLocaleString('vi-VN')} đ)</span>
                   </div>
 
                   <button
