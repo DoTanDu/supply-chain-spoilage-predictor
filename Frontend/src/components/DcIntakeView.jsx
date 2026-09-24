@@ -12,6 +12,43 @@ import {
   Save 
 } from 'lucide-react';
 
+// Helper: Normalize Vietnamese strings without diacritics
+function stripVietnamese(str) {
+  if (!str) return '';
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'd').toLowerCase().trim();
+}
+
+// Helper: Strip specific packaging and volume words to extract core product identity
+function cleanKeywords(str) {
+  if (!str) return '';
+  let clean = stripVietnamese(str);
+  clean = clean.replace(/\b\d+(\.\d+)?\s*(ml|l|lit|g|gram|kg|lon|chai|hop|khay|mieng|cay|goi|thung|can|thanh|qua)\b/gi, ' ');
+  clean = clean.replace(/\b\d+%\b/gi, ' ');
+  clean = clean.replace(/\b\d+\b/gi, ' ');
+  clean = clean.replace(/\b(tiet trung|thanh trung|truyen thong|nguyen chat|tuoi|sach|chuan|huu co|khong duong|co duong|it duong)\b/gi, ' ');
+  clean = clean.replace(/[^a-z0-9]/gi, ' ');
+  return clean.replace(/\s+/g, ' ').trim();
+}
+
+// Helper: Find duplicate or near-duplicate product
+function findDuplicateProduct(name, productList) {
+  if (!name || name.trim().length < 2) return null;
+  const s1 = stripVietnamese(name);
+  const c1 = cleanKeywords(name);
+
+  for (const p of productList) {
+    const s2 = stripVietnamese(p.name);
+    const c2 = cleanKeywords(p.name);
+
+    if (s1 === s2) return p;
+    if (s1.length >= 4 && s2.length >= 4 && (s1.includes(s2) || s2.includes(s1))) return p;
+    if (c1 && c2 && c1.length >= 3 && c2.length >= 3) {
+      if (c1 === c2 || c1.includes(c2) || c2.includes(c1)) return p;
+    }
+  }
+  return null;
+}
+
 export default function DcIntakeView({ 
   products, 
   onAddBatch, 
@@ -39,15 +76,24 @@ export default function DcIntakeView({
   const [newProdCost, setNewProdCost] = useState(25000);
   const [newProdPrice, setNewProdPrice] = useState(35000);
   const [newProdShelfLife, setNewProdShelfLife] = useState(30);
+  const [modalError, setModalError] = useState('');
+
+  // Live duplicate detector when user types new product name
+  const detectedDuplicate = findDuplicateProduct(newProdName, products);
 
   // Extract unique categories from products
   const categories = ['ALL', ...new Set(products.map(p => p.category))];
 
-  // Filter products for dropdown
+  // Smart token-based unaccented filter
   const filteredProducts = products.filter(p => {
     const matchesCat = selectedCategory === 'ALL' || p.category === selectedCategory;
-    const matchesSearch = p.name.toLowerCase().includes(searchProduct.toLowerCase()) || 
-                          p.sku.toLowerCase().includes(searchProduct.toLowerCase());
+    if (!searchProduct.trim()) return matchesCat;
+
+    const normSearch = stripVietnamese(searchProduct);
+    const normName = stripVietnamese(p.name);
+    const normSku = p.sku.toLowerCase();
+    const tokens = normSearch.split(/\s+/).filter(Boolean);
+    const matchesSearch = tokens.every(tok => normName.includes(tok) || normSku.includes(tok));
     return matchesCat && matchesSearch;
   });
 
@@ -61,6 +107,17 @@ export default function DcIntakeView({
       imp.setDate(imp.getDate() + (prod.shelfLifeDays || 30));
       setExpiryDate(imp.toISOString().split('T')[0]);
     }
+  };
+
+  // Quick select an existing product from duplicate warning
+  const handleSelectExistingProduct = (prod) => {
+    setShowAddProductModal(false);
+    setNewProdName('');
+    setModalError('');
+    setSelectedCategory('ALL');
+    setSearchProduct('');
+    handleProductChange(prod.id);
+    setSuccessMsg(`Đã chọn sản phẩm "${prod.name}" từ danh mục để tiếp nhận lô hàng!`);
   };
 
   const handleSubmit = (e) => {
@@ -106,10 +163,16 @@ export default function DcIntakeView({
   // Handle Save New Product to Database
   const handleSaveProduct = async (e) => {
     e.preventDefault();
+    setModalError('');
     if (!newProdName.trim()) return;
 
+    if (detectedDuplicate) {
+      setModalError(`Sản phẩm này đã tồn tại hoặc gần giống với "${detectedDuplicate.name}" trong danh mục CSDL. Vui lòng chọn sản phẩm có sẵn!`);
+      return;
+    }
+
     if (onAddNewProduct) {
-      await onAddNewProduct({
+      const res = await onAddNewProduct({
         name: newProdName.trim(),
         categoryId: Number(newProdCategory),
         unit: newProdUnit,
@@ -118,8 +181,15 @@ export default function DcIntakeView({
         shelfLifeDays: Number(newProdShelfLife),
         minStock: 15
       });
+
+      if (res && !res.success) {
+        setModalError(res.message || 'Không thể thêm sản phẩm do lỗi kiểm tra từ hệ thống!');
+        return;
+      }
+
       setShowAddProductModal(false);
       setNewProdName('');
+      setModalError('');
       setSuccessMsg(`Đã tạo thành công sản phẩm mới "${newProdName}" vào CSDL SQL Server!`);
     }
   };
@@ -382,6 +452,34 @@ export default function DcIntakeView({
             </div>
 
             <form onSubmit={handleSaveProduct} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              
+              {modalError && (
+                <div style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.4)', color: '#f87171', padding: '10px 14px', borderRadius: '10px', fontSize: '0.825rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <AlertCircle size={16} /> {modalError}
+                </div>
+              )}
+
+              {detectedDuplicate && (
+                <div style={{ background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.4)', borderRadius: '10px', padding: '12px 14px', color: '#fbbf24' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, fontSize: '0.85rem', marginBottom: '6px' }}>
+                    <AlertCircle size={18} color="#fbbf24" />
+                    Sản phẩm này đã có sẵn trong danh mục CSDL!
+                  </div>
+                  <p style={{ margin: '0 0 10px 0', color: '#e2e8f0', fontSize: '0.8rem', lineHeight: '1.4' }}>
+                    Tên bạn nhập trùng/gần giống với: <strong style={{ color: '#fbbf24' }}>"{detectedDuplicate.name}"</strong> (SKU: {detectedDuplicate.sku} - {detectedDuplicate.category}).
+                    Bạn không cần tạo mới hay gõ lại chi tiết dung tích/thông số!
+                  </p>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    style={{ fontSize: '0.8rem', padding: '8px 12px', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                    onClick={() => handleSelectExistingProduct(detectedDuplicate)}
+                  >
+                    👉 Chọn Ngay Sản Phẩm Này Để Nhập Lô Hàng
+                  </button>
+                </div>
+              )}
+
               <div>
                 <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
                   Tên sản phẩm:
@@ -389,7 +487,7 @@ export default function DcIntakeView({
                 <input 
                   type="text"
                   className="form-input"
-                  placeholder="VD: Sữa chua phô mai Đà Lạt 100g..."
+                  placeholder="VD: Sữa chua phô mai Đà Lạt, Bánh mì kẹp..."
                   value={newProdName}
                   onChange={(e) => setNewProdName(e.target.value)}
                   required
@@ -477,14 +575,23 @@ export default function DcIntakeView({
                   type="button" 
                   className="btn btn-secondary" 
                   style={{ flex: 1 }}
-                  onClick={() => setShowAddProductModal(false)}
+                  onClick={() => {
+                    setShowAddProductModal(false);
+                    setModalError('');
+                  }}
                 >
                   Hủy
                 </button>
                 <button 
                   type="submit" 
                   className="btn btn-primary" 
-                  style={{ flex: 2 }}
+                  style={{ 
+                    flex: 2,
+                    opacity: detectedDuplicate ? 0.5 : 1,
+                    cursor: detectedDuplicate ? 'not-allowed' : 'pointer'
+                  }}
+                  disabled={!!detectedDuplicate}
+                  title={detectedDuplicate ? 'Sản phẩm tương tự đã có sẵn trong danh mục, không thể lưu trùng lặp' : 'Lưu sản phẩm mới vào SQL Server'}
                 >
                   <Save size={16} /> Lưu Vào SQL Server
                 </button>

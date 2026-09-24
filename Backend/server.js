@@ -131,26 +131,78 @@ app.patch('/api/batches/:id/discount', async (req, res) => {
   }
 });
 
-// 11. Add New Product to System
+// Helper: String normalization and near-duplicate detector
+function stripVietnamese(str) {
+  if (!str) return '';
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'd').toLowerCase().trim();
+}
+
+function cleanKeywords(str) {
+  if (!str) return '';
+  let clean = stripVietnamese(str);
+  clean = clean.replace(/\b\d+(\.\d+)?\s*(ml|l|lit|g|gram|kg|lon|chai|hop|khay|mieng|cay|goi|thung|can|thanh|qua)\b/gi, ' ');
+  clean = clean.replace(/\b\d+%\b/gi, ' ');
+  clean = clean.replace(/\b\d+\b/gi, ' ');
+  clean = clean.replace(/\b(tiet trung|thanh trung|truyen thong|nguyen chat|tuoi|sach|chuan|huu co|khong duong|co duong|it duong)\b/gi, ' ');
+  clean = clean.replace(/[^a-z0-9]/gi, ' ');
+  return clean.replace(/\s+/g, ' ').trim();
+}
+
+function checkNearDuplicate(newProdName, existingName) {
+  const s1 = stripVietnamese(newProdName);
+  const s2 = stripVietnamese(existingName);
+  if (!s1 || !s2) return false;
+  if (s1 === s2) return true;
+  if (s1.length >= 4 && s2.length >= 4 && (s1.includes(s2) || s2.includes(s1))) return true;
+  
+  const c1 = cleanKeywords(newProdName);
+  const c2 = cleanKeywords(existingName);
+  if (c1 && c2 && c1.length >= 3 && c2.length >= 3) {
+    if (c1 === c2 || c1.includes(c2) || c2.includes(c1)) return true;
+  }
+  return false;
+}
+
+// 11. Add New Product to System (with duplicate / near-duplicate prevention)
 app.post('/api/products', async (req, res) => {
   try {
     const { name, categoryId, sku, unit, costPrice, sellingPrice, shelfLifeDays, minStock } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'Tên sản phẩm không được để trống!' });
+    }
+
+    const trimmedName = name.trim();
+
+    // Check duplicate or near-duplicate with existing products
+    const existingProducts = await db.getProducts();
+    const duplicate = existingProducts.find(p => checkNearDuplicate(trimmedName, p.name));
+
+    if (duplicate) {
+      return res.status(400).json({ 
+        success: false, 
+        duplicate: true,
+        matchedProduct: duplicate.name,
+        matchedSku: duplicate.sku,
+        message: `Sản phẩm này đã tồn tại hoặc gần giống với "${duplicate.name}" (SKU: ${duplicate.sku}) trong danh mục CSDL! Vui lòng chọn sản phẩm có sẵn để tiếp nhận lô hàng.`
+      });
+    }
+
     const generatedSku = sku || ('893' + Date.now().toString().slice(-10));
     const sql = `
       INSERT INTO products (
         sku, name, category_id, default_supplier_id, unit, cost_price, selling_price,
         standard_shelf_life_days, min_stock_level, max_stock_level, custom_warning_days, is_active
       ) VALUES (
-        N'${generatedSku}', N'${name}', ${categoryId || 1}, 1,
+        N'${generatedSku}', N'${trimmedName}', ${categoryId || 1}, 1,
         N'${unit || 'Cái'}', ${costPrice || 10000}, ${sellingPrice || 15000}, ${shelfLifeDays || 30},
         ${minStock || 15}, ${(minStock || 15) * 5}, 3, 1
       );
 
       INSERT INTO system_audit_logs (user_id, action_type, description, ip_address)
-      VALUES (2, N'Thêm sản phẩm mới', N'Tạo mới sản phẩm: ${name} (SKU: ${generatedSku})', '127.0.0.1');
+      VALUES (2, N'Thêm sản phẩm mới', N'Tạo mới sản phẩm: ${trimmedName} (SKU: ${generatedSku})', '127.0.0.1');
     `;
     await db.executeSql(sql);
-    res.status(201).json({ success: true, message: `Đã thêm sản phẩm "${name}" thành công!` });
+    res.status(201).json({ success: true, message: `Đã thêm sản phẩm "${trimmedName}" thành công!` });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
   }

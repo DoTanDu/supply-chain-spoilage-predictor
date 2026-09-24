@@ -238,10 +238,14 @@ export default function App() {
   // Handler: Add New Product to System Catalog (Write to SQL Server)
   const handleAddNewProduct = async (productData) => {
     try {
-      await api.apiCreateProduct(productData);
-      await loadLiveDatabaseData();
+      const res = await api.apiCreateProduct(productData);
+      if (res && res.success) {
+        await loadLiveDatabaseData();
+      }
+      return res;
     } catch (err) {
       console.error("Failed to create product:", err);
+      return { success: false, message: err.message };
     }
   };
 
