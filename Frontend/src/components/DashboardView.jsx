@@ -123,8 +123,10 @@ export default function DashboardView({
             <button 
               className="btn btn-warning"
               onClick={() => {
-                onQuickDiscount(criticalBatches[0]?.id);
-                alert("Đã áp dụng chương trình Giảm giá 30% xả hàng kích cầu cho lô cận date!");
+                if (criticalBatches[0]) {
+                  onQuickDiscount(criticalBatches[0].id);
+                  alert(`Đã kích hoạt Giảm giá 30% xả hàng cho Lô ${criticalBatches[0].batchCode} (${criticalBatches[0].productName})!`);
+                }
               }}
             >
               <Zap size={15} /> Xả hàng giảm 30%

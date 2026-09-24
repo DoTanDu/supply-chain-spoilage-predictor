@@ -53,26 +53,66 @@ export default function Header({
         {/* Center / Right controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
           
-          {/* Weather & External Factors Simulator */}
+          {/* Weather & External Factors Simulator (Interactive Click to Toggle) */}
           <div style={{
             display: 'flex',
             alignItems: 'center',
             gap: '10px',
             background: 'rgba(255, 255, 255, 0.04)',
-            padding: '6px 14px',
+            padding: '4px 8px',
             borderRadius: '12px',
             border: '1px solid var(--border-color)',
             fontSize: '0.825rem'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: weather.temp > 30 ? '#fbbf24' : '#60a5fa' }}>
-              {weather.condition === 'SUNNY' ? <Sun size={18} /> : <CloudRain size={18} />}
-              <span style={{ fontWeight: 700 }}>{weather.temp}°C {weather.condition === 'SUNNY' ? 'Nắng nóng' : 'Mưa rào'}</span>
-            </div>
+            {/* Weather Toggle Button */}
+            <button
+              onClick={() => {
+                const nextCondition = weather.condition === 'SUNNY' ? 'RAINY' : weather.condition === 'RAINY' ? 'NORMAL' : 'SUNNY';
+                const nextTemp = nextCondition === 'SUNNY' ? 34 : nextCondition === 'RAINY' ? 24 : 28;
+                setWeather({ ...weather, condition: nextCondition, temp: nextTemp });
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: 'transparent',
+                border: 'none',
+                color: weather.temp > 30 ? '#fbbf24' : weather.condition === 'RAINY' ? '#60a5fa' : '#34d399',
+                cursor: 'pointer',
+                fontWeight: 700,
+                padding: '4px 8px',
+                borderRadius: '8px',
+                transition: 'background 0.2s'
+              }}
+              title="Nhấp để chuyển đổi thời tiết (Nắng nóng -> Mưa bão -> Bình thường)"
+            >
+              {weather.condition === 'SUNNY' ? <Sun size={17} /> : weather.condition === 'RAINY' ? <CloudRain size={17} /> : <Sun size={17} />}
+              <span>{weather.temp}°C {weather.condition === 'SUNNY' ? 'Nắng nóng (K=1.4)' : weather.condition === 'RAINY' ? 'Mưa bão (K=0.75)' : 'Mát mẻ (K=1.0)'}</span>
+            </button>
+
             <div style={{ height: '14px', width: '1px', background: 'var(--border-color)' }}></div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)' }}>
+
+            {/* Holiday Toggle Button */}
+            <button
+              onClick={() => setWeather({ ...weather, isHoliday: !weather.isHoliday })}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: 'transparent',
+                border: 'none',
+                color: weather.isHoliday ? '#f43f5e' : 'var(--text-muted)',
+                cursor: 'pointer',
+                fontWeight: weather.isHoliday ? 700 : 500,
+                padding: '4px 8px',
+                borderRadius: '8px',
+                transition: 'background 0.2s'
+              }}
+              title="Nhấp để bật/tắt Ngày Lễ / Tết (Hệ số K=1.60)"
+            >
               <Calendar size={14} />
-              <span>{weather.isHoliday ? 'Ngày Lễ (K=1.6)' : 'Ngày thường (K=1.0)'}</span>
-            </div>
+              <span>{weather.isHoliday ? '🎉 Ngày Lễ (K=1.6)' : 'Ngày thường'}</span>
+            </button>
           </div>
 
           {/* Critical Alert Counter */}

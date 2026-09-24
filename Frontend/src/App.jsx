@@ -128,6 +128,10 @@ export default function App() {
     const targetBatch = batches.find(b => b.id === batchId);
     if (!targetBatch) return;
 
+    setBatches(batches.map(b => 
+      b.id === batchId ? { ...b, isDiscounted: true, discountPercent: 30 } : b
+    ));
+
     const newLog = {
       id: Date.now(),
       time: new Date().toLocaleTimeString('vi-VN') + ' ' + new Date().toLocaleDateString('vi-VN'),
@@ -172,6 +176,14 @@ export default function App() {
         }
         return b;
       }));
+
+      // Also deduct from product totalStock
+      const targetBatch = batches.find(b => b.id === newRecord.batchId);
+      if (targetBatch) {
+        setProducts(prevProducts => prevProducts.map(p => 
+          p.id === targetBatch.productId ? { ...p, totalStock: Math.max(0, p.totalStock - newRecord.quantity) } : p
+        ));
+      }
     }
 
     const newLog = {
@@ -193,6 +205,8 @@ export default function App() {
       d.id === disposalId ? { ...d, status: 'APPROVED', approvedBy: 'Đỗ Tấn Du (Store Manager)' } : d
     ));
 
+    const targetBatch = batches.find(b => b.batchCode === record.batchCode);
+
     // Deduct batch stock
     setBatches(batches.map(b => {
       if (b.batchCode === record.batchCode) {
@@ -205,6 +219,13 @@ export default function App() {
       }
       return b;
     }));
+
+    // Synchronize product totalStock
+    if (targetBatch) {
+      setProducts(prevProducts => prevProducts.map(p => 
+        p.id === targetBatch.productId ? { ...p, totalStock: Math.max(0, p.totalStock - record.quantity) } : p
+      ));
+    }
 
     const newLog = {
       id: Date.now(),

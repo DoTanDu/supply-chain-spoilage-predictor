@@ -186,21 +186,29 @@ export default function FefoMonitorView({
                       </strong>
                     </td>
                     <td>
-                      {isCritical && <span className="badge badge-danger">Cận Date Đỏ</span>}
-                      {isWarning && <span className="badge badge-warning">Cảnh Báo Vàng</span>}
-                      {batch.status === 'SAFE' && <span className="badge badge-safe">An Toàn</span>}
-                      {isExpired && <span className="badge badge-expired">Khóa Bán POS</span>}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+                        {isCritical && <span className="badge badge-danger">Cận Date Đỏ</span>}
+                        {isWarning && <span className="badge badge-warning">Cảnh Báo Vàng</span>}
+                        {batch.status === 'SAFE' && <span className="badge badge-safe">An Toàn</span>}
+                        {isExpired && <span className="badge badge-expired">Khóa Bán POS</span>}
+                        {batch.isDiscounted && (
+                          <span className="badge badge-warning" style={{ fontSize: '0.65rem', background: 'rgba(245, 158, 11, 0.25)', borderColor: '#f59e0b' }}>
+                            ⚡ -{batch.discountPercent || 30}% Xả Hàng
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
                         {isCritical && (
                           <button
                             className="btn btn-warning"
-                            style={{ fontSize: '0.725rem', padding: '4px 10px' }}
+                            style={{ fontSize: '0.725rem', padding: '4px 10px', opacity: batch.isDiscounted ? 0.6 : 1 }}
                             onClick={() => onQuickDiscount(batch.id)}
-                            title="Xả hàng giảm giá 30% kích cầu bán lẻ"
+                            disabled={batch.isDiscounted}
+                            title={batch.isDiscounted ? "Lô hàng đã được áp dụng giảm giá 30%" : "Xả hàng giảm giá 30% kích cầu bán lẻ"}
                           >
-                            <Zap size={13} /> Giảm 30%
+                            <Zap size={13} /> {batch.isDiscounted ? "Đã Giảm 30%" : "Giảm 30%"}
                           </button>
                         )}
 

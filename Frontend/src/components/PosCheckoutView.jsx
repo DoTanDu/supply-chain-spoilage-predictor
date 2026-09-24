@@ -52,9 +52,17 @@ export default function PosCheckoutView({
   };
 
   const updateQuantity = (productId, delta) => {
+    const availableStock = batches
+      .filter(b => b.productId === productId && b.status !== 'EXPIRED')
+      .reduce((sum, b) => sum + b.quantity, 0);
+
     setCart(cart.map(item => {
       if (item.productId === productId) {
         const newQty = item.quantity + delta;
+        if (delta > 0 && newQty > availableStock) {
+          alert(`Không thể tăng thêm! Tồn kho khả dụng chỉ còn ${availableStock} ${item.unit}.`);
+          return item;
+        }
         return newQty > 0 ? { ...item, quantity: newQty } : null;
       }
       return item;
