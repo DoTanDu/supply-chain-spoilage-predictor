@@ -157,9 +157,6 @@ export default function Sidebar({ activeTab, setActiveTab, currentRole, critical
         <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
           Đang áp dụng bộ chuẩn <strong>.agent/skills</strong>: FEFO, 3 Ngưỡng RSL & Clean Architecture.
         </div>
-        <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '6px' }}>
-          MSSV: 123001364 & 123000946
-        </div>
       </div>
     </aside>
   );

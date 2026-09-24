@@ -13,7 +13,10 @@ import {
   Zap,
   RotateCw,
   ArrowRight,
-  CheckCircle2
+  CheckCircle2,
+  Edit2,
+  Check,
+  Store
 } from 'lucide-react';
 
 export default function Header({ 
@@ -28,6 +31,26 @@ export default function Header({
   onRotateShelf
 }) {
   const [showNotifModal, setShowNotifModal] = useState(false);
+  const [isEditingStore, setIsEditingStore] = useState(false);
+  const [storeName, setStoreName] = useState(() => {
+    return localStorage.getItem('retail_store_name') || 'VinMart+ LHU Store #01';
+  });
+  const [tempStoreName, setTempStoreName] = useState(storeName);
+
+  const storePresets = [
+    'VinMart+ LHU Store #01 (Cơ sở Huỳnh Văn Nghệ)',
+    'VinMart+ LHU Store #02 (Cơ sở Huỳnh Văn Lũy)',
+    'VinMart+ Biên Hòa Center (Đồng Nai)',
+    'VinMart+ Chi nhánh Tân Hiệp'
+  ];
+
+  const handleSaveStore = (newName) => {
+    const val = newName.trim() || 'VinMart+ LHU Store #01';
+    setStoreName(val);
+    setTempStoreName(val);
+    localStorage.setItem('retail_store_name', val);
+    setIsEditingStore(false);
+  };
 
   const criticalBatches = batches.filter(b => 
     b.status === 'CRITICAL' || 
@@ -60,9 +83,79 @@ export default function Header({
                 <Database size={10} /> LocalDB Active
               </span>
             </div>
-            <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              Cửa hàng: <strong style={{ color: '#ffffff' }}>VinMart+ LHU Store #01</strong> | GVHD: ThS. Lê Minh Nhật
-            </p>
+            <div style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <span>Cửa hàng:</span>
+              {isEditingStore ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <input
+                    type="text"
+                    value={tempStoreName}
+                    onChange={(e) => setTempStoreName(e.target.value)}
+                    className="form-input"
+                    style={{ padding: '3px 8px', fontSize: '0.785rem', width: '220px', height: '26px' }}
+                    placeholder="Nhập tên chi nhánh..."
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveStore(tempStoreName);
+                      if (e.key === 'Escape') setIsEditingStore(false);
+                    }}
+                  />
+                  <select
+                    className="form-select"
+                    style={{ padding: '3px 6px', fontSize: '0.75rem', height: '26px', maxWidth: '160px' }}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        setTempStoreName(e.target.value);
+                        handleSaveStore(e.target.value);
+                      }
+                    }}
+                    defaultValue=""
+                  >
+                    <option value="" disabled>Chọn nhanh mẫu...</option>
+                    {storePresets.map((p, idx) => (
+                      <option key={idx} value={p}>{p}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => handleSaveStore(tempStoreName)}
+                    className="btn btn-primary"
+                    style={{ padding: '3px 8px', height: '26px', fontSize: '0.75rem' }}
+                    title="Lưu chi nhánh"
+                  >
+                    <Check size={13} /> Lưu
+                  </button>
+                  <button
+                    onClick={() => setIsEditingStore(false)}
+                    className="btn btn-secondary"
+                    style={{ padding: '3px 6px', height: '26px', fontSize: '0.75rem' }}
+                    title="Hủy"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <strong style={{ color: '#ffffff', cursor: 'pointer', borderBottom: '1px dashed rgba(255,255,255,0.3)' }} onClick={() => setIsEditingStore(true)}>
+                    {storeName}
+                  </strong>
+                  <button
+                    onClick={() => setIsEditingStore(true)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--text-muted)',
+                      cursor: 'pointer',
+                      padding: '2px',
+                      display: 'flex',
+                      alignItems: 'center'
+                    }}
+                    title="Đổi tên / Chi nhánh Cửa hàng"
+                  >
+                    <Edit2 size={12} />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

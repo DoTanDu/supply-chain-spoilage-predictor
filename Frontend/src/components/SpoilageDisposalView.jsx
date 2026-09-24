@@ -6,8 +6,20 @@ import {
   ShieldCheck, 
   FileText, 
   TrendingDown, 
-  Lock 
+  Lock,
+  Search,
+  Filter,
+  CheckCircle2,
+  Calendar,
+  Package,
+  X
 } from 'lucide-react';
+
+// Helper: Normalize Vietnamese strings without diacritics
+function stripVietnamese(str) {
+  if (!str) return '';
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'd').toLowerCase().trim();
+}
 
 export default function SpoilageDisposalView({ 
   disposals, 
@@ -16,16 +28,50 @@ export default function SpoilageDisposalView({
   onCreateDisposal, 
   onApproveDisposal 
 }) {
-  const [selectedBatchId, setSelectedBatchId] = useState(batches[0]?.id || 101);
+  // Eligible batches for disposal (has quantity > 0)
+  const availableBatches = batches.filter(b => b.quantity > 0);
+
+  // Search & Filter states
+  const [searchBatch, setSearchBatch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL'); // ALL, EXPIRED, CRITICAL, WARNING, SAFE
+
+  const [selectedBatchId, setSelectedBatchId] = useState(() => {
+    // Default to the first expired or critical batch, or first batch
+    const priority = availableBatches.find(b => b.status === 'EXPIRED') || 
+                     availableBatches.find(b => b.status === 'CRITICAL') || 
+                     availableBatches[0];
+    return priority ? priority.id : 101;
+  });
+
   const [disposalQty, setDisposalQty] = useState(2);
   const [reason, setReason] = useState('EXPIRED');
   const [notes, setNotes] = useState('');
+  const [bannerMsg, setBannerMsg] = useState('');
 
-  // Eligible batches for disposal (has quantity > 0)
-  const availableBatches = batches.filter(b => b.quantity > 0);
+  // Filtered batches according to search and status filter
+  const filteredBatches = availableBatches.filter(b => {
+    const matchesStatus = statusFilter === 'ALL' || b.status === statusFilter;
+    if (!searchBatch.trim()) return matchesStatus;
+
+    const normSearch = stripVietnamese(searchBatch);
+    const normName = stripVietnamese(b.productName);
+    const normCode = (b.batchCode || '').toLowerCase();
+    const tokens = normSearch.split(/\s+/).filter(Boolean);
+
+    const matchesSearch = tokens.every(tok => normName.includes(tok) || normCode.includes(tok));
+    return matchesStatus && matchesSearch;
+  });
+
   const currentSelectedBatch = batches.find(b => b.id === Number(selectedBatchId));
 
   const totalFinancialLoss = disposals.reduce((sum, d) => sum + d.totalLoss, 0);
+
+  const handleSelectBatch = (batch) => {
+    setSelectedBatchId(batch.id);
+    setDisposalQty(Math.min(batch.quantity, 1));
+    if (batch.status === 'EXPIRED') setReason('EXPIRED');
+    else if (batch.status === 'CRITICAL') setReason('COLD_CHAIN_FAIL');
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -48,22 +94,24 @@ export default function SpoilageDisposalView({
       reason: reason === 'EXPIRED' ? 'Quá hạn sử dụng (EXPIRED)' : 
               reason === 'DAMAGED_SHELF' ? 'Rách bao bì trên kệ (DAMAGED_SHELF)' : 
               reason === 'COLD_CHAIN_FAIL' ? 'Lỗi bảo quản lạnh (COLD_CHAIN_FAIL)' : 'Hư hỏng vận chuyển',
-      approvedBy: currentRole === 'STORE_MANAGER' ? 'Đỗ Tấn Du (Store Manager)' : 'Chờ phê duyệt',
+      approvedBy: currentRole === 'STORE_MANAGER' ? 'Quản lý Cửa hàng' : 'Chờ phê duyệt',
       status: currentRole === 'STORE_MANAGER' ? 'APPROVED' : 'PENDING'
     };
 
     onCreateDisposal(newRecord);
-    alert(currentRole === 'STORE_MANAGER' ? 
-      "Đã lập phiếu và phê duyệt tiêu hủy! Tồn kho đã được trừ sạch." : 
-      "Đã lập phiếu đề xuất tiêu hủy! Chờ Cửa hàng trưởng phê duyệt.");
+    setBannerMsg(currentRole === 'STORE_MANAGER' ? 
+      `✓ Đã lập phiếu ${newRecord.id} và PHÊ DUYỆT tiêu hủy thành công! Tồn kho lô ${currentSelectedBatch.batchCode} đã được trừ sạch.` : 
+      `✓ Đã lập phiếu đề xuất tiêu hủy ${newRecord.id}! Chờ Cửa hàng trưởng phê duyệt.`);
+    
+    setTimeout(() => setBannerMsg(''), 7000);
   };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '420px 1fr', gap: '24px', alignItems: 'start' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '460px 1fr', gap: '24px', alignItems: 'start' }}>
       
       {/* Form: Create Disposal Record */}
       <div className="glass-panel" style={{ padding: '24px' }}>
-        <div style={{ marginBottom: '20px' }}>
+        <div style={{ marginBottom: '18px' }}>
           <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Trash2 size={22} color="#ef4444" />
             Lập Phiếu Tiêu Hủy Hàng Hỏng
@@ -73,19 +121,144 @@ export default function SpoilageDisposalView({
           </p>
         </div>
 
+        {bannerMsg && (
+          <div style={{
+            background: 'rgba(16, 185, 129, 0.15)',
+            border: '1px solid var(--safe-green)',
+            borderRadius: '10px',
+            padding: '12px 14px',
+            marginBottom: '16px',
+            fontSize: '0.85rem',
+            color: '#a7f3d0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '8px'
+          }}>
+            <span>{bannerMsg}</span>
+            <button onClick={() => setBannerMsg('')} style={{ background: 'none', border: 'none', color: '#a7f3d0', cursor: 'pointer' }}>
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
+        {/* Search & Status Filters for Batches */}
+        <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '14px', marginBottom: '16px' }}>
+          <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#ffffff', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Search size={14} color="var(--safe-green)" />
+            Tìm kiếm & Lọc Lô Cần Tiêu Hủy:
+          </label>
+          
+          <div style={{ position: 'relative', marginBottom: '10px' }}>
+            <input
+              type="text"
+              className="form-input"
+              style={{ width: '100%', paddingLeft: '34px', fontSize: '0.85rem' }}
+              placeholder="Gõ mã lô hoặc tên sản phẩm..."
+              value={searchBatch}
+              onChange={(e) => setSearchBatch(e.target.value)}
+            />
+            <Search size={16} color="var(--text-dim)" style={{ position: 'absolute', left: '10px', top: '10px' }} />
+            {searchBatch && (
+              <button 
+                onClick={() => setSearchBatch('')}
+                style={{ position: 'absolute', right: '10px', top: '9px', background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer' }}
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          {/* Status filter chips */}
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            {[
+              { id: 'ALL', label: 'Tất cả', count: availableBatches.length },
+              { id: 'EXPIRED', label: 'Quá hạn (Đỏ)', count: availableBatches.filter(b => b.status === 'EXPIRED').length },
+              { id: 'CRITICAL', label: 'Cận date (Đỏ)', count: availableBatches.filter(b => b.status === 'CRITICAL').length },
+              { id: 'WARNING', label: 'Cảnh báo (Vàng)', count: availableBatches.filter(b => b.status === 'WARNING').length }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setStatusFilter(tab.id)}
+                style={{
+                  fontSize: '0.725rem',
+                  padding: '4px 10px',
+                  borderRadius: '20px',
+                  border: statusFilter === tab.id ? '1px solid var(--safe-green)' : '1px solid rgba(255,255,255,0.08)',
+                  background: statusFilter === tab.id ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255,255,255,0.03)',
+                  color: statusFilter === tab.id ? 'var(--safe-green)' : 'var(--text-muted)',
+                  cursor: 'pointer',
+                  fontWeight: statusFilter === tab.id ? 700 : 500,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+              >
+                <span>{tab.label}</span>
+                <span style={{ fontSize: '0.65rem', opacity: 0.8 }}>({tab.count})</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Quick-pick list */}
+          <div style={{ marginTop: '10px', maxHeight: '160px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {filteredBatches.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '12px', fontSize: '0.8rem', color: 'var(--text-dim)' }}>
+                Không tìm thấy lô hàng nào khớp điều kiện tìm kiếm.
+              </div>
+            ) : (
+              filteredBatches.map(b => {
+                const isSelected = b.id === Number(selectedBatchId);
+                return (
+                  <div
+                    key={b.id}
+                    onClick={() => handleSelectBatch(b)}
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      border: isSelected ? '1px solid var(--safe-green)' : '1px solid rgba(255,255,255,0.06)',
+                      background: isSelected ? 'rgba(16, 185, 129, 0.1)' : 'rgba(0,0,0,0.2)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: '0.825rem', fontWeight: 700, color: isSelected ? '#ffffff' : 'var(--text-color)' }}>
+                        {b.productName}
+                      </div>
+                      <div style={{ fontSize: '0.725rem', color: 'var(--text-dim)', display: 'flex', gap: '6px' }}>
+                        <span>Lô: <strong>{b.batchCode}</strong></span>
+                        <span>• HSD: {b.expiryDate}</span>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <span className={`badge ${b.status === 'EXPIRED' ? 'badge-expired' : b.status === 'CRITICAL' ? 'badge-critical' : b.status === 'WARNING' ? 'badge-warning' : 'badge-safe'}`} style={{ fontSize: '0.65rem', padding: '2px 6px' }}>
+                        Tồn: {b.quantity}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           
           <div>
             <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px', display: 'block' }}>
-              Chọn Lô hàng cần hủy:
+              Lô hàng được chọn xử lý:
             </label>
             <select 
               className="form-select"
               value={selectedBatchId}
               onChange={(e) => {
-                setSelectedBatchId(Number(e.target.value));
                 const b = batches.find(x => x.id === Number(e.target.value));
-                if (b) setDisposalQty(Math.min(b.quantity, 1));
+                if (b) handleSelectBatch(b);
               }}
             >
               {availableBatches.map(b => (
@@ -132,6 +305,9 @@ export default function SpoilageDisposalView({
               <div style={{ color: 'var(--text-muted)' }}>Ước tính thiệt hại tài chính:</div>
               <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#ef4444', marginTop: '2px' }}>
                 {((disposalQty || 0) * currentSelectedBatch.costPrice).toLocaleString('vi-VN')} đ
+              </div>
+              <div style={{ fontSize: '0.725rem', color: 'var(--text-dim)', marginTop: '4px' }}>
+                Giá vốn nhập: {currentSelectedBatch.costPrice.toLocaleString('vi-VN')} đ / đơn vị
               </div>
             </div>
           )}
@@ -223,7 +399,11 @@ export default function SpoilageDisposalView({
                             <button 
                               className="btn btn-primary"
                               style={{ fontSize: '0.7rem', padding: '4px 8px' }}
-                              onClick={() => onApproveDisposal(item.id)}
+                              onClick={() => {
+                                onApproveDisposal(item.id);
+                                setBannerMsg(`✓ Đã phê duyệt phiếu tiêu hủy ${item.id}!`);
+                                setTimeout(() => setBannerMsg(''), 5000);
+                              }}
                             >
                               <ShieldCheck size={12} /> Duyệt Hủy
                             </button>

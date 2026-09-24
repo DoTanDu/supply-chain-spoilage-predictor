@@ -268,7 +268,8 @@ async function processFefoSale(cartItems, weatherInfo) {
 
     const totalAvailable = availBatches.reduce((s, b) => s + b.current_quantity, 0);
     if (totalAvailable < remainingToDeduct) {
-      throw new Error(`Sản phẩm ID ${item.productId} không đủ tồn kho khả dụng để xuất theo FEFO!`);
+      const prodLabel = item.name ? `"${item.name}"` : `ID ${item.productId}`;
+      throw new Error(`Sản phẩm ${prodLabel} không đủ tồn kho khả dụng để xuất theo FEFO! (Yêu cầu: ${remainingToDeduct}, Hiện còn: ${totalAvailable})`);
     }
 
     for (const b of availBatches) {
