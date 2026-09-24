@@ -1,9 +1,23 @@
 import React, { useState } from 'react';
-import { TrendingUp, AlertTriangle, Send, CheckCircle2, Calculator, Info } from 'lucide-react';
+import { 
+  TrendingUp, 
+  AlertTriangle, 
+  Send, 
+  CheckCircle2, 
+  Calculator, 
+  Info,
+  RotateCw,
+  HelpCircle,
+  PackageCheck,
+  ChevronDown,
+  ChevronUp
+} from 'lucide-react';
 
 export default function ReorderPredictorView({ products, batches, onSendPo }) {
   const [leadTime] = useState(2); // Lead time from DC: 2 days
   const [createdPoMsg, setCreatedPoMsg] = useState('');
+  const [loadingProductId, setLoadingProductId] = useState(null);
+  const [showExplanation, setShowExplanation] = useState(true);
 
   const calculateStockAnalysis = (prod) => {
     const availableStock = batches
@@ -23,14 +37,14 @@ export default function ReorderPredictorView({ products, batches, onSendPo }) {
       dueDays = Math.max(0, Math.ceil((exp - now) / (1000 * 60 * 60 * 24)));
     }
 
-    // Days of Supply
+    // Days of Supply: DOS = Stock / dailyDemand
     const dos = Number((availableStock / (prod.dailyDemand || 1)).toFixed(1));
 
-    // ROP = (d * L) + SS
+    // ROP = (dailyDemand * LeadTime) + SafetyStock
     const calculatedRop = Math.round((prod.dailyDemand * leadTime) + prod.safetyStock);
 
     const isReorderNeeded = availableStock <= calculatedRop;
-    const isSpoilageRisk = dos > dueDays;
+    const isSpoilageRisk = dos > dueDays && availableStock > 0;
 
     return {
       availableStock,
@@ -43,10 +57,21 @@ export default function ReorderPredictorView({ products, batches, onSendPo }) {
     };
   };
 
-  const handleOrderFromDc = (prod, suggestedQty) => {
-    onSendPo(prod, suggestedQty);
-    setCreatedPoMsg(`Đã tạo Đơn Đặt Hàng DC-PO-${Date.now().toString().slice(-5)} cho ${suggestedQty} ${prod.unit} ${prod.name}!`);
-    setTimeout(() => setCreatedPoMsg(''), 5000);
+  const handleOrderFromDc = async (prod, suggestedQty) => {
+    setLoadingProductId(prod.id);
+    try {
+      const res = await onSendPo(prod, suggestedQty);
+      if (res && res.success) {
+        setCreatedPoMsg(`✓ Đã tiếp nhận Lô hàng mới từ Kho tổng DC: Cấp +${suggestedQty} ${prod.unit} "${prod.name}" (Lô: ${res.batchCode}) vào SQL Server! Tồn kho đã tăng từ 0 lên ${suggestedQty}.`);
+      } else {
+        setCreatedPoMsg(`✓ Đã tạo lệnh PO tiếp tế gửi về Kho tổng DC cho ${suggestedQty} ${prod.unit} "${prod.name}"!`);
+      }
+    } catch (err) {
+      setCreatedPoMsg(`Lỗi tiếp nhận hàng DC: ${err.message}`);
+    } finally {
+      setLoadingProductId(null);
+      setTimeout(() => setCreatedPoMsg(''), 7000);
+    }
   };
 
   return (
@@ -65,14 +90,79 @@ export default function ReorderPredictorView({ products, batches, onSendPo }) {
             </p>
           </div>
 
-          <div style={{ background: 'rgba(255, 255, 255, 0.04)', padding: '10px 16px', borderRadius: '12px', border: '1px solid var(--border-color)', fontSize: '0.8rem' }}>
-            Thời gian giao từ Kho tổng (Lead Time L): <strong style={{ color: 'var(--safe-green)' }}>{leadTime} ngày</strong>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ background: 'rgba(255, 255, 255, 0.04)', padding: '10px 16px', borderRadius: '12px', border: '1px solid var(--border-color)', fontSize: '0.8rem' }}>
+              Thời gian giao từ Kho tổng (Lead Time L): <strong style={{ color: 'var(--safe-green)' }}>{leadTime} ngày</strong>
+            </div>
+            <button
+              onClick={() => setShowExplanation(!showExplanation)}
+              className="btn btn-secondary"
+              style={{ fontSize: '0.8rem', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <HelpCircle size={15} color="#38bdf8" />
+              <span>{showExplanation ? 'Ẩn giải thích công thức' : 'Xem công thức ROP'}</span>
+              {showExplanation ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
           </div>
         </div>
 
+        {/* Educational Explanatory Box */}
+        {showExplanation && (
+          <div style={{
+            marginTop: '18px',
+            background: 'rgba(56, 189, 248, 0.06)',
+            border: '1px solid rgba(56, 189, 248, 0.25)',
+            borderRadius: '12px',
+            padding: '16px 20px',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+            gap: '16px',
+            fontSize: '0.825rem'
+          }}>
+            <div>
+              <div style={{ color: '#38bdf8', fontWeight: 700, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Calculator size={16} /> 1. Tốc độ bán hàng ngày (d - Daily Demand)
+              </div>
+              <div style={{ color: 'var(--text-muted)', lineHeight: '1.4' }}>
+                Số lượng sản phẩm trung bình cửa hàng bán ra trong 1 ngày, tính dựa trên lịch sử giao dịch quầy POS và được nhân hệ số thời tiết (K = 1.4 khi nắng nóng kích cầu đồ giải khát).
+              </div>
+            </div>
+
+            <div>
+              <div style={{ color: '#fbbf24', fontWeight: 700, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <PackageCheck size={16} /> 2. Tồn kho an toàn (SS - Safety Stock)
+              </div>
+              <div style={{ color: 'var(--text-muted)', lineHeight: '1.4' }}>
+                Lượng hàng đệm dự phòng tối thiểu dưới đáy kệ để tránh bị "đứt hàng" khi khách mua đột biến vào ngày nghỉ/lễ hoặc khi xe giao hàng từ Kho tổng (DC) bị trễ.
+              </div>
+            </div>
+
+            <div>
+              <div style={{ color: 'var(--safe-green)', fontWeight: 700, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <TrendingUp size={16} /> 3. Điểm đặt hàng (ROP - Reorder Point)
+              </div>
+              <div style={{ color: 'var(--text-muted)', lineHeight: '1.4' }}>
+                <strong>ROP = (d × L) + SS</strong>. Khi tồn kho ≤ ROP, hệ thống bật nút <strong>Đặt DC</strong> để cấp thêm hàng về kịp lúc trước khi kệ hàng bị cạn sạch!
+              </div>
+            </div>
+          </div>
+        )}
+
         {createdPoMsg && (
-          <div style={{ marginTop: '16px', background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.4)', color: '#34d399', padding: '10px 14px', borderRadius: '10px', fontSize: '0.825rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <CheckCircle2 size={16} /> {createdPoMsg}
+          <div style={{
+            marginTop: '16px',
+            background: 'rgba(16, 185, 129, 0.15)',
+            border: '1px solid rgba(16, 185, 129, 0.4)',
+            color: '#a7f3d0',
+            padding: '12px 16px',
+            borderRadius: '10px',
+            fontSize: '0.85rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            <CheckCircle2 size={18} color="var(--safe-green)" />
+            <span>{createdPoMsg}</span>
           </div>
         )}
       </div>
@@ -97,6 +187,7 @@ export default function ReorderPredictorView({ products, batches, onSendPo }) {
             <tbody>
               {products.map(prod => {
                 const analysis = calculateStockAnalysis(prod);
+                const isItemLoading = loadingProductId === prod.id;
 
                 return (
                   <tr key={prod.id}>
@@ -117,7 +208,7 @@ export default function ReorderPredictorView({ products, batches, onSendPo }) {
                       </span>
                     </td>
                     <td>
-                      <strong style={{ fontSize: '1rem', color: analysis.isReorderNeeded ? '#f59e0b' : '#ffffff' }}>
+                      <strong style={{ fontSize: '1rem', color: analysis.isReorderNeeded ? '#f59e0b' : 'var(--safe-green)' }}>
                         {analysis.availableStock} {prod.unit}
                       </strong>
                     </td>
@@ -158,8 +249,17 @@ export default function ReorderPredictorView({ products, batches, onSendPo }) {
                           className="btn btn-primary"
                           style={{ fontSize: '0.75rem', padding: '5px 12px' }}
                           onClick={() => handleOrderFromDc(prod, analysis.calculatedRop * 2)}
+                          disabled={isItemLoading}
                         >
-                          <Send size={13} /> Đặt DC (+{analysis.calculatedRop * 2})
+                          {isItemLoading ? (
+                            <>
+                              <RotateCw size={13} className="animate-spin" /> Đang cấp hàng...
+                            </>
+                          ) : (
+                            <>
+                              <Send size={13} /> Đặt DC (+{analysis.calculatedRop * 2})
+                            </>
+                          )}
                         </button>
                       ) : analysis.isSpoilageRisk ? (
                         <button
@@ -170,7 +270,9 @@ export default function ReorderPredictorView({ products, batches, onSendPo }) {
                           Giảm giá kích cầu
                         </button>
                       ) : (
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>Ổn định</span>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--safe-green)', fontWeight: 600 }}>
+                          ✓ Ổn định
+                        </span>
                       )}
                     </td>
                   </tr>

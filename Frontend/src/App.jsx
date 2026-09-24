@@ -248,17 +248,45 @@ export default function App() {
     }
   };
 
-  // Handler: Send PO to DC
-  const handleSendPo = (product, qty) => {
+  // Handler: Send PO to DC and Replenish Batch in SQL Server
+  const handleSendPo = async (product, qty) => {
     const poCode = `PO-DC-${Date.now().toString().slice(-4)}`;
-    const newLog = {
-      id: Date.now(),
-      time: new Date().toLocaleTimeString('vi-VN') + ' ' + new Date().toLocaleDateString('vi-VN'),
-      user: currentRole === 'STORE_MANAGER' ? 'Đỗ Tấn Du (Manager)' : 'Đoàn Minh Quân (Staff)',
-      action: 'Đặt hàng Kho tổng (DC)',
-      details: `Khởi tạo đơn ${poCode}: Yêu cầu DC xuất cấp ${qty} ${product.unit} ${product.name} (Chạm ngưỡng ROP=${product.reorderPoint}).`
+    const batchCode = `BAT-DC-${Date.now().toString().slice(-6)}`;
+    
+    // Default shelf life: 45 days from today
+    const expDate = new Date();
+    expDate.setDate(expDate.getDate() + 45);
+    const expiryStr = expDate.toISOString().split('T')[0];
+    const importStr = new Date().toISOString().split('T')[0];
+
+    const newBatch = {
+      productId: product.id,
+      batchCode: batchCode,
+      importDate: importStr,
+      expiryDate: expiryStr,
+      quantity: Number(qty),
+      costPrice: product.costPrice || 25000,
+      sellingPrice: product.price || 35000,
+      updateSellingPrice: false
     };
-    setAuditLogs([newLog, ...auditLogs]);
+
+    try {
+      await api.apiAddBatch(newBatch);
+      await loadLiveDatabaseData();
+
+      const newLog = {
+        id: Date.now(),
+        time: new Date().toLocaleTimeString('vi-VN') + ' ' + new Date().toLocaleDateString('vi-VN'),
+        user: currentRole === 'STORE_MANAGER' ? 'Đỗ Tấn Du (Manager)' : 'Đoàn Minh Quân (Staff)',
+        action: 'Tiếp nhận hàng từ DC',
+        details: `Đơn ${poCode}: Kho tổng DC đã giao +${qty} ${product.unit} ${product.name} (Lô ${batchCode}, HSD: ${expiryStr}). Tồn kho đã tăng thêm!`
+      };
+      setAuditLogs([newLog, ...auditLogs]);
+      return { success: true, batchCode, qty };
+    } catch (err) {
+      console.error("Lỗi khi tiếp nhận hàng từ DC:", err);
+      return { success: false, message: err.message };
+    }
   };
 
   return (
