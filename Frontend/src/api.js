@@ -39,6 +39,15 @@ export async function apiAddBatch(batchData) {
   return await res.json();
 }
 
+export async function apiCreateProduct(productData) {
+  const res = await fetch(`${API_BASE}/products`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(productData)
+  });
+  return await res.json();
+}
+
 export async function apiProcessSale(items, weather) {
   const res = await fetch(`${API_BASE}/sales`, {
     method: 'POST',

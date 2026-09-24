@@ -50,13 +50,14 @@ async function getProducts() {
       ROUND(ISNULL((SELECT AVG(CAST(quantity_sold AS FLOAT)) FROM sales_history WHERE product_id = p.id), 6.5), 1) AS dailyDemand,
       ISNULL((SELECT SUM(current_quantity) FROM batches WHERE product_id = p.id AND status != 'EXPIRED' AND current_quantity > 0), 0) AS totalStock,
       CASE 
-        WHEN p.id = 1 THEN N'🥛'
-        WHEN p.id = 2 THEN N'🥛'
-        WHEN p.id = 3 THEN N'🥣'
-        WHEN p.id = 4 THEN N'🧃'
-        WHEN p.id = 5 THEN N'🍞'
-        WHEN p.id = 6 THEN N'🥤'
-        ELSE N'🍜'
+        WHEN c.code = 'DAIRY' THEN N'🥛'
+        WHEN c.code = 'BAKERY' THEN N'🍞'
+        WHEN c.code = 'BEVERAGE' THEN N'🥤'
+        WHEN c.code = 'MEAT_POULTRY' THEN N'🥩'
+        WHEN c.code = 'FRESH_PRODUCE' THEN N'🥗'
+        WHEN c.code = 'PROCESSED_MEAT' THEN N'🌭'
+        WHEN c.code = 'DRY_FOOD' THEN N'🍜'
+        ELSE N'📦'
       END AS image
     FROM products p
     JOIN categories c ON p.category_id = c.id

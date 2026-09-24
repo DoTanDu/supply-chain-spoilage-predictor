@@ -235,6 +235,16 @@ export default function App() {
     }
   };
 
+  // Handler: Add New Product to System Catalog (Write to SQL Server)
+  const handleAddNewProduct = async (productData) => {
+    try {
+      await api.apiCreateProduct(productData);
+      await loadLiveDatabaseData();
+    } catch (err) {
+      console.error("Failed to create product:", err);
+    }
+  };
+
   // Handler: Send PO to DC
   const handleSendPo = (product, qty) => {
     const poCode = `PO-DC-${Date.now().toString().slice(-4)}`;
@@ -311,6 +321,7 @@ export default function App() {
             <DcIntakeView 
               products={products}
               onAddBatch={handleAddBatch}
+              onAddNewProduct={handleAddNewProduct}
               recentIntakes={recentIntakes}
             />
           )}

@@ -131,6 +131,31 @@ app.patch('/api/batches/:id/discount', async (req, res) => {
   }
 });
 
+// 11. Add New Product to System
+app.post('/api/products', async (req, res) => {
+  try {
+    const { name, categoryId, sku, unit, costPrice, sellingPrice, shelfLifeDays, minStock } = req.body;
+    const generatedSku = sku || ('893' + Date.now().toString().slice(-10));
+    const sql = `
+      INSERT INTO products (
+        sku, name, category_id, default_supplier_id, unit, cost_price, selling_price,
+        standard_shelf_life_days, min_stock_level, max_stock_level, custom_warning_days, is_active
+      ) VALUES (
+        N'${generatedSku}', N'${name}', ${categoryId || 1}, 1,
+        N'${unit || 'Cái'}', ${costPrice || 10000}, ${sellingPrice || 15000}, ${shelfLifeDays || 30},
+        ${minStock || 15}, ${(minStock || 15) * 5}, 3, 1
+      );
+
+      INSERT INTO system_audit_logs (user_id, action_type, description, ip_address)
+      VALUES (2, N'Thêm sản phẩm mới', N'Tạo mới sản phẩm: ${name} (SKU: ${generatedSku})', '127.0.0.1');
+    `;
+    await db.executeSql(sql);
+    res.status(201).json({ success: true, message: `Đã thêm sản phẩm "${name}" thành công!` });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
 // Start Server
 app.listen(PORT, () => {
   console.log(`Backend API running on http://localhost:${PORT}`);
