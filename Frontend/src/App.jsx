@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import DashboardView from './components/DashboardView';
@@ -8,6 +8,8 @@ import DcIntakeView from './components/DcIntakeView';
 import SpoilageDisposalView from './components/SpoilageDisposalView';
 import ReorderPredictorView from './components/ReorderPredictorView';
 import AuditLogView from './components/AuditLogView';
+
+import * as api from './api';
 
 import { 
   initialProducts, 
@@ -25,6 +27,8 @@ export default function App() {
   const [disposals, setDisposals] = useState(initialDisposals);
   const [auditLogs, setAuditLogs] = useState(initialAuditLogs);
   const [recentIntakes, setRecentIntakes] = useState(initialBatches.slice(0, 4));
+  const [liveStats, setLiveStats] = useState(null);
+  const [isConnectedToSql, setIsConnectedToSql] = useState(false);
 
   const [weather, setWeather] = useState({
     temp: 34,
@@ -32,114 +36,145 @@ export default function App() {
     isHoliday: false
   });
 
+  // Load Real Data from Microsoft SQL Server LocalDB via Backend API
+  const loadLiveDatabaseData = async () => {
+    try {
+      const [prods, bats, disps, logs, stats] = await Promise.all([
+        api.fetchProducts(),
+        api.fetchBatches(),
+        api.fetchDisposals(),
+        api.fetchAuditLogs(),
+        api.fetchDashboardStats()
+      ]);
+
+      if (prods && prods.length) setProducts(prods);
+      if (bats && bats.length) {
+        setBatches(bats);
+        setRecentIntakes(bats.slice(0, 4));
+      }
+      if (disps) setDisposals(disps);
+      if (logs) setAuditLogs(logs);
+      if (stats) setLiveStats(stats);
+      setIsConnectedToSql(true);
+    } catch (err) {
+      console.warn("Backend API not reachable, falling back to local memory:", err);
+      setIsConnectedToSql(false);
+    }
+  };
+
+  useEffect(() => {
+    loadLiveDatabaseData();
+    const interval = setInterval(loadLiveDatabaseData, 10000); // Auto-sync with SQL Server every 10s
+    return () => clearInterval(interval);
+  }, []);
+
   // Calculate critical count
   const criticalCount = batches.filter(b => b.status === 'CRITICAL').length;
 
-  // Handler: Process Sale with FEFO Logic
-  const handleProcessSale = (cart, weatherInfo) => {
-    let newBatches = [...batches];
-    let newProducts = [...products];
-    let fefoDeductions = [];
-    let totalSaleAmount = 0;
+  // Handler: Process Sale with FEFO Logic (Write to SQL Server)
+  const handleProcessSale = async (cart, weatherInfo) => {
+    try {
+      const result = await api.apiProcessSale(cart, weatherInfo);
+      if (result.success) {
+        await loadLiveDatabaseData();
+        return result;
+      } else {
+        return { success: false, message: result.message };
+      }
+    } catch (err) {
+      // Fallback local calculation
+      let newBatches = [...batches];
+      let newProducts = [...products];
+      let fefoDeductions = [];
+      let totalSaleAmount = 0;
 
-    for (const item of cart) {
-      let remainingToDeduct = item.quantity;
-      totalSaleAmount += (item.price * item.quantity);
+      for (const item of cart) {
+        let remainingToDeduct = item.quantity;
+        totalSaleAmount += (item.price * item.quantity);
 
-      // Find available batches sorted by expiryDate ASC
-      const productBatches = newBatches
-        .filter(b => b.productId === item.productId && b.status !== 'EXPIRED' && b.quantity > 0)
-        .sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+        const productBatches = newBatches
+          .filter(b => b.productId === item.productId && b.status !== 'EXPIRED' && b.quantity > 0)
+          .sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
 
-      const totalAvailable = productBatches.reduce((sum, b) => sum + b.quantity, 0);
-      if (totalAvailable < remainingToDeduct) {
-        return {
-          success: false,
-          message: `Sản phẩm ${item.name} không đủ tồn kho khả dụng để xuất theo FEFO!`
-        };
+        const totalAvailable = productBatches.reduce((sum, b) => sum + b.quantity, 0);
+        if (totalAvailable < remainingToDeduct) {
+          return {
+            success: false,
+            message: `Sản phẩm ${item.name} không đủ tồn kho khả dụng để xuất theo FEFO!`
+          };
+        }
+
+        for (const batch of productBatches) {
+          if (remainingToDeduct === 0) break;
+
+          const deductAmount = Math.min(batch.quantity, remainingToDeduct);
+          batch.quantity -= deductAmount;
+          remainingToDeduct -= deductAmount;
+
+          fefoDeductions.push({
+            productName: item.name,
+            batchCode: batch.batchCode,
+            expiryDate: batch.expiryDate,
+            deductedQty: deductAmount,
+            unit: item.unit
+          });
+        }
+
+        const prodIndex = newProducts.findIndex(p => p.id === item.productId);
+        if (prodIndex !== -1) {
+          newProducts[prodIndex].totalStock -= item.quantity;
+        }
       }
 
-      for (const batch of productBatches) {
-        if (remainingToDeduct === 0) break;
+      setBatches(newBatches);
+      setProducts(newProducts);
 
-        const deductAmount = Math.min(batch.quantity, remainingToDeduct);
-        batch.quantity -= deductAmount;
-        remainingToDeduct -= deductAmount;
+      const orderId = `HD-0924-${Date.now().toString().slice(-4)}`;
+      const newLog = {
+        id: Date.now(),
+        time: new Date().toLocaleTimeString('vi-VN') + ' ' + new Date().toLocaleDateString('vi-VN'),
+        user: currentRole === 'STORE_MANAGER' ? 'Đỗ Tấn Du (Manager)' : 'Đoàn Minh Quân (Staff)',
+        action: 'Bán hàng POS (FEFO)',
+        details: `Đơn ${orderId}: Tổng ${totalSaleAmount.toLocaleString('vi-VN')} đ. Đã trừ ${fefoDeductions.length} lượt lô theo FEFO.`
+      };
+      setAuditLogs([newLog, ...auditLogs]);
 
-        fefoDeductions.push({
-          productName: item.name,
-          batchCode: batch.batchCode,
-          expiryDate: batch.expiryDate,
-          deductedQty: deductAmount,
-          unit: item.unit
-        });
-      }
-
-      // Update total stock on product
-      const prodIndex = newProducts.findIndex(p => p.id === item.productId);
-      if (prodIndex !== -1) {
-        newProducts[prodIndex].totalStock -= item.quantity;
-      }
+      return {
+        success: true,
+        orderCode: orderId,
+        totalAmount: totalSaleAmount,
+        fefoDetails: fefoDeductions
+      };
     }
-
-    setBatches(newBatches);
-    setProducts(newProducts);
-
-    const orderId = `HD-0924-${Date.now().toString().slice(-4)}`;
-    const newLog = {
-      id: Date.now(),
-      time: new Date().toLocaleTimeString('vi-VN') + ' ' + new Date().toLocaleDateString('vi-VN'),
-      user: currentRole === 'STORE_MANAGER' ? 'Đỗ Tấn Du (Manager)' : 'Đoàn Minh Quân (Staff)',
-      action: 'Bán hàng POS (FEFO)',
-      details: `Đơn ${orderId}: Tổng ${totalSaleAmount.toLocaleString('vi-VN')} đ. Đã trừ ${fefoDeductions.length} lượt lô theo FEFO.`
-    };
-    setAuditLogs([newLog, ...auditLogs]);
-
-    return {
-      success: true,
-      orderCode: orderId,
-      totalAmount: totalSaleAmount,
-      fefoDetails: fefoDeductions
-    };
   };
 
-  // Handler: Add new batch from DC Intake
-  const handleAddBatch = (newBatch) => {
-    setBatches([newBatch, ...batches]);
-    setRecentIntakes([newBatch, ...recentIntakes]);
-
-    // Update product totalStock
-    setProducts(products.map(p => 
-      p.id === newBatch.productId ? { ...p, totalStock: p.totalStock + newBatch.quantity } : p
-    ));
-
-    const newLog = {
-      id: Date.now(),
-      time: new Date().toLocaleTimeString('vi-VN') + ' ' + new Date().toLocaleDateString('vi-VN'),
-      user: currentRole === 'STORE_MANAGER' ? 'Đỗ Tấn Du (Manager)' : 'Đoàn Minh Quân (Staff)',
-      action: 'Nhập lô từ DC',
-      details: `Nhập Lô ${newBatch.batchCode}: ${newBatch.quantity} đơn vị ${newBatch.productName}, HSD: ${newBatch.expiryDate}`
-    };
-    setAuditLogs([newLog, ...auditLogs]);
+  // Handler: Add new batch from DC Intake (Write to SQL Server)
+  const handleAddBatch = async (newBatch) => {
+    try {
+      await api.apiAddBatch(newBatch);
+      await loadLiveDatabaseData();
+    } catch (err) {
+      setBatches([newBatch, ...batches]);
+      setRecentIntakes([newBatch, ...recentIntakes]);
+      setProducts(products.map(p => 
+        p.id === newBatch.productId ? { ...p, totalStock: p.totalStock + newBatch.quantity } : p
+      ));
+    }
   };
 
-  // Handler: Quick Discount on near-expiry batch
-  const handleQuickDiscount = (batchId) => {
-    const targetBatch = batches.find(b => b.id === batchId);
-    if (!targetBatch) return;
+  // Handler: Quick Discount on near-expiry batch (Update in SQL Server)
+  const handleQuickDiscount = async (batchId) => {
+    try {
+      await api.apiApplyDiscount(batchId, 30);
+      await loadLiveDatabaseData();
+    } catch (err) {
+      const targetBatch = batches.find(b => b.id === batchId);
+      if (!targetBatch) return;
 
-    setBatches(batches.map(b => 
-      b.id === batchId ? { ...b, isDiscounted: true, discountPercent: 30 } : b
-    ));
-
-    const newLog = {
-      id: Date.now(),
-      time: new Date().toLocaleTimeString('vi-VN') + ' ' + new Date().toLocaleDateString('vi-VN'),
-      user: currentRole === 'STORE_MANAGER' ? 'Đỗ Tấn Du (Manager)' : 'Đoàn Minh Quân (Staff)',
-      action: 'Xả hàng giảm giá 30%',
-      details: `Kích hoạt chương trình xả hàng 30% cho Lô ${targetBatch.batchCode} (${targetBatch.productName})`
-    };
-    setAuditLogs([newLog, ...auditLogs]);
+      setBatches(batches.map(b => 
+        b.id === batchId ? { ...b, isDiscounted: true, discountPercent: 30 } : b
+      ));
+    }
   };
 
   // Handler: Rotate Shelf
@@ -159,82 +194,45 @@ export default function App() {
     setAuditLogs([newLog, ...auditLogs]);
   };
 
-  // Handler: Create Disposal Record
-  const handleCreateDisposal = (newRecord) => {
-    setDisposals([newRecord, ...disposals]);
-
-    if (newRecord.status === 'APPROVED') {
-      // Deduct stock of batch immediately
-      setBatches(batches.map(b => {
-        if (b.id === newRecord.batchId) {
-          const rem = Math.max(0, b.quantity - newRecord.quantity);
-          return {
-            ...b,
-            quantity: rem,
-            status: rem === 0 ? 'DISPOSED' : b.status
-          };
-        }
-        return b;
-      }));
-
-      // Also deduct from product totalStock
-      const targetBatch = batches.find(b => b.id === newRecord.batchId);
-      if (targetBatch) {
-        setProducts(prevProducts => prevProducts.map(p => 
-          p.id === targetBatch.productId ? { ...p, totalStock: Math.max(0, p.totalStock - newRecord.quantity) } : p
-        ));
+  // Handler: Create Disposal Record (Write to SQL Server)
+  const handleCreateDisposal = async (newRecord) => {
+    try {
+      await api.apiCreateDisposal(newRecord);
+      await loadLiveDatabaseData();
+    } catch (err) {
+      setDisposals([newRecord, ...disposals]);
+      if (newRecord.status === 'APPROVED') {
+        setBatches(batches.map(b => {
+          if (b.id === newRecord.batchId) {
+            const rem = Math.max(0, b.quantity - newRecord.quantity);
+            return {
+              ...b,
+              quantity: rem,
+              status: rem === 0 ? 'DISPOSED' : b.status
+            };
+          }
+          return b;
+        }));
       }
     }
-
-    const newLog = {
-      id: Date.now(),
-      time: new Date().toLocaleTimeString('vi-VN') + ' ' + new Date().toLocaleDateString('vi-VN'),
-      user: currentRole === 'STORE_MANAGER' ? 'Đỗ Tấn Du (Manager)' : 'Đoàn Minh Quân (Staff)',
-      action: 'Lập phiếu tiêu hủy',
-      details: `Tạo phiếu ${newRecord.id} hủy ${newRecord.quantity} sản phẩm từ Lô ${newRecord.batchCode}. Thiệt hại: ${newRecord.totalLoss.toLocaleString('vi-VN')} đ.`
-    };
-    setAuditLogs([newLog, ...auditLogs]);
   };
 
-  // Handler: Approve Disposal (Manager only)
-  const handleApproveDisposal = (disposalId) => {
+  // Handler: Approve Disposal
+  const handleApproveDisposal = async (disposalId) => {
     const record = disposals.find(d => d.id === disposalId);
     if (!record) return;
 
-    setDisposals(disposals.map(d => 
-      d.id === disposalId ? { ...d, status: 'APPROVED', approvedBy: 'Đỗ Tấn Du (Store Manager)' } : d
-    ));
-
-    const targetBatch = batches.find(b => b.batchCode === record.batchCode);
-
-    // Deduct batch stock
-    setBatches(batches.map(b => {
-      if (b.batchCode === record.batchCode) {
-        const rem = Math.max(0, b.quantity - record.quantity);
-        return {
-          ...b,
-          quantity: rem,
-          status: rem === 0 ? 'DISPOSED' : b.status
-        };
-      }
-      return b;
-    }));
-
-    // Synchronize product totalStock
-    if (targetBatch) {
-      setProducts(prevProducts => prevProducts.map(p => 
-        p.id === targetBatch.productId ? { ...p, totalStock: Math.max(0, p.totalStock - record.quantity) } : p
+    try {
+      await api.apiCreateDisposal({
+        ...record,
+        status: 'APPROVED'
+      });
+      await loadLiveDatabaseData();
+    } catch (err) {
+      setDisposals(disposals.map(d => 
+        d.id === disposalId ? { ...d, status: 'APPROVED', approvedBy: 'Đỗ Tấn Du (Store Manager)' } : d
       ));
     }
-
-    const newLog = {
-      id: Date.now(),
-      time: new Date().toLocaleTimeString('vi-VN') + ' ' + new Date().toLocaleDateString('vi-VN'),
-      user: 'Đỗ Tấn Du (Store Manager)',
-      action: 'Duyệt tiêu hủy hàng hỏng',
-      details: `Phê duyệt chính thức phiếu ${record.id}: Trừ kho và hạch toán lỗ ${record.totalLoss.toLocaleString('vi-VN')} đ.`
-    };
-    setAuditLogs([newLog, ...auditLogs]);
   };
 
   // Handler: Send PO to DC
@@ -260,6 +258,7 @@ export default function App() {
         criticalCount={criticalCount}
         weather={weather}
         setWeather={setWeather}
+        isConnectedToSql={isConnectedToSql}
       />
 
       {/* Main Container */}
@@ -271,6 +270,7 @@ export default function App() {
           setActiveTab={setActiveTab}
           currentRole={currentRole}
           criticalCount={criticalCount}
+          isConnectedToSql={isConnectedToSql}
         />
 
         {/* Dynamic Workspace */}
@@ -281,6 +281,7 @@ export default function App() {
               batches={batches}
               products={products}
               disposals={disposals}
+              liveStats={liveStats}
               setActiveTab={setActiveTab}
               onQuickDiscount={handleQuickDiscount}
             />

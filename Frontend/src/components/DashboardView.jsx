@@ -16,21 +16,21 @@ export default function DashboardView({
   batches, 
   products, 
   disposals, 
+  liveStats,
   setActiveTab, 
   onQuickDiscount 
 }) {
-  // Calculations
-  const totalStockItems = batches.reduce((sum, b) => sum + (b.status !== 'EXPIRED' ? b.quantity : 0), 0);
-  const totalInventoryValue = batches.reduce((sum, b) => sum + ((b.status !== 'EXPIRED' ? b.quantity : 0) * b.costPrice), 0);
+  // Real calculations directly from Microsoft SQL Server LocalDB
+  const totalStockItems = liveStats ? liveStats.totalStockItems : batches.reduce((sum, b) => sum + (b.status !== 'EXPIRED' ? b.quantity : 0), 0);
+  const totalInventoryValue = liveStats ? liveStats.totalInventoryValue : batches.reduce((sum, b) => sum + ((b.status !== 'EXPIRED' ? b.quantity : 0) * b.costPrice), 0);
   
   const criticalBatches = batches.filter(b => b.status === 'CRITICAL');
   const warningBatches = batches.filter(b => b.status === 'WARNING');
   const safeBatches = batches.filter(b => b.status === 'SAFE');
   const expiredBatches = batches.filter(b => b.status === 'EXPIRED');
 
-  const totalDisposalLoss = disposals.reduce((sum, d) => sum + d.totalLoss, 0);
-  const totalImportCost = 18500000; // Reference base import cost
-  const spoilageRate = ((totalDisposalLoss / totalImportCost) * 100).toFixed(2);
+  const totalDisposalLoss = liveStats ? liveStats.totalDisposalLoss : disposals.reduce((sum, d) => sum + d.totalLoss, 0);
+  const spoilageRate = liveStats ? liveStats.spoilageRate : ((totalDisposalLoss / 16600000) * 100).toFixed(2);
 
   // High Risk Spoilage Products (DOS > DUE)
   const highRiskItems = [
