@@ -1,0 +1,230 @@
+========================================================================================
+   BO CAU HOI VAN DAP & KICH BAN TRA LOI CHUAN (DIEM 10) KHI THAY KIEM TRA WEBSITE
+   De tai: Nen tang Quan tri Chuoi cung ung Chong lang phi (Supply Chain Spoilage Predictor)
+   GVHD: ThS. Le Minh Nhat - Khoa CNTT, Truong Dai hoc Lac Hong (LHU)
+   Nhom SV: Do Tan Du (123001364) & Doan Minh Quan (123000946)
+========================================================================================
+
+CHU Y DANH CHO DU & QUAN:
+- File nay ghi lai toan bo cac cau hoi "soc nao", "soi ky thuat" va "soi nghiep vu" ma Thay
+  Le Minh Nhat hoac Hoi dong se hoi truc tiep khi click vao tung man hinh tren Website.
+- Moi cau hoi deu co san KICH BAN TRA LOI MAU cuc ky thuyet phuc va CHỈ RÕ FILE CODE can mo 
+  cho Thay xem de dat diem tuyet doi.
+
+----------------------------------------------------------------------------------------
+PHAN 1: MAN HINH BAN HANG POS & TRU KHO FEFO (PosCheckoutView)
+----------------------------------------------------------------------------------------
+
+[THAY NHAT HOI 1.1]:
+"Thay thay o quay POS nay, khi khach mua mot mat hang ma trong kho co nhieu lo: lo con 3 ngay 
+nua het han va lo con 30 ngay. He thong cua 2 em tu dong tru lo nao truoc? Code o dau va 
+co khi nao bi tru lon xon khong?"
+
+>> KICH BAN TRA LOI CUA DU & QUAN:
+- "Da thua Thay, he thong cua tui em tuan thu tuyet doi nguyen tac FEFO (First Expired, 
+  First Out) - Lo nao het han truoc se duoc tu dong xuat ban truoc.
+- O Frontend (PosCheckoutView.jsx), nhan vien chi can chon san pham va so luong, khong 
+  can phai nho ma lo.
+- O Backend (FefoAllocationService.cs / InventoryRepository.cs), khi nhan request ban hang, 
+  cau truy van SQL se loc cac lo co:
+    WHERE product_id = @ProductId AND status = 'ACTIVE' AND quantity > 0
+    ORDER BY expiry_date ASC, id ASC
+  Nho menh de 'ORDER BY expiry_date ASC', lo co HSD gan nhat luon luon duoc lay ra truoc.
+  Neu lo do khong du so luong, vong lap se tru tiep vao lo ke can cho den khi du so luong khach mua."
+>> CHO DE SHOW CHO THAY COI:
+- Frontend: PosCheckoutView.jsx (ham handleCheckout / dispatch)
+- Backend: FefoAllocationService hoac Stored Procedure / Query co ORDER BY expiry_date ASC.
+
+[THAY NHAT HOI 1.2]:
+"Neu nhan vien co y hoac khach hang vo tinh cam mot hop sua da het han tu hom qua dem ra 
+quay thu ngan quet ma vach, website cua em co cho phep tinh tien khong? Em bam thu Thay xem?"
+
+>> KICH BAN TRA LOI CUA DU & QUAN:
+- "Da thua Thay, he thong co co che KHOA MA VACH TU DONG doi voi hang het date.
+- Tai Backend va Frontend, bat ky lo hang nao co expiry_date <= Ngay hien tai deu tu dong 
+  chuyen trang thai sang 'EXPIRED'.
+- Khi quet ma tren POS, he thong check ngay dieu kien: Neu lo chi con hang EXPIRED hoac 
+  khong con lo ACTIVE nao hop le, nut Thanh toan se bi khoa va hien thi canh bao do:
+  'San pham nay da het han su dung, he thong cam ban ra! Vui long dua vao khu vuc cho tieu huy'.
+- Dieu nay bao ve an toan suc khoe nguoi tieu dung va uy tin cua cua hang ban le."
+>> CHO DE SHOW CHO THAY COI:
+- Bam thu vao 1 san pham da het han tren giao dien POS de Thay thay nut ban bi disabled 
+  hoac pop-up canh bao chan lai.
+
+[THAY NHAT HOI 1.3]:
+"Neu khach mua 10 goi mi, ma lo can date chi con 4 goi, lo sau con 20 goi thi tru the nao? 
+Va neu 2 thu ngan cung ban san pham do cung 1 giay (Race Condition / Concurrency) thi co 
+bi am kho khong?"
+
+>> KICH BAN TRA LOI CUA DU & QUAN:
+- "Da thua Thay:
+  1. Voi ca split lo: He thong se tu dong tach 1 dong hang tren hoa don thanh 2 chi tiet xuat: 
+     tru 4 goi o Lo 1 (ve 0 va chuyen status sang SOLD_OUT), va tru 6 goi o Lo 2 (con 14 goi).
+  2. Voi bai toan tranh chap dong thoi (Race condition): Backend su dung Database Transaction 
+     voi muc co lap Snapshot/Read Committed kem menh de UPDATE kiem tra dieu kien:
+     'UPDATE batches SET quantity = quantity - @Qty WHERE id = @Id AND quantity >= @Qty'.
+     Neu so du khong du, phep tru tra ve 0 row affected, Transaction se ROLLBACK ngay lap tuc 
+     va tra ve loi tieng Viet: 'Ton kho khong du, vui long thu lai!'. Do do KHONG BAO GIO 
+     xay ra ton kho am."
+
+----------------------------------------------------------------------------------------
+PHAN 2: MAN HINH THEO DOI FEFO & CANH BAO CAN DATE (FefoMonitorView)
+----------------------------------------------------------------------------------------
+
+[THAY NHAT HOI 2.1]:
+"Tren man hinh FEFO Monitor, Thay thay co cac tag mau Xanh, Vang, Do. Cac em dua tren co so 
+khoa hoc nao de gan mau? Co phai cu con 3 ngay la mau do khong?"
+
+>> KICH BAN TRA LOI CUA DU & QUAN:
+- "Da thua Thay, tui em khong hardcode so ngay co dinh ma tinh theo CONG THUC % TY LE 
+  VONG DOI CON LAI (Remaining Shelf Life - RSL):
+    RSL = (So ngay con lai den HSD / Tong han su dung ban dau) * 100%
+- Trong do Tong han su dung = expiry_date - import_date.
+- Quy uoc 3 nguong an toan:
+  + Mau Xanh (Safe): RSL > 20% -> Hang an toan, ban binh thuong tren ke.
+  + Mau Vang (Warning): 10% < RSL <= 20% -> Canh bao nhan vien quan sat, uu tien don ra truoc.
+  + Mau Do (Critical): RSL <= 10% (hoac con <= 3 ngay) -> Canh bao khuyen mai xan hang 20% - 50% 
+    hoac dao len ke vang truoc mat khach hang de kich cau.
+  + Mau Tim (Expired): So ngay <= 0 -> Khoa ban, cho tieu huy."
+>> CHO DE SHOW CHO THAY COI:
+- File FefoMonitorView.jsx hoac spoilage-business-rules: Ham tinh `calculateRsl(importDate, expiryDate)` 
+  va doan code render mau badge.
+
+[THAY NHAT HOI 2.2]:
+"Thay thay co cot 'Chi so nguy co lang phi' (DOS va DUE). DOS la gi, DUE la gi? No giup gi 
+cho chu cua hang?"
+
+>> KICH BAN TRA LOI CUA DU & QUAN:
+- "Da thua Thay, day la diem sang sang tao trong de tai cua tui em ve chong lang phi:
+  + DUE (Days Until Expiry): So ngay con lai truoc khi lo hang bi het han.
+  + DOS (Days of Supply): So ngay can thiet de ban het luong ton kho hien tai, tinh bang 
+    'Tong ton kho / Toc do ban trung binh 1 ngay (d)'.
+  + NGUY CO LANG PHI: Neu DOS > DUE, nghia la voi toc do ban binh thuong cua quan, hang se 
+    HET HAN TRUOC KHI KHACH MUA HET!
+  + Vi du: Con 100 hop sua chua, 1 ngay chi ban duoc 5 hop -> can 20 ngay moi ban het (DOS = 20). 
+    Nhung chi con 5 ngay nua la sua chua het han (DUE = 5). 
+    He thong lap tuc bao dong Do: 'NGUY CO HU HONG CAO' va goi y chu cua hang giam gia 30% 
+    ngay hom nay de nang toc do ban d len, tranh phai vut bo ton that 100% gia von."
+
+----------------------------------------------------------------------------------------
+PHAN 3: MAN HINH TIEP NHAN HANG TU KHO TONG (DcIntakeView)
+----------------------------------------------------------------------------------------
+
+[THAY NHAT HOI 3.1]:
+"Cua hang ban le cua em nhan hang tu Kho tong DC, neu Thay co tinh go HSD be hon ngay nhap 
+kho thi sao? Cac em validate o dau?"
+
+>> KICH BAN TRA LOI CUA DU & QUAN:
+- "Da thua Thay, he thong validate 2 lop (Dual-layer Validation):
+  1. O Frontend (DcIntakeView.jsx): O nhap expiry_date co thuoc tinh min dat bang ngay hom nay 
+     hoac import_date. Neu go ngay qua khu, form bao do va chan nut Luu.
+  2. O Backend (BatchService.cs / FluentValidation / DTO): Kiem tra dieu kien 
+     'expiry_date > import_date' va 'quantity > 0'.
+  3. O Database: Bang batches co CHECK CONSTRAINT: 
+     CHECK (expiry_date > import_date AND quantity >= 0).
+  Vi vay du co hack qua mat Frontend cung khong the ghi du lieu sai vao Database."
+
+[THAY NHAT HOI 3.2]:
+"Tai sao khi nhan hang tu Kho tong lai bat buoc nhap 'cost_price' (gia von)? Gia von nay 
+co tac dung gi trong phan mem chong lang phi?"
+
+>> KICH BAN TRA LOI CUA DU & QUAN:
+- "Da thua Thay, 'cost_price' la can cu duy nhat de:
+  1. Tinh tong thiet hai tai chinh thuc te khi phai tieu huy lo hang bi hu/qua han:
+     Thiet hai = So luong tieu huy * cost_price.
+  2. Tinh chi so Ty le lang phi (Spoilage Rate %):
+     Spoilage Rate = (Tong chi phi hang huy / Tong gia tri hang nhap) * 100%.
+  Neu khong co gia von, he thong chi biet mat bao nhieu goi banh, chu khong the bao cao 
+  cho giam doc biet cua hang dang bi chay tui bao nhieu trieu dong trong thang."
+
+----------------------------------------------------------------------------------------
+PHAN 4: MAN HINH TIEU HUY HANG HONG / HET DATE (SpoilageDisposalView)
+----------------------------------------------------------------------------------------
+
+[THAY NHAT HOI 4.1]:
+"Khi nhan vien bam 'Xac nhan tieu huy' mot lo hang het date, du lieu lo do co bi xoa (DELETE) 
+khoi database khong? Quy trinh ke toan dien ra the nao?"
+
+>> KICH BAN TRA LOI CUA DU & QUAN:
+- "Da thua Thay, tui em TUYET DOI KHONG DUNG HARD DELETE (khong xoa khoi DB).
+- Quy trinh dien ra nhu sau:
+  1. Tao 1 ban ghi moi trong bang 'spoilage_records' ghi ro: ma lo, ngay huy, so luong huy, 
+     ly do (qua date / dap nat / loi bao bi), nguoi lap phieu va gia tri thiet hai.
+  2. Cap nhat so luong ton kho cua lo do trong bang 'batches' ve 0, va doi status thanh 'DISPOSED'.
+  3. Luu Audit Log de phuc vu kiem toan noi bo.
+  Viec giu lai du lieu giup cua hang truy vet duoc nguyen nhan vi sao thang nay ton that cao, 
+  do nhan vien bao quan kem hay do thuat toan dat hang qua nhieu."
+
+----------------------------------------------------------------------------------------
+PHAN 5: MAN HINH DU BAO NHU CAU & TAI DAT HANG ROP (ReorderPredictorView)
+----------------------------------------------------------------------------------------
+
+[THAY NHAT HOI 5.1]:
+"Cong thuc tinh diem dat hang ROP (Reorder Point) cua em la gi? Lead Time va Safety Stock 
+lay tu dau?"
+
+>> KICH BAN TRA LOI CUA DU & QUAN:
+- "Da thua Thay, cong thuc ROP chuan trong quan tri chuoi cung ung la:
+    ROP = (d * L) + SS
+- Trong do:
+  + d (Daily Demand): Suc mua trung binh 1 ngay cua san pham do trong 30 ngay qua.
+  + L (Lead Time): Thoi gian tu luc gui don dat hang den khi Kho tong DC giao hang toi cua hang 
+    (mac dinh mo hinh cua tui em la 1 - 2 ngay).
+  + SS (Safety Stock): Ton kho an toan de tranh dut hang khi xe hang den tre.
+- Khi Tong ton kho hien tai tren ke <= ROP, he thong se tu dong ban tin nhan: 'Can dat them 
+  hang tu Kho tong'."
+
+[THAY NHAT HOI 5.2]:
+"Thay thay tren web co cac nut chon 'Troi nang', 'Troi mua', 'Ngay le'. May cai do de lam 
+canh hay co tac dong that su vao ket qua du bao?"
+
+>> KICH BAN TRA LOI CUA DU & QUAN:
+- "Da thua Thay, do la he so dieu chinh ngoai canh (K Multipliers) tac dong truc tiep vao 
+  toc do ban d:
+  + Ngay thuong: K = 1.0.
+  + Cuoi tuan / Ngay le: Suc mua tang, he so K = 1.25 den 1.60.
+  + Mua nang nong: Cac nganh hang nuoc giai khat, kem duoc nhan them he so K = 1.40.
+  + Mua mua bao: Nguoi dan it ra duong, hang tuoi song giam K = 0.75 nhung mi goi tang len K = 1.30.
+- Nho nhan he so nay, don de xuat gui Kho tong khong bi tinh trang 'troi mua ma nhap thua 
+  kem lam chay date', giup chong lang phi chu dong ngay tu khau nhap!"
+>> CHO DE SHOW CHO THAY COI:
+- Click chuyen doi giua "Ngay Nang" va "Ngay Mua" tren ReorderPredictorView de Thay thay 
+  con so de xuat nhap tu dong thay doi lap tuc!
+
+----------------------------------------------------------------------------------------
+PHAN 6: KIEN TRUC CLEAN ARCHITECTURE, DATABASE & GIAO DIEN
+----------------------------------------------------------------------------------------
+
+[THAY NHAT HOI 6.1]:
+"Thay thay giao dien rat dep, co Dark mode, Responsive. Frontend va Backend tach roi the nao? 
+Phan tang Clean Architecture cua Quan duoc to chuc ra sao?"
+
+>> KICH BAN TRA LOI CUA DU & QUAN:
+- "Da thua Thay:
+  + Frontend (Du phu trach): Viet bang ReactJS + Vite, to chuc component hoa ro rang 
+    (PosCheckoutView, FefoMonitorView, DcIntakeView,...), CSS styling hien dai voi che do 
+    Dark/Light mode ho tro nhan vien ban hang lam viec ca ca dem lan ca ngay ma khong moi mat.
+  + Backend (Quan phu trach): Viet theo chuan Clean Architecture gom 3 tang tach biet:
+    1. Controller / API: Nhan request, validate DTO, tra ve format JSON dong nhat (success, data, message).
+    2. Service: Chua toan bo nghiep vu (FEFO Allocation, ROP Calculation, RSL Warning).
+    3. Repository: Tuong tac voi SQL Server thong qua Entity Framework Core / Dapper, 
+       khong viet cau truy van SQL lung tung trong controller."
+
+[THAY NHAT HOI 6.2]:
+"Neu thay rut day mang hoac server bi ngat ket noi dot ngot khi dang quet hang tren POS thi sao?"
+
+>> KICH BAN TRA LOI CUA DU & QUAN:
+- "Da thua Thay:
+  + Frontend duoc tui em tich hop co che Error Handling va Toast Notification than thien.
+  + Neu mat mang, he thong bat thong bao vang ro rang: 'Mat ket noi toi May chu, vui long 
+    kiem tra mang' va khoa tam thoi nut xac nhan don hang de tranh du lieu bi mat nua chung.
+  + Ngoai ra, toan bo du lieu gio hang hien tai tren POS duoc luu tam vao LocalStorage/State, 
+    khi co mang tro lai thu ngan khong bi mat danh sach do khach vua lua chon."
+
+========================================================================================
+TONG KET BI QUYET AN DIEM:
+1. Khi Thay hoi den man hinh nao, Du lap tuc chuyen den man hinh do va thao tac truc tiep.
+2. Quan mo san file code Backend hoac Database tuong ung de chi dong code xu ly.
+3. Luon nhan manh tinh chat 'TINH GON CHO RETAIL' dung nhu loi Thay da dan: 
+   Khong phat sinh thu tuc xuat kho noi bo phuc tap, ma Ban hang chinh la Xuat kho!
+========================================================================================
