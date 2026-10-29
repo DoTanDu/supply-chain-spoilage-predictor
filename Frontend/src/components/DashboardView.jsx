@@ -31,13 +31,38 @@ export default function DashboardView({
 
   const totalDisposalLoss = liveStats ? liveStats.totalDisposalLoss : disposals.reduce((sum, d) => sum + d.totalLoss, 0);
   const spoilageRate = liveStats ? liveStats.spoilageRate : ((totalDisposalLoss / 16600000) * 100).toFixed(2);
+  const totalSalesRevenue = liveStats?.totalSalesRevenue || 0;
+  const totalSalesCount = liveStats?.totalSalesCount || 0;
 
-  // High Risk Spoilage Products (DOS > DUE)
-  const highRiskItems = [
-    { name: "Bánh mì tươi Sandwich Kinh Đô", dos: "1.9 ngày", due: "2 ngày", risk: "RẤT CAO", action: "Giảm 30% xả nhanh" },
-    { name: "Thịt ức gà tươi phi lê CP Fresh", dos: "1.8 ngày", due: "2 ngày", risk: "CAO", action: "Ưu tiên đầu kệ" },
-    { name: "Sữa chua Ba Vì có đường 100g", dos: "4.3 ngày", due: "8 ngày", risk: "TRUNG BÌNH", action: "Theo dõi FEFO" }
-  ];
+  // Real-time Dynamic High Risk Spoilage Products (DOS > DUE)
+  const highRiskItems = products.map(p => {
+    const prodBatches = batches.filter(b => b.productId === p.id && b.status !== 'EXPIRED' && b.quantity > 0);
+    const stock = prodBatches.reduce((sum, b) => sum + b.quantity, 0);
+    if (stock === 0) return null;
+
+    const nearestBatch = prodBatches.sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate))[0];
+    if (!nearestBatch) return null;
+
+    const dueDays = Math.max(0, Math.ceil((new Date(nearestBatch.expiryDate) - new Date('2026-09-24')) / (1000 * 3600 * 24)));
+    const isDiscounted = nearestBatch.isDiscounted || (nearestBatch.discountPercent > 0);
+    const effectiveDemand = isDiscounted ? (p.dailyDemand * 1.5) : (p.dailyDemand || 1);
+    const dos = Number((stock / effectiveDemand).toFixed(1));
+
+    if (dos > dueDays && dueDays <= 14) {
+      return {
+        id: p.id,
+        name: p.name,
+        batchId: nearestBatch.id,
+        batchCode: nearestBatch.batchCode,
+        dos: `${dos} ngày`,
+        due: `${dueDays} ngày`,
+        risk: dueDays <= 3 ? "RẤT CAO" : dueDays <= 7 ? "CAO" : "TRUNG BÌNH",
+        isDiscounted,
+        action: isDiscounted ? "Đã giảm giá 30%" : (dueDays <= 3 ? "Giảm 30% xả nhanh" : "Ưu tiên đầu kệ")
+      };
+    }
+    return null;
+  }).filter(Boolean);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -141,78 +166,96 @@ export default function DashboardView({
         </div>
       )}
 
-      {/* 4 KPI Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '18px' }}>
+      {/* 5 KPI Cards: Comprehensive Retail Balance Sheet */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '16px' }}>
         
         {/* Card 1: Total Stock */}
-        <div className="glass-panel glass-panel-interactive" style={{ padding: '20px' }}>
+        <div className="glass-panel glass-panel-interactive" style={{ padding: '18px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>TỔNG TỒN KHO TRÊN KỆ</div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, marginTop: '6px' }}>
-                {totalStockItems} <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: 400 }}>đơn vị</span>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>TỔNG TỒN KHO TRÊN KỆ</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, marginTop: '6px' }}>
+                {totalStockItems} <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 400 }}>đơn vị</span>
               </div>
             </div>
-            <div style={{ padding: '10px', borderRadius: '12px', background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa' }}>
-              <Package size={22} />
+            <div style={{ padding: '8px', borderRadius: '10px', background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa' }}>
+              <Package size={20} />
             </div>
           </div>
-          <div style={{ marginTop: '12px', fontSize: '0.8rem', color: 'var(--text-dim)', borderTop: '1px solid var(--border-color)', paddingTop: '10px' }}>
+          <div style={{ marginTop: '10px', fontSize: '0.75rem', color: 'var(--text-dim)', borderTop: '1px solid var(--border-color)', paddingTop: '8px' }}>
             Giá trị vốn: <strong style={{ color: '#ffffff' }}>{totalInventoryValue.toLocaleString('vi-VN')} đ</strong>
           </div>
         </div>
 
-        {/* Card 2: Critical Date Batches */}
-        <div className="glass-panel glass-panel-interactive" style={{ padding: '20px' }}>
+        {/* Card 2: POS Revenue */}
+        <div className="glass-panel glass-panel-interactive" style={{ padding: '18px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>LÔ CẬN DATE NGUY CẤP (≤10%)</div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, marginTop: '6px', color: criticalBatches.length > 0 ? '#ef4444' : '#10b981' }}>
-                {criticalBatches.length} <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: 400 }}>lô hàng</span>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>DOANH THU BÁN LẺ POS</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, marginTop: '6px', color: 'var(--safe-green)' }}>
+                {totalSalesRevenue.toLocaleString('vi-VN')} <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>đ</span>
               </div>
             </div>
-            <div style={{ padding: '10px', borderRadius: '12px', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444' }}>
-              <AlertTriangle size={22} />
+            <div style={{ padding: '8px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.15)', color: 'var(--safe-green)' }}>
+              <DollarSign size={20} />
             </div>
           </div>
-          <div style={{ marginTop: '12px', fontSize: '0.8rem', color: 'var(--text-dim)', borderTop: '1px solid var(--border-color)', paddingTop: '10px' }}>
-            {warningBatches.length} lô khác đang ở mức Vàng (10-20%)
+          <div style={{ marginTop: '10px', fontSize: '0.75rem', color: 'var(--text-dim)', borderTop: '1px solid var(--border-color)', paddingTop: '8px' }}>
+            Đã xuất: <strong style={{ color: '#ffffff' }}>{totalSalesCount} hóa đơn</strong>
           </div>
         </div>
 
-        {/* Card 3: Disposal Loss */}
-        <div className="glass-panel glass-panel-interactive" style={{ padding: '20px' }}>
+        {/* Card 3: Critical Date Batches */}
+        <div className="glass-panel glass-panel-interactive" style={{ padding: '18px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>THIỆT HẠI TIÊU HỦY THÁNG</div>
-              <div style={{ fontSize: '1.65rem', fontWeight: 800, marginTop: '6px', color: '#f59e0b' }}>
-                {totalDisposalLoss.toLocaleString('vi-VN')} <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>đ</span>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>CẬN DATE NGUY CẤP (≤10%)</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, marginTop: '6px', color: criticalBatches.length > 0 ? '#ef4444' : '#10b981' }}>
+                {criticalBatches.length} <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 400 }}>lô</span>
               </div>
             </div>
-            <div style={{ padding: '10px', borderRadius: '12px', background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24' }}>
-              <TrendingDown size={22} />
+            <div style={{ padding: '8px', borderRadius: '10px', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444' }}>
+              <AlertTriangle size={20} />
             </div>
           </div>
-          <div style={{ marginTop: '12px', fontSize: '0.8rem', color: 'var(--text-dim)', borderTop: '1px solid var(--border-color)', paddingTop: '10px' }}>
-            Đã lập <strong>{disposals.length} phiếu tiêu hủy</strong> hợp lệ
+          <div style={{ marginTop: '10px', fontSize: '0.75rem', color: 'var(--text-dim)', borderTop: '1px solid var(--border-color)', paddingTop: '8px' }}>
+            {warningBatches.length} lô khác mức Vàng (10-20%)
           </div>
         </div>
 
-        {/* Card 4: Spoilage Rate */}
-        <div className="glass-panel glass-panel-interactive" style={{ padding: '20px' }}>
+        {/* Card 4: Disposal Loss */}
+        <div className="glass-panel glass-panel-interactive" style={{ padding: '18px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>TỶ LỆ HAO HỤT (SPOILAGE RATE)</div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, marginTop: '6px', color: '#10b981' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>THIỆT HẠI TIÊU HỦY</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, marginTop: '6px', color: '#f59e0b' }}>
+                {totalDisposalLoss.toLocaleString('vi-VN')} <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>đ</span>
+              </div>
+            </div>
+            <div style={{ padding: '8px', borderRadius: '10px', background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24' }}>
+              <TrendingDown size={20} />
+            </div>
+          </div>
+          <div style={{ marginTop: '10px', fontSize: '0.75rem', color: 'var(--text-dim)', borderTop: '1px solid var(--border-color)', paddingTop: '8px' }}>
+            Đã lập: <strong>{disposals.length} phiếu hủy</strong>
+          </div>
+        </div>
+
+        {/* Card 5: Spoilage Rate */}
+        <div className="glass-panel glass-panel-interactive" style={{ padding: '18px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>TỶ LỆ HAO HỤT (SPOILAGE)</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, marginTop: '6px', color: '#10b981' }}>
                 {spoilageRate}%
               </div>
             </div>
-            <div style={{ padding: '10px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.15)', color: '#34d399' }}>
-              <ShieldCheck size={22} />
+            <div style={{ padding: '8px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.15)', color: '#34d399' }}>
+              <ShieldCheck size={20} />
             </div>
           </div>
-          <div style={{ marginTop: '12px', fontSize: '0.8rem', color: 'var(--text-dim)', borderTop: '1px solid var(--border-color)', paddingTop: '10px' }}>
-            Mục tiêu chuỗi: &lt; 1.5% (Đạt chuẩn tối ưu)
+          <div style={{ marginTop: '10px', fontSize: '0.75rem', color: 'var(--text-dim)', borderTop: '1px solid var(--border-color)', paddingTop: '8px' }}>
+            Mục tiêu chuỗi: &lt; 1.5% (Tối ưu)
           </div>
         </div>
 
@@ -240,10 +283,10 @@ export default function DashboardView({
                   <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--safe-green)' }}></span>
                   An Toàn (RSL &gt; 20%)
                 </span>
-                <strong>{safeBatches.length} lô ({Math.round(safeBatches.length / batches.length * 100)}%)</strong>
+                <strong>{safeBatches.length} lô ({batches.length ? Math.round(safeBatches.length / batches.length * 100) : 0}%)</strong>
               </div>
               <div style={{ height: '8px', background: 'rgba(255,255,255,0.06)', borderRadius: '999px', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${(safeBatches.length / batches.length) * 100}%`, background: 'var(--safe-green)' }}></div>
+                <div style={{ height: '100%', width: `${batches.length ? (safeBatches.length / batches.length) * 100 : 0}%`, background: 'var(--safe-green)' }}></div>
               </div>
             </div>
 
@@ -254,10 +297,10 @@ export default function DashboardView({
                   <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--warning-yellow)' }}></span>
                   Cận Date Nhẹ (10% - 20%)
                 </span>
-                <strong>{warningBatches.length} lô ({Math.round(warningBatches.length / batches.length * 100)}%)</strong>
+                <strong>{warningBatches.length} lô ({batches.length ? Math.round(warningBatches.length / batches.length * 100) : 0}%)</strong>
               </div>
               <div style={{ height: '8px', background: 'rgba(255,255,255,0.06)', borderRadius: '999px', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${(warningBatches.length / batches.length) * 100}%`, background: 'var(--warning-yellow)' }}></div>
+                <div style={{ height: '100%', width: `${batches.length ? (warningBatches.length / batches.length) * 100 : 0}%`, background: 'var(--warning-yellow)' }}></div>
               </div>
             </div>
 
@@ -268,10 +311,10 @@ export default function DashboardView({
                   <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--danger-red)' }}></span>
                   Khẩn Cấp (RSL ≤ 10% hoặc ≤ 3 ngày)
                 </span>
-                <strong style={{ color: '#ef4444' }}>{criticalBatches.length} lô ({Math.round(criticalBatches.length / batches.length * 100)}%)</strong>
+                <strong style={{ color: '#ef4444' }}>{criticalBatches.length} lô ({batches.length ? Math.round(criticalBatches.length / batches.length * 100) : 0}%)</strong>
               </div>
               <div style={{ height: '8px', background: 'rgba(255,255,255,0.06)', borderRadius: '999px', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${(criticalBatches.length / batches.length) * 100}%`, background: 'var(--danger-red)' }}></div>
+                <div style={{ height: '100%', width: `${batches.length ? (criticalBatches.length / batches.length) * 100 : 0}%`, background: 'var(--danger-red)' }}></div>
               </div>
             </div>
 
@@ -282,10 +325,10 @@ export default function DashboardView({
                   <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--expired-purple)' }}></span>
                   Đã Hết Hạn (Khóa POS, Chờ hủy)
                 </span>
-                <strong style={{ color: '#a855f7' }}>{expiredBatches.length} lô ({Math.round(expiredBatches.length / batches.length * 100)}%)</strong>
+                <strong style={{ color: '#a855f7' }}>{expiredBatches.length} lô ({batches.length ? Math.round(expiredBatches.length / batches.length * 100) : 0}%)</strong>
               </div>
               <div style={{ height: '8px', background: 'rgba(255,255,255,0.06)', borderRadius: '999px', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${(expiredBatches.length / batches.length) * 100}%`, background: 'var(--expired-purple)' }}></div>
+                <div style={{ height: '100%', width: `${batches.length ? (expiredBatches.length / batches.length) * 100 : 0}%`, background: 'var(--expired-purple)' }}></div>
               </div>
             </div>
 
@@ -307,41 +350,58 @@ export default function DashboardView({
           </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {highRiskItems.map((item, idx) => (
-              <div 
-                key={idx}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '10px 14px',
-                  background: 'rgba(255, 255, 255, 0.03)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '10px',
-                  fontSize: '0.825rem'
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 700, color: '#ffffff' }}>{item.name}</div>
-                  <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>
-                    Cần bán: <strong>{item.dos}</strong> | Còn hạn: <strong style={{ color: '#f87171' }}>{item.due}</strong>
+            {highRiskItems.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '24px 10px', color: 'var(--safe-green)', background: 'rgba(16, 185, 129, 0.05)', borderRadius: '10px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+                <ShieldCheck size={28} style={{ margin: '0 auto 6px' }} />
+                <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>An toàn tối ưu: Không có nguy cơ hư hỏng!</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>Tất cả các sản phẩm trên quầy đều kịp bán hết trước hạn dùng (DOS ≤ DUE).</div>
+              </div>
+            ) : (
+              highRiskItems.map((item, idx) => (
+                <div 
+                  key={idx}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '10px 14px',
+                    background: 'rgba(255, 255, 255, 0.03)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '10px',
+                    fontSize: '0.825rem'
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 700, color: '#ffffff' }}>{item.name}</div>
+                    <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>
+                      Cần bán: <strong>{item.dos}</strong> | Còn hạn: <strong style={{ color: '#f87171' }}>{item.due}</strong> ({item.batchCode})
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span className={`badge badge-${item.risk === 'RẤT CAO' ? 'danger' : 'warning'}`} style={{ fontSize: '0.65rem' }}>
+                      {item.risk}
+                    </span>
+                    {item.isDiscounted ? (
+                      <span className="badge badge-safe" style={{ fontSize: '0.65rem' }}>
+                        ✓ Đã Giảm 30%
+                      </span>
+                    ) : (
+                      <button 
+                        className="btn btn-warning"
+                        style={{ fontSize: '0.725rem', padding: '4px 8px' }}
+                        onClick={() => {
+                          onQuickDiscount(item.batchId);
+                          alert(`Đã áp dụng giảm giá 30% xả nhanh cho Lô ${item.batchCode} (${item.name})!`);
+                        }}
+                      >
+                        <Zap size={12} /> {item.action}
+                      </button>
+                    )}
                   </div>
                 </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span className={`badge badge-${item.risk === 'RẤT CAO' ? 'danger' : 'warning'}`} style={{ fontSize: '0.65rem' }}>
-                    {item.risk}
-                  </span>
-                  <button 
-                    className="btn btn-secondary"
-                    style={{ fontSize: '0.725rem', padding: '4px 8px' }}
-                    onClick={() => setActiveTab('fefo-monitor')}
-                  >
-                    {item.action}
-                  </button>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
 
         </div>

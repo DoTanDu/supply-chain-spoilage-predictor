@@ -276,9 +276,9 @@ export default function Header({
                 color: currentRole === 'STORE_MANAGER' ? '#ffffff' : 'var(--text-muted)',
                 transition: 'all 0.2s'
               }}
-              title="Đỗ Tấn Du - Toàn quyền quản trị, duyệt hủy hàng, xem KPI tài chính"
+              title="Cửa hàng trưởng: Toàn quyền quản trị, duyệt phiếu hủy hàng, xem KPI tài chính"
             >
-              <UserCheck size={14} /> Cửa hàng trưởng (Du)
+              <UserCheck size={14} /> Cửa hàng trưởng (Quản lý)
             </button>
 
             <button
@@ -297,9 +297,9 @@ export default function Header({
                 color: currentRole === 'STORE_STAFF' ? '#ffffff' : 'var(--text-muted)',
                 transition: 'all 0.2s'
               }}
-              title="Đoàn Minh Quân - Thao tác bán hàng POS, nhận hàng từ DC, lập phiếu hủy"
+              title="Nhân viên thu ngân: Thao tác bán hàng POS, tiếp nhận hàng từ DC, lập phiếu đề xuất hủy"
             >
-              <ShieldAlert size={14} /> Thu ngân (Quân)
+              <ShieldAlert size={14} /> Nhân viên (Thu ngân)
             </button>
           </div>
 

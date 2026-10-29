@@ -11,6 +11,12 @@ import {
   Lock 
 } from 'lucide-react';
 
+// Helper: Normalize Vietnamese strings without diacritics
+function stripVietnamese(str) {
+  if (!str) return '';
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'd').toLowerCase().trim();
+}
+
 export default function FefoMonitorView({ 
   batches, 
   onQuickDiscount, 
@@ -20,12 +26,18 @@ export default function FefoMonitorView({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
 
-  // Filter logic
+  // Flexible unaccented search & status filter
   const filteredBatches = batches.filter(batch => {
-    const matchesSearch = batch.productName.toLowerCase().includes(search.toLowerCase()) || 
-                          batch.batchCode.toLowerCase().includes(search.toLowerCase());
     const matchesFilter = statusFilter === 'ALL' || batch.status === statusFilter;
-    return matchesSearch && matchesFilter;
+    if (!search.trim()) return matchesFilter;
+
+    const normSearch = stripVietnamese(search);
+    const normName = stripVietnamese(batch.productName);
+    const normCode = (batch.batchCode || '').toLowerCase();
+    const tokens = normSearch.split(/\s+/).filter(Boolean);
+
+    const matchesSearch = tokens.every(tok => normName.includes(tok) || normCode.includes(tok));
+    return matchesFilter && matchesSearch;
   });
 
   // Calculate Days Remaining
@@ -107,8 +119,14 @@ export default function FefoMonitorView({
             🟢 An toàn (&gt;20%)
           </button>
           <button
-            className={`btn ${statusFilter === 'EXPIRED' ? 'btn-secondary' : 'btn-secondary'}`}
-            style={{ fontSize: '0.785rem', padding: '6px 14px', borderColor: statusFilter === 'EXPIRED' ? 'var(--expired-purple)' : 'var(--border-color)' }}
+            className="btn"
+            style={{
+              fontSize: '0.785rem',
+              padding: '6px 14px',
+              border: statusFilter === 'EXPIRED' ? '1px solid #c084fc' : '1px solid rgba(255,255,255,0.08)',
+              background: statusFilter === 'EXPIRED' ? 'rgba(168, 85, 247, 0.25)' : 'rgba(255,255,255,0.03)',
+              color: statusFilter === 'EXPIRED' ? '#d8b4fe' : 'var(--text-muted)'
+            }}
             onClick={() => setStatusFilter('EXPIRED')}
           >
             🟣 Đã hết hạn (Khóa POS)
@@ -197,10 +215,11 @@ export default function FefoMonitorView({
                     </td>
                     <td>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
-                        {isCritical && <span className="badge badge-danger">Cận Date Đỏ</span>}
-                        {isWarning && <span className="badge badge-warning">Cảnh Báo Vàng</span>}
-                        {batch.status === 'SAFE' && <span className="badge badge-safe">An Toàn</span>}
-                        {isExpired && <span className="badge badge-expired">Khóa Bán POS</span>}
+                        {batch.quantity <= 0 && <span className="badge" style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-dim)', border: '1px solid rgba(255,255,255,0.1)' }}>Đã Xuất / Đã Hủy</span>}
+                        {batch.quantity > 0 && isCritical && <span className="badge badge-danger">Cận Date Đỏ</span>}
+                        {batch.quantity > 0 && isWarning && <span className="badge badge-warning">Cảnh Báo Vàng</span>}
+                        {batch.quantity > 0 && batch.status === 'SAFE' && <span className="badge badge-safe">An Toàn</span>}
+                        {batch.quantity > 0 && isExpired && <span className="badge badge-expired">Khóa Bán POS</span>}
                         {batch.isDiscounted && (
                           <span className="badge badge-warning" style={{ fontSize: '0.65rem', background: 'rgba(245, 158, 11, 0.25)', borderColor: '#f59e0b' }}>
                             ⚡ -{batch.discountPercent || 30}% Xả Hàng
@@ -215,60 +234,66 @@ export default function FefoMonitorView({
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', alignItems: 'center' }}>
-                        {isCritical && (
-                          <button
-                            className="btn btn-warning"
-                            style={{ fontSize: '0.725rem', padding: '4px 10px', opacity: batch.isDiscounted ? 0.6 : 1 }}
-                            onClick={() => onQuickDiscount(batch.id)}
-                            disabled={batch.isDiscounted}
-                            title={batch.isDiscounted ? "Lô hàng đã được áp dụng giảm giá 30%" : "Xả hàng giảm giá 30% kích cầu bán lẻ"}
-                          >
-                            <Zap size={13} /> {batch.isDiscounted ? "Đã Giảm 30%" : "Giảm 30%"}
-                          </button>
-                        )}
+                        {batch.quantity <= 0 ? (
+                          <span style={{ fontSize: '0.725rem', color: 'var(--text-dim)' }}>Hết hàng (Tồn: 0)</span>
+                        ) : (
+                          <>
+                            {isCritical && (
+                              <button
+                                className="btn btn-warning"
+                                style={{ fontSize: '0.725rem', padding: '4px 10px', opacity: batch.isDiscounted ? 0.6 : 1 }}
+                                onClick={() => onQuickDiscount(batch.id)}
+                                disabled={batch.isDiscounted}
+                                title={batch.isDiscounted ? "Lô hàng đã được áp dụng giảm giá 30%" : "Xả hàng giảm giá 30% kích cầu bán lẻ"}
+                              >
+                                <Zap size={13} /> {batch.isDiscounted ? "Đã Giảm 30%" : "Giảm 30%"}
+                              </button>
+                            )}
 
-                        {(isCritical || isWarning) && (
-                          batch.isShelfRotated ? (
-                            <span 
-                              style={{ 
-                                fontSize: '0.725rem', 
-                                padding: '4px 8px', 
-                                color: 'var(--safe-green)', 
-                                background: 'rgba(16, 185, 129, 0.12)', 
-                                border: '1px solid rgba(16, 185, 129, 0.3)', 
-                                borderRadius: '6px',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                fontWeight: 600
-                              }}
-                              title="Lô này đã được nhân viên đảo ra mặt trước kệ để khách mua trước"
-                            >
-                              <CheckCircle2 size={13} /> Đã ở đầu kệ
-                            </span>
-                          ) : (
-                            <button
-                              className="btn btn-secondary"
-                              style={{ fontSize: '0.725rem', padding: '4px 10px' }}
-                              onClick={() => {
-                                onRotateShelf(batch.id);
-                              }}
-                              title="Đảo lô hàng ra mặt trước kệ để khách mua trước"
-                            >
-                              <RotateCw size={13} /> Đảo Kệ
-                            </button>
-                          )
-                        )}
+                            {(isCritical || isWarning) && (
+                              batch.isShelfRotated ? (
+                                <span 
+                                  style={{ 
+                                    fontSize: '0.725rem', 
+                                    padding: '4px 8px', 
+                                    color: 'var(--safe-green)', 
+                                    background: 'rgba(16, 185, 129, 0.12)', 
+                                    border: '1px solid rgba(16, 185, 129, 0.3)', 
+                                    borderRadius: '6px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    fontWeight: 600
+                                  }}
+                                  title="Lô này đã được nhân viên đảo ra mặt trước kệ để khách mua trước"
+                                >
+                                  <CheckCircle2 size={13} /> Đã ở đầu kệ
+                                </span>
+                              ) : (
+                                <button
+                                  className="btn btn-secondary"
+                                  style={{ fontSize: '0.725rem', padding: '4px 10px' }}
+                                  onClick={() => {
+                                    onRotateShelf(batch.id);
+                                  }}
+                                  title="Đảo lô hàng ra mặt trước kệ để khách mua trước"
+                                >
+                                  <RotateCw size={13} /> Đảo Kệ
+                                </button>
+                              )
+                            )}
 
-                        {isExpired && (
-                          <button
-                            className="btn btn-danger"
-                            style={{ fontSize: '0.725rem', padding: '4px 10px' }}
-                            onClick={() => onOpenDisposalModal(batch)}
-                            title="Lập phiếu tiêu hủy hàng quá hạn"
-                          >
-                            <Trash2 size={13} /> Hủy Lô
-                          </button>
+                            {isExpired && (
+                              <button
+                                className="btn btn-danger"
+                                style={{ fontSize: '0.725rem', padding: '4px 10px' }}
+                                onClick={() => onOpenDisposalModal(batch)}
+                                title="Lập phiếu tiêu hủy hàng quá hạn"
+                              >
+                                <Trash2 size={13} /> Hủy Lô
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
                     </td>

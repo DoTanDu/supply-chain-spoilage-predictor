@@ -35,6 +35,7 @@ export default function App() {
     condition: 'SUNNY',
     isHoliday: false
   });
+  const [preselectedDisposalBatchId, setPreselectedDisposalBatchId] = useState(null);
 
   // Load Real Data from Microsoft SQL Server LocalDB via Backend API
   const loadLiveDatabaseData = async () => {
@@ -135,7 +136,7 @@ export default function App() {
       const newLog = {
         id: Date.now(),
         time: new Date().toLocaleTimeString('vi-VN') + ' ' + new Date().toLocaleDateString('vi-VN'),
-        user: currentRole === 'STORE_MANAGER' ? 'Đỗ Tấn Du (Manager)' : 'Đoàn Minh Quân (Staff)',
+        user: currentRole === 'STORE_MANAGER' ? 'Cửa hàng trưởng (Quản lý)' : 'Nhân viên (Thu ngân)',
         action: 'Bán hàng POS (FEFO)',
         details: `Đơn ${orderId}: Tổng ${totalSaleAmount.toLocaleString('vi-VN')} đ. Đã trừ ${fefoDeductions.length} lượt lô theo FEFO.`
       };
@@ -228,7 +229,7 @@ export default function App() {
       await loadLiveDatabaseData();
     } catch (err) {
       setDisposals(disposals.map(d => 
-        d.id === disposalId ? { ...d, status: 'APPROVED', approvedBy: 'Đỗ Tấn Du (Store Manager)' } : d
+        d.id === disposalId ? { ...d, status: 'APPROVED', approvedBy: 'Cửa hàng trưởng (Quản lý)' } : d
       ));
     }
   };
@@ -247,17 +248,46 @@ export default function App() {
     }
   };
 
-  // Handler: Send PO to DC
-  const handleSendPo = (product, qty) => {
+  // Handler: Send PO to DC and Replenish Batch in SQL Server
+  const handleSendPo = async (product, qty) => {
     const poCode = `PO-DC-${Date.now().toString().slice(-4)}`;
-    const newLog = {
-      id: Date.now(),
-      time: new Date().toLocaleTimeString('vi-VN') + ' ' + new Date().toLocaleDateString('vi-VN'),
-      user: currentRole === 'STORE_MANAGER' ? 'Đỗ Tấn Du (Manager)' : 'Đoàn Minh Quân (Staff)',
-      action: 'Đặt hàng Kho tổng (DC)',
-      details: `Khởi tạo đơn ${poCode}: Yêu cầu DC xuất cấp ${qty} ${product.unit} ${product.name} (Chạm ngưỡng ROP=${product.reorderPoint}).`
+    const batchCode = `BAT-DC-${Date.now().toString().slice(-6)}`;
+    
+    // Dynamic shelf life from product's standard shelf life (e.g., Bread = 7d, Milk = 180d)
+    const shelfLife = Number(product.shelfLifeDays) > 0 ? Number(product.shelfLifeDays) : 30;
+    const expDate = new Date();
+    expDate.setDate(expDate.getDate() + shelfLife);
+    const expiryStr = expDate.toISOString().split('T')[0];
+    const importStr = new Date().toISOString().split('T')[0];
+
+    const newBatch = {
+      productId: product.id,
+      batchCode: batchCode,
+      importDate: importStr,
+      expiryDate: expiryStr,
+      quantity: Number(qty),
+      costPrice: product.costPrice || 25000,
+      sellingPrice: product.price || 35000,
+      updateSellingPrice: false
     };
-    setAuditLogs([newLog, ...auditLogs]);
+
+    try {
+      await api.apiAddBatch(newBatch);
+      await loadLiveDatabaseData();
+
+      const newLog = {
+        id: Date.now(),
+        time: new Date().toLocaleTimeString('vi-VN') + ' ' + new Date().toLocaleDateString('vi-VN'),
+        user: currentRole === 'STORE_MANAGER' ? 'Cửa hàng trưởng (Quản lý)' : 'Nhân viên (Thu ngân)',
+        action: 'Tiếp nhận hàng từ DC',
+        details: `Đơn ${poCode}: Kho tổng DC đã giao +${qty} ${product.unit} ${product.name} (Lô ${batchCode}, HSD: ${expiryStr}). Tồn kho đã tăng thêm!`
+      };
+      setAuditLogs([newLog, ...auditLogs]);
+      return { success: true, batchCode, qty };
+    } catch (err) {
+      console.error("Lỗi khi tiếp nhận hàng từ DC:", err);
+      return { success: false, message: err.message };
+    }
   };
 
   return (
@@ -272,7 +302,7 @@ export default function App() {
         setWeather={setWeather}
         isConnectedToSql={isConnectedToSql}
         batches={batches}
-        onNavigateToFefo={() => setActiveTab('FEFO_MONITOR')}
+        onNavigateToFefo={() => setActiveTab('fefo-monitor')}
         onQuickDiscount={handleQuickDiscount}
         onRotateShelf={handleRotateShelf}
       />
@@ -309,6 +339,7 @@ export default function App() {
               onQuickDiscount={handleQuickDiscount}
               onRotateShelf={handleRotateShelf}
               onOpenDisposalModal={(batch) => {
+                setPreselectedDisposalBatchId(batch.id);
                 setActiveTab('spoilage-disposal');
               }}
             />
@@ -339,6 +370,7 @@ export default function App() {
               currentRole={currentRole}
               onCreateDisposal={handleCreateDisposal}
               onApproveDisposal={handleApproveDisposal}
+              preselectedBatchId={preselectedDisposalBatchId}
             />
           )}
 
@@ -347,6 +379,7 @@ export default function App() {
               products={products}
               batches={batches}
               onSendPo={handleSendPo}
+              onQuickDiscount={handleQuickDiscount}
             />
           )}
 
