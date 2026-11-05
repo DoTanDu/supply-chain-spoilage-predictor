@@ -119,7 +119,7 @@ def build_full_document():
         "3. Danh mục ngành hàng FMCG và thực phẩm tiện lợi\n"
         "4. Sản phẩm hàng hóa bán lẻ (Mã SKU/Barcode, giá vốn, giá niêm yết, tồn an toàn)\n"
         "5. Lô hàng và vòng đời hạn sử dụng (Shelf-Life Management)\n"
-        "6. Người dùng và chuẩn hóa 4 nhóm vai trò (Admin, Quản lý, Nhân viên bán hàng, Nhân viên kho)\n"
+        "6. Người dùng và chuẩn hóa 3 nhóm vai trò tinh gọn (Admin, Quản lý cửa hàng, Nhân viên cửa hàng POS & Kho kệ)\n"
         "7. Phiếu tiếp nhận hàng từ Kho tổng DC (Kiểm soát tiêu chuẩn RSL >= 70% và ký duyệt quản lý)\n"
         "8. Đơn bán lẻ tại quầy POS (Khấu trừ tồn kho tự động theo nguyên tắc FEFO)\n"
         "9. Giám sát hạn dùng và cảnh báo 3 cấp màu (Xanh: An toàn, Vàng: Cận date nhẹ, Đỏ: Nguy kịch)\n"
@@ -262,91 +262,51 @@ def build_full_document():
         "- Ký nhận đợt nhập DC có hàng cận date (< 70% RSL): Liên đới bồi thường thiệt hại cùng nhân viên kho."
     )
 
-    # 4.3 Thu ngân (Cashier)
-    add_h2("4.3 User 3: Nhân viên bán hàng & Thu ngân (Cashier / Sales Staff)")
-    add_first("Hồ sơ Persona đại diện:")
+    # 4.3 Nhân viên cửa hàng (POS & Kho kệ)
+    add_h2("4.3 User 3: Nhân viên cửa hàng - Bán hàng POS & Quản lý Quầy kệ (Store Staff / Cashier)")
+    add_first("Hồ sơ Persona đại diện (gộp kiêm nhiệm Thu ngân POS & Kho kệ theo mô hình cửa hàng tiện lợi tinh gọn):")
     add_code(
-        "Tên đại diện:        Lê Thu Ngân\n"
-        "Chức danh:           Nhân viên Thu ngân Bán lẻ Quầy POS (Cashier)\n"
-        "Độ tuổi:             22 tuổi, sinh viên làm việc theo ca\n"
-        "Thiết bị sử dụng:    Máy bán hàng POS màn hình cảm ứng tích hợp đầu đọc Barcode và máy in hóa đơn nhiệt"
+        "Tên đại diện:        Đoàn Minh Quân (Username: cashier | Role: CASHIER)\n"
+        "Chức danh:           Nhân viên Cửa hàng Đa nhiệm (Bán lẻ POS & Quản lý Kho kệ FEFO)\n"
+        "Độ tuổi:             22 tuổi, nhân viên vận hành trực tiếp theo ca tại LHU Mart\n"
+        "Thiết bị sử dụng:    Máy bán hàng POS màn hình cảm ứng tích hợp đầu đọc Barcode, máy tính bảng kiểm kê kệ"
     )
     add_body("Mục tiêu công việc (Goals):")
     add_code(
         "- Thanh toán hóa đơn cho khách hàng nhanh chóng, chính xác (trung bình dưới 30 giây mỗi giao dịch).\n"
-        "- Không tính sai tiền, thu đúng giá niêm yết hoặc giá khuyến mãi xả hàng đã được Quản lý phê duyệt.\n"
         "- Tuyệt đối không để xảy ra sai sót bán lọt sản phẩm hết hạn sử dụng cho người tiêu dùng.\n"
-        "- Thu thập chính xác ngữ cảnh bán hàng (Thời tiết, Ngày lễ) phục vụ thuật toán học máy dự báo nhu cầu."
-    )
-    add_body("Nỗi đau & Thách thức trong vận hành (Pain Points):")
-    add_code(
-        "- Giờ tan tầm khách xếp hàng đông, áp lực thanh toán rất lớn, không có thời gian đứng kiểm tra từng hạn sử dụng.\n"
-        "- Nếu phải tự nhìn bao bì rồi chọn lô hàng xuất kho thủ công thì rất dễ nhầm lẫn và chậm trễ.\n"
-        "- Sợ bị khách hàng khiếu nại, la mắng nếu vô tình tính nhầm giá xả hàng hoặc đưa nhầm hộp sữa cận date."
-    )
-    add_body("Danh mục cụ thể: Thu ngân làm được cái gì trên hệ thống?")
-    add_code(
-        "1. Quét mã vạch Barcode/SKU sản phẩm tại quầy POS để đưa sản phẩm vào giỏ hàng.\n"
-        "2. Điều chỉnh số lượng sản phẩm khách mua; hệ thống tự động bẻ lô FEFO và hiển thị giá chiết khấu nếu có.\n"
-        "3. Tích chọn cờ ngữ cảnh tại quầy: Thời tiết (Nắng nóng / Mưa bão / Bình thường) và cờ Ngày lễ / Cuối tuần.\n"
-        "4. Bấm nút [Thanh toán & Xuất kho FEFO]: Kích hoạt trừ kho tự động từ lô date gần nhất, in hóa đơn giao khách.\n"
-        "5. Nhận cảnh báo tức thì từ hệ thống nếu quét phải sản phẩm quá hạn (Hệ thống khóa bán, cấm xuất hóa đơn).\n"
-        "6. Tra cứu nhanh tồn kho khả dụng và giá bán của sản phẩm khi khách hỏi.\n"
-        "7. Lập Phiếu báo cáo sự cố hàng hóa tại quầy (phát hiện móp méo, rách bao bì, khách đổi trả) chuyển cách ly.\n"
-        "8. In báo cáo doanh số ca trực, kiểm đếm tiền mặt két và thực hiện bàn giao ca thu ngân."
-    )
-    add_body("Các hành vi Thu ngân BỊ CẤM TUYỆT ĐỐI:")
-    add_code(
-        "- Thu ngân KHÔNG ĐƯỢC PHÉP tự ý sửa giá bán niêm yết hoặc tự ý chiết khấu ngoài chính sách hệ thống.\n"
-        "- Thu ngân KHÔNG ĐƯỢC PHÉP tự sửa số lượng tồn kho hoặc bỏ qua bước quét trừ kho FEFO.\n"
-        "- Thu ngân KHÔNG ĐƯỢC PHÉP thanh toán các sản phẩm đã bị hệ thống đánh dấu EXPIRED."
-    )
-
-    # 4.4 Nhân viên kho (Warehouse Staff)
-    add_h2("4.4 User 4: Nhân viên kho & Quản lý quầy kệ (Warehouse / Inventory Staff)")
-    add_first("Hồ sơ Persona đại diện:")
-    add_code(
-        "Tên đại diện:        Trần Kho Vận\n"
-        "Chức danh:           Nhân viên Kho vận & Quản lý Quầy kệ (Warehouse & Shelf Staff)\n"
-        "Kinh nghiệm:         1 năm làm việc tại các cửa hàng tiện ích\n"
-        "Thiết bị sử dụng:    Máy tính bảng kiểm kê kho, máy in tem nhãn nhiệt di động, máy tính kho"
-    )
-    add_body("Mục tiêu công việc (Goals):")
-    add_code(
-        "- Kiểm soát chặt chẽ chất lượng hạn sử dụng của xe tải DC khi giao đến, kiên quyết từ chối hàng cận date.\n"
-        "- Nhập kho chuẩn xác 100% số lượng, mã lô, NSX, HSD vào phần mềm ngay khi tiếp nhận.\n"
+        "- Kiểm soát chặt chẽ chất lượng hạn sử dụng của xe tải DC khi giao đến (RSL >= 70%), kiên quyết từ chối hàng cận date.\n"
         "- Duy trì trật tự quầy kệ trưng bày theo đúng chuẩn FEFO: Lô date gần xếp ngoài mặt tiền, lô mới xếp vào trong.\n"
-        "- Dán tem nhãn giảm giá xả hàng kịp thời lên sản phẩm ngay sau khi Cửa hàng trưởng phê duyệt markdown.\n"
         "- Phát hiện, thu gom và cách ly vật lý kịp thời các sản phẩm dập nát, phồng rộp, hết hạn để lập đề xuất tiêu hủy."
     )
     add_body("Nỗi đau & Thách thức trong vận hành (Pain Points):")
     add_code(
+        "- Giờ tan tầm khách xếp hàng đông, áp lực thanh toán lớn, không có thời gian đứng kiểm tra từng hạn sử dụng thủ công.\n"
         "- Kho tổng DC đôi khi giao kèm các thùng hàng cận date nếu nhân viên không kiểm đếm kỹ NSX/HSD trên bao bì.\n"
-        "- Quầy kệ bán lẻ thường xuyên bị khách hàng bới móc làm xáo trộn vị trí giữa các lô date cũ và date mới.\n"
-        "- Quên đảo hàng ra ngoài khiến hàng cận date bị khuất tầm nhìn, khách không mua dẫn đến quá hạn phải đổ bỏ."
+        "- Quầy kệ bán lẻ thường xuyên bị khách hàng lựa chọn làm xáo trộn vị trí giữa các lô date cũ và date mới."
     )
-    add_body("Danh mục cụ thể: Nhân viên kho làm được cái gì trên hệ thống?")
+    add_body("Danh mục cụ thể: Nhân viên cửa hàng (POS & Kho kệ) làm được cái gì trên hệ thống?")
     add_code(
-        "1. Tiếp nhận hàng xe tải DC: Kiểm tra NSX, HSD trên bao bì, tính RSL; nhập form phiếu tiếp nhận hàng mới.\n"
-        "2. Tạo lô hàng mới trong CSDL (hệ thống sinh mã batch_code tự động), in tem mã vạch dán lên thùng lưu kho.\n"
-        "3. Rà soát Bảng Giám sát Hạn sử dụng theo lô, lọc danh sách các lô Vùng Vàng (Warning) và Vùng Đỏ (Critical).\n"
-        "4. Đi kiểm tra vị trí thực tế trên quầy kệ, thực hiện nghiệp vụ ĐẢO HÀNG FEFO kéo hàng date gần ra sát mép mặt tiền.\n"
-        "5. Bấm nút '[V] Xác nhận đã đảo kệ mặt tiền' trên phần mềm để ghi nhận nhật ký trách nhiệm vào CSDL.\n"
-        "6. Lập Phiếu đề xuất xả hàng giảm giá (chọn mức chiết khấu 15%-50%) gửi Cửa hàng trưởng phê duyệt.\n"
-        "7. Nhận lệnh phê duyệt giảm giá -> In tem nhãn khuyến mãi và dán trực tiếp lên bao bì sản phẩm tại kệ.\n"
-        "8. Rà soát các lô quá hạn (DaysLeft <= 0) hoặc hàng dập nát, đưa vào khu cách ly và lập Phiếu đề xuất tiêu hủy.\n"
-        "9. Tham gia kiểm kê kho định kỳ, quét đếm số lượng thực tế và đối soát sai lệch tồn kho với phần mềm."
+        "1. Quét mã vạch Barcode/SKU sản phẩm tại quầy POS để đưa vào giỏ hàng; hệ thống tự động bẻ lô FEFO và áp giá Markdown.\n"
+        "2. Tích chọn cờ ngữ cảnh tại quầy: Thời tiết (Nắng nóng / Mưa bão / Bình thường) và cờ Ngày lễ / Cuối tuần.\n"
+        "3. Bấm nút [Thanh toán & Xuất kho FEFO]: Kích hoạt trừ kho tự động từ lô date gần nhất, in hóa đơn giao khách.\n"
+        "4. Tiếp nhận hàng xe tải DC: Kiểm tra NSX, HSD trên bao bì, tính RSL >= 70%; nhập phiếu tiếp nhận lô hàng mới.\n"
+        "5. Rà soát Bảng Giám sát Hạn sử dụng theo lô, lọc danh sách các lô Vùng Vàng (Warning) và Vùng Đỏ (Critical).\n"
+        "6. Thực hiện nghiệp vụ ĐẢO HÀNG FEFO kéo hàng date gần ra sát mép mặt tiền kệ và bấm '[V] Xác nhận đã đảo kệ mặt tiền'.\n"
+        "7. Rà soát các lô quá hạn (DaysLeft <= 0) hoặc hàng dập nát, đưa vào khu cách ly và lập Phiếu ghi nhận tiêu hủy.\n"
+        "8. Chốt sổ bàn giao ca trực (Shift Handover) cuối ca và đối soát doanh số POS."
     )
-    add_body("Ràng buộc tác nghiệp:")
+    add_body("Các hành vi Nhân viên cửa hàng BỊ CẤM / RÀNG BUỘC TUYỆT ĐỐI:")
     add_code(
-        "- Nhân viên kho chỉ có quyền ĐỀ XUẤT xả hàng và ĐỀ XUẤT tiêu hủy; bắt buộc phải chờ sự PHÊ DUYỆT chính thức "
-        "của Cửa hàng trưởng trên hệ thống trước khi dán nhãn xả hàng hoặc mang hàng đi đổ bỏ."
+        "- KHÔNG ĐƯỢC PHÉP tự ý sửa giá bán niêm yết hoặc tự ý duyệt giảm giá Quick Markdown (chỉ Cửa hàng trưởng có quyền duyệt).\n"
+        "- KHÔNG ĐƯỢC PHÉP thanh toán các sản phẩm đã bị hệ thống đánh dấu EXPIRED.\n"
+        "- KHÔNG ĐƯỢC PHÉP phát hành Đơn đặt hàng PO gửi Kho tổng DC hoặc truy cập trang Quản trị Tài khoản & Khóa."
     )
 
     # =========================================================================
     # 5. BỔ SUNG NGƯỜI CHỊU TRÁCH NHIỆM QUẢN LÝ KHI NHẬP KHO & MA TRẬN RACI
     # =========================================================================
-    add_h1("5. Bổ sung Người Chịu Trách Nhiệm Quản Lý Khi Nhập Kho & Ma trận RACI")
+    add_h1("5. Bổ sung Người Chịu Trách Nhiệm Quản Lý Khi Nhập Kho & Ma trận RACI (3 Vai trò)")
     
     add_h2("5.1 Quy định Trách nhiệm Quản lý khi Nhập kho (Store Manager Inbound Accountability)")
     add_first(
@@ -357,7 +317,7 @@ def build_full_document():
         "+------------------------------------------------------------------------------------------------------+\n"
         "| PHÂN CÔNG TRÁCH NHIỆM KHI XE TẢI KHO TỔNG DC BIÊN HÒA GIAO HÀNG ĐẾN CỬA HÀNG:                        |\n"
         "+------------------------------------------------------------------------------------------------------+\n"
-        "| 1. NGƯỜI THỰC HIỆN TRỰC TIẾP (RESPONSIBLE - R): NHÂN VIÊN KHO                                        |\n"
+        "| 1. NGƯỜI THỰC HIỆN TRỰC TIẾP (RESPONSIBLE - R): NHÂN VIÊN CỬA HÀNG (CASHIER - POS & KHO KỆ)          |\n"
         "|    - Kiểm tra ngoại quan thùng hàng: Tem niêm phong, độ dập nát, nhiệt độ bảo quản xe lạnh.          |\n"
         "|    - Kiểm đếm số lượng thực tế đối chiếu với hóa đơn vận chuyển của tài xế xe tải DC.                |\n"
         "|    - Đọc Ngày sản xuất (NSX) và Hạn sử dụng (HSD) in trên bao bì sản phẩm.                          |\n"
@@ -374,11 +334,11 @@ def build_full_document():
         "|                                                                                                      |\n"
         "| 3. CHẾ TÀI TRÁCH NHIỆM KỶ LUẬT & BỒI THƯỜNG:                                                         |\n"
         "|    - Nếu phát hiện cửa hàng tiếp nhận lô hàng có RSL < 70% dẫn đến hàng bị hư hỏng quá date sau đó:  |\n"
-        "|      CỬA HÀNG TRƯỞNG VÀ NHÂN VIÊN KHO LIÊN ĐỚI CHỊU TRÁCH NHIỆM BỒI THƯỜNG 100% GIÁ TRỊ VỐN THẤT THOÁT.|\n"
+        "|      CỬA HÀNG TRƯỞNG VÀ NHÂN VIÊN CA TRỰC LIÊN ĐỚI CHỊU TRÁCH NHIỆM BỒI THƯỜNG 100% VỐN THẤT THOÁT.  |\n"
         "+------------------------------------------------------------------------------------------------------+"
     )
 
-    add_h2("5.2 Bảng Ma trận Phân công Trách nhiệm RACI Toàn diện")
+    add_h2("5.2 Bảng Ma trận Phân công Trách nhiệm RACI Toàn diện (3 Nhóm Vai trò)")
     add_first(
         "Quy ước ma trận RACI:\n"
         "- R (Responsible): Người trực tiếp thực hiện thao tác.\n"
@@ -387,65 +347,53 @@ def build_full_document():
         "- I (Informed): Người nhận thông báo kết quả sau khi thao tác hoàn tất."
     )
 
-    raci_headers = ["Nghiệp vụ / Thao tác hệ thống", "Admin", "Quản lý (Store Manager)", "Thu ngân (POS)", "Nhân viên kho", "Người chịu trách nhiệm chính (A)", "Ràng buộc & Chế tài"]
+    raci_headers = ["Nghiệp vụ / Thao tác hệ thống", "Admin (ADMIN)", "Cửa hàng trưởng (STORE_MANAGER)", "Nhân viên cửa hàng (CASHIER - POS & Kho kệ)", "Người chịu trách nhiệm chính (A)", "Ràng buộc & Chế tài"]
     raci_rows = [
         [
             "1. Tiếp nhận hàng từ DC (Kiểm date, tạo lô)",
-            "I", "A (Ký duyệt quản lý)", "I", "R (Kiểm & Nhập)",
-            "Cửa hàng trưởng & Nhân viên kho",
+            "I", "A (Ký duyệt quản lý)", "R (Kiểm & Nhập)",
+            "Cửa hàng trưởng & Nhân viên cửa hàng",
             "Bắt buộc RSL >= 70%. Cửa hàng trưởng duyệt nhận. Liên đới bồi thường nếu lọt hàng date xấu."
         ],
         [
             "2. Kiểm kho & Đối soát số lượng thực tế",
-            "I", "A (Chốt kiểm kê)", "C", "R (Đếm kho)",
+            "I", "A (Chốt kiểm kê)", "R (Đếm kho & kệ)",
             "Cửa hàng trưởng",
             "Lập biên bản chênh lệch. Giải trình nếu thất thoát."
         ],
         [
             "3. Đảo kệ FEFO ra mặt tiền trưng bày",
-            "I", "A (Giám sát)", "C", "R (Thực hiện đảo)",
-            "Nhân viên kho ca trực",
+            "I", "A (Giám sát)", "R (Thực hiện đảo)",
+            "Nhân viên cửa hàng ca trực",
             "Bắt buộc bấm 'Xác nhận đảo kệ' trên hệ thống."
         ],
         [
-            "4. Đề xuất xả hàng cận date (Quick Markdown)",
-            "I", "A (Duyệt giá)", "R (Đề xuất)", "R (Đề xuất)",
+            "4. Xả hàng cận date (Quick Markdown 15%-50%)",
+            "I", "R, A (Duyệt giá)", "R (Đề xuất & Dán tem)",
             "Cửa hàng trưởng (Duyệt duy nhất)",
-            "Chỉ giảm 15%, 30%, 50% khi lô rơi vào Vùng Vàng/Đỏ."
+            "Chỉ giảm 15%, 30%, 40%, 50% khi lô rơi vào Vùng Vàng/Đỏ."
         ],
         [
-            "5. Dán tem giảm giá xả hàng lên sản phẩm",
-            "I", "I", "R", "R",
-            "Nhân viên kho / Bán hàng ca trực",
-            "Chỉ dán tem sau khi Quản lý đã duyệt trên hệ thống."
-        ],
-        [
-            "6. Bán hàng tại quầy POS & Khấu trừ kho FEFO",
-            "I", "I", "R (Bán hàng)", "I",
-            "Thu ngân ca trực",
+            "5. Bán hàng tại quầy POS & Khấu trừ kho FEFO",
+            "I", "I", "R (Bán hàng POS)",
+            "Nhân viên cửa hàng ca trực",
             "POS tự động trừ FEFO, chặn hàng hết hạn, cấm âm kho."
         ],
         [
-            "7. Lập đề xuất tiêu hủy hàng hỏng/quá date",
-            "I", "A (Duyệt hủy)", "R (Đề xuất)", "R (Đề xuất)",
+            "6. Lập phiếu & Duyệt tiêu hủy hàng hỏng/quá date",
+            "I", "A (Duyệt hủy & Chốt sổ)", "R (Cách ly & Lập phiếu)",
             "Cửa hàng trưởng (Duyệt duy nhất)",
-            "Cách ly vật lý hàng hỏng, chụp ảnh minh chứng."
-        ],
-        [
-            "8. Phê duyệt tiêu hủy & Chốt Sổ hao hụt",
-            "I", "R, A", "I", "I",
-            "Cửa hàng trưởng",
             "Hệ thống trừ kho DISPOSED, tính tổn thất vào Sổ hao hụt."
         ],
         [
-            "9. Dự báo ROP & Đặt hàng bổ sung gửi DC",
-            "I", "R, A", "I", "C",
+            "7. Dự báo ROP & Đặt hàng bổ sung gửi DC",
+            "I", "R, A", "C",
             "Cửa hàng trưởng",
             "ROP = (d * L) + SS. Tạm dừng nhập nếu DOS > DUE."
         ],
         [
-            "10. Quản lý tài khoản, phân quyền & cấu hình",
-            "R, A", "C", "I", "I",
+            "8. Quản lý tài khoản, phân quyền & cấu hình",
+            "R, A", "C", "I",
             "Quản trị viên (Admin)",
             "Tuân thủ nguyên tắc đặc quyền tối thiểu (Least Privilege)."
         ]
@@ -648,8 +596,8 @@ def build_full_document():
         "  │\n"
         "  ├── Bước 2: Bấm nút [+ Thêm nhân viên]: Nhập Username, Họ tên, Email, Số điện thoại, Mật khẩu ban đầu.\n"
         "  │\n"
-        "  ├── Bước 3: Chọn Vai trò (Role): [STORE_MANAGER], [CASHIER], hoặc [WAREHOUSE_STAFF].\n"
-        "  │     └── Hệ thống tự động gán tập quyền hạn tương ứng theo ma trận phân quyền RBAC.\n"
+        "  ├── Bước 3: Chọn Vai trò (Role): [ADMIN], [STORE_MANAGER], hoặc [CASHIER (Nhân viên POS & Kho kệ)].\n"
+        "  │     └── Hệ thống tự động gán tập quyền hạn tương ứng theo ma trận phân quyền RBAC 3 vai trò.\n"
         "  │\n"
         "  ├── Bước 4: Bấm nút [Lưu tài khoản] --> CSDL băm mật khẩu Bcrypt, lưu vào bảng Users, ghi log vào AuditLogs.\n"
         "  │\n"
@@ -680,14 +628,17 @@ def build_full_document():
     # =========================================================================
     # 8. QUẢN LÝ DANH MỤC NGÀNH HÀNG FMCG & SẢN PHẨM
     # =========================================================================
-    add_h1("8. Quản lý danh mục ngành hàng FMCG & Sản phẩm")
-    add_first("5 ngành hàng tiêu dùng nhanh trọng tâm tại cửa hàng:")
+    add_h1("8. Quản lý danh mục ngành hàng FMCG & Sản phẩm (8 Ngành hàng / 80 Sản phẩm)")
+    add_first("8 ngành hàng tiêu dùng nhanh trọng tâm tại cửa hàng (tổng cộng 80 SKU thực tế):")
     add_code(
-        "1. Sữa & Chế phẩm từ sữa: HSD chuẩn 30 - 180 ngày; Ngưỡng cảnh báo 7 ngày; Bảo quản 2-4°C.\n"
-        "2. Bánh tươi & Thực phẩm chế biến: HSD chuẩn 3 - 7 ngày; Ngưỡng cảnh báo 2 ngày; Nhiệt độ phòng.\n"
-        "3. Nước giải khát & Nước ép: HSD chuẩn 180 - 365 ngày; Ngưỡng cảnh báo 15 ngày; Nhiệt độ phòng.\n"
-        "4. Thực phẩm đông lạnh & Thịt mát: HSD chuẩn 15 - 45 ngày; Ngưỡng cảnh báo 5 ngày; Bảo quản -18°C.\n"
-        "5. Đồ khô & Gia vị đóng gói: HSD chuẩn 180 - 720 ngày; Ngưỡng cảnh báo 30 ngày; Nhiệt độ phòng."
+        "1. Sữa & Chế phẩm từ sữa (10 SKU): HSD chuẩn 30 - 180 ngày; Ngưỡng cảnh báo 7 ngày; Bảo quản 2-4°C.\n"
+        "2. Bánh mì & Đồ ăn nhanh (10 SKU): HSD chuẩn 2 - 7 ngày; Ngưỡng cảnh báo 2 ngày; Nhiệt độ mát.\n"
+        "3. Nước giải khát & Đồ uống (10 SKU): HSD chuẩn 180 - 365 ngày; Ngưỡng cảnh báo 15 ngày; Nhiệt độ phòng.\n"
+        "4. Thực phẩm khô đóng gói (10 SKU): HSD chuẩn 180 - 365 ngày; Ngưỡng cảnh báo 15 ngày; Nhiệt độ phòng.\n"
+        "5. Thịt tươi & Thủy hải sản mát (10 SKU): HSD chuẩn 3 - 7 ngày; Ngưỡng cảnh báo 2 ngày; Bảo quản 0-4°C.\n"
+        "6. Rau củ & Trái cây sạch (10 SKU): HSD chuẩn 3 - 7 ngày; Ngưỡng cảnh báo 2 ngày; Bảo quản 5-10°C.\n"
+        "7. Thực phẩm đông lạnh & Kem (10 SKU): HSD chuẩn 60 - 180 ngày; Ngưỡng cảnh báo 14 ngày; Bảo quản -18°C.\n"
+        "8. Gia vị & Đồ hộp tiện lợi (10 SKU): HSD chuẩn 180 - 720 ngày; Ngưỡng cảnh báo 30 ngày; Nhiệt độ phòng."
     )
     add_first("Cơ chế chống tạo trùng lặp sản phẩm (Duplicate Shield):")
     add_code(
@@ -754,7 +705,7 @@ def build_full_document():
     add_first("Toàn bộ 13 bảng CSDL được thiết kế chuẩn hóa 3NF trên SQL Server LocalDB retail_spoilage_db:")
     add_code(
         "1.  Users: Quản lý thông tin tài khoản người dùng và thông tin đăng nhập.\n"
-        "2.  Roles: Định nghĩa 4 vai trò chuẩn (ADMIN, STORE_MANAGER, CASHIER, WAREHOUSE_STAFF).\n"
+        "2.  Roles: Định nghĩa 3 vai trò chuẩn (ADMIN, STORE_MANAGER, CASHIER - Nhân viên POS & Kho kệ).\n"
         "3.  StoreProfile: Cấu hình thông tin cửa hàng bán lẻ tinh gọn duy nhất.\n"
         "4.  Suppliers: Thông tin nhà cung cấp liên kết (Kho phân phối DC Biên Hòa).\n"
         "5.  Categories: Danh mục ngành hàng FMCG và ngưỡng cảnh báo cận date mặc định.\n"
@@ -964,10 +915,9 @@ def build_full_document():
         "| [ ] Audit Logs     | +----+-----------------+-------------+-----------------+------------+-----------+|\n"
         "| [ ] CSDL Health    | | STT| Tên nhân viên   | Tên đăng nhập| Vai trò (Role)  | Trạng thái | Thao tác  ||\n"
         "|                    | +----+-----------------+-------------+-----------------+------------+-----------+|\n"
-        "|                    | |  1 | Đỗ Tấn Du       | admin_du    | Admin           | Hoạt động  | [Sửa][Khóa]||\n"
-        "|                    | |  2 | Đoàn Minh Quân  | manager_quan| Cửa hàng trưởng | Hoạt động  | [Sửa][Khóa]||\n"
-        "|                    | |  3 | Lê Thu Ngân     | cashier_01  | Thu ngân (POS)  | Hoạt động  | [Sửa][Khóa]||\n"
-        "|                    | |  4 | Trần Kho Vận    | warehouse_01| Nhân viên kho   | Hoạt động  | [Sửa][Khóa]||\n"
+        "|                    | |  1 | Quản trị viên   | admin       | Admin (ADMIN)   | Hoạt động  | [Sửa][Khóa]||\n"
+        "|                    | |  2 | Đỗ Tấn Du       | manager     | Cửa hàng trưởng | Hoạt động  | [Sửa][Khóa]||\n"
+        "|                    | |  3 | Đoàn Minh Quân  | cashier     | NV POS & Kho kệ | Hoạt động  | [Sửa][Khóa]||\n"
         "|                    | +----+-----------------+-------------+-----------------+------------+-----------+|\n"
         "|                    |                                                                                 |\n"
         "|                    | MODAL: PHÂN QUYỀN CHI TIẾT CHO VAI TRÒ ĐƯỢC CHỌN:                               |\n"
@@ -1064,7 +1014,7 @@ def build_full_document():
         "| - Lý do hủy:    (o) Quá hạn sử dụng (EXPIRED)  ( ) Rách vỡ bao bì (DAMAGED)  ( ) Ối thiu (SPOILED)   |\n"
         "| - Đơn vị vốn:   25,000 đ/hộp                                                                         |\n"
         "| - TỔNG THIỆT HẠI HẠCH TOÁN VÀO SỔ HAO HỤT: 250,000 đ                                                |\n"
-        "| - Người lập đề xuất: warehouse_01 (Trần Kho Vận) lúc 08:30 ngày 09/10/2026                          |\n"
+        "| - Người lập đề xuất: cashier (Đoàn Minh Quân - NV Cửa hàng) lúc 08:30 ngày 09/10/2026                |\n"
         "+------------------------------------------------------------------------------------------------------+\n"
         "| Ý kiến phê duyệt: [ Hàng đã kiểm tra thực tế, đồng ý tiêu hủy theo quy định                       ] |\n"
         "|                              [ TỪ CHỐI ]    [ PHÊ DUYỆT TIÊU HỦY & CHỐT SỔ HAO HỤT ]                 |\n"

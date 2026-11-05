@@ -464,7 +464,7 @@ def build_document():
 
     # --- 16. PHÂN QUYỀN CHỨC NĂNG (BẢNG RBAC CHUẨN) ---
     add_h1("16. Phân quyền chức năng")
-    add_first("Bảng ma trận phân quyền chi tiết cho 4 vai trò người dùng trong hệ thống:")
+    add_first("Bảng ma trận phân quyền chi tiết cho 3 vai trò người dùng trong hệ thống:")
     
     rbac_data = [
         ["Chức năng", "Admin", "Cửa hàng trưởng", "Thu ngân", "Nhân viên kho"],
@@ -526,7 +526,7 @@ def build_document():
         "    Name NVARCHAR(100) NOT NULL,\n"
         "    Description NVARCHAR(255) NULL\n"
         ");\n\n"
-        "-- Role mặc định: ADMIN, MANAGER, CASHIER, WAREHOUSE_STAFF"
+        "-- Role mặc định: ADMIN, MANAGER, CASHIER, CASHIER"
     )
 
     add_h2("17.3 Bảng StoreProfile")
@@ -1172,7 +1172,7 @@ def build_document():
     add_h1("26. Phiên bản MVP nên làm trước")
     add_first("Phiên bản đầu tiên (MVP) đã hoàn thiện đầy đủ các chức năng cốt lõi:")
     add_code(
-        "1. Đăng nhập và phân quyền 4 vai trò\n"
+        "1. Đăng nhập và phân quyền 3 vai trò\n"
         "2. Cấu hình thông tin cửa hàng bán lẻ duy nhất\n"
         "3. Quản lý danh mục và sản phẩm FMCG (chống trùng lặp)\n"
         "4. Quản lý lô hàng và vòng đời hạn sử dụng (Shelf-Life)\n"

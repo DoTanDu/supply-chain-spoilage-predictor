@@ -358,7 +358,7 @@ def create_document():
     )
     add_first_p("Cây nhánh chức năng chi tiết của Nhân viên kho (Warehouse Staff Feature Tree):")
     add_code(
-        "[WAREHOUSE_STAFF] NHÂN VIÊN QUẢN LÝ KHO & NHẬN HÀNG\n"
+        "[CASHIER] NHÂN VIÊN QUẢN LÝ KHO & NHẬN HÀNG\n"
         "├── 1. Tiếp nhận Đợt hàng từ Kho tổng DC (Inbound Reception)\n"
         "│   ├── 1.1 Đối chiếu biên bản bàn giao từ tài xế xe tải DC Biên Hòa với thông tin hệ thống\n"
         "│   ├── 1.2 Nhập thông tin lô hàng thực tế: Ngày sản xuất (NSX), Ngày hết hạn (HSD), Số lượng giao\n"
@@ -397,7 +397,7 @@ def create_document():
     )
 
     add_h2("5.2 Bảng Ma trận Phân quyền Chức năng Chi tiết (RBAC Matrix)")
-    add_first_p("Ma trận phân quyền đối chiếu 20 chức năng nghiệp vụ trọng yếu với 4 vai trò người dùng trong hệ thống:")
+    add_first_p("Ma trận phân quyền đối chiếu 20 chức năng nghiệp vụ trọng yếu với 3 vai trò người dùng trong hệ thống:")
 
     table_data = [
         ["Mã nghiệp vụ", "Chức năng hệ thống chi tiết", "Admin", "Cửa hàng trưởng", "Thu ngân / Bán lẻ", "Nhân viên kho"],

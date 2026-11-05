@@ -34,31 +34,55 @@ END
 DECLARE @AdminId INT = (SELECT id FROM [dbo].[roles] WHERE [code] = 'ADMIN');
 DECLARE @ManagerId INT = (SELECT id FROM [dbo].[roles] WHERE [code] = 'STORE_MANAGER');
 DECLARE @CashierId INT = (SELECT id FROM [dbo].[roles] WHERE [code] = 'CASHIER');
-DECLARE @WarehouseId INT = (SELECT id FROM [dbo].[roles] WHERE [code] = 'WAREHOUSE_STAFF');
 
 -- Tạo hoặc cập nhật 3 users chuẩn (3 Actors)
 DECLARE @PassHash NVARCHAR(255) = N'$2b$10$utBHyz0fZU7KTV1BSIEF5exBMNUbmlDzOIc9OUDfbSQtQtKxs96qS';
 
 MERGE [dbo].[users] AS target
 USING (VALUES
-    ('admin', @PassHash, N'Quản trị viên (Admin)', 'admin@lhumart.edu.vn', '0901112233', 'ADMIN', @AdminId, 1),
-    ('manager', @PassHash, N'Đỗ Tấn Du (Cửa Hàng Trưởng)', 'manager@lhumart.edu.vn', '0902223344', 'STORE_MANAGER', @ManagerId, 1),
-    ('cashier', @PassHash, N'Đoàn Minh Quân (Nhân Viên Cửa Hàng)', 'cashier@lhumart.edu.vn', '0903334455', 'CASHIER', @CashierId, 1),
-    ('dotandu', @PassHash, N'Đỗ Tấn Du', 'tandudev@cuahang.vn', '0902223344', 'STORE_MANAGER', @ManagerId, 1),
-    ('doanminhquan', @PassHash, N'Đoàn Minh Quân', 'minhquandev@cuahang.vn', '0903334455', 'STORE_MANAGER', @ManagerId, 1)
-) AS source ([username], [password_hash], [full_name], [email], [phone], [role], [role_id], [is_active])
+    ('admin', @PassHash, N'Quản trị viên (Admin)', 'admin@lhumart.edu.vn', '0901112233', @AdminId, 1),
+    ('manager', @PassHash, N'Đỗ Tấn Du (Cửa Hàng Trưởng)', 'manager@lhumart.edu.vn', '0902223344', @ManagerId, 1),
+    ('cashier', @PassHash, N'Đoàn Minh Quân (Nhân Viên Cửa Hàng)', 'cashier@lhumart.edu.vn', '0903334455', @CashierId, 1)
+) AS source ([username], [password_hash], [full_name], [email], [phone], [role_id], [is_active])
 ON (target.[username] = source.[username])
 WHEN MATCHED THEN
     UPDATE SET 
         [password_hash] = source.[password_hash],
         [full_name] = source.[full_name],
-        [role] = source.[role],
         [role_id] = source.[role_id],
         [is_active] = 1,
         [updated_at] = GETDATE()
 WHEN NOT MATCHED THEN
-    INSERT ([username], [password_hash], [full_name], [email], [phone], [role], [role_id], [is_active], [created_at], [updated_at])
-    VALUES (source.[username], source.[password_hash], source.[full_name], source.[email], source.[phone], source.[role], source.[role_id], source.[is_active], GETDATE(), GETDATE());
+    INSERT ([username], [password_hash], [full_name], [email], [phone], [role_id], [is_active], [created_at], [updated_at])
+    VALUES (source.[username], source.[password_hash], source.[full_name], source.[email], source.[phone], source.[role_id], source.[is_active], GETDATE(), GETDATE());
+
+-- Dọn dẹp toàn bộ khóa ngoại trỏ tới user > 3 hoặc role > 3 (WAREHOUSE_STAFF)
+IF OBJECT_ID('dbo.store_profile', 'U') IS NOT NULL
+    UPDATE [dbo].[store_profile] SET [manager_id] = @ManagerId WHERE [manager_id] NOT IN (@AdminId, @ManagerId, @CashierId);
+IF OBJECT_ID('dbo.stock_transfers', 'U') IS NOT NULL
+BEGIN
+    UPDATE [dbo].[stock_transfers] SET [requested_by] = @CashierId WHERE [requested_by] > 3;
+    UPDATE [dbo].[stock_transfers] SET [approved_by] = @ManagerId WHERE [approved_by] > 3;
+END
+IF OBJECT_ID('dbo.sales_history', 'U') IS NOT NULL
+    UPDATE [dbo].[sales_history] SET [cashier_id] = @CashierId WHERE [cashier_id] > 3;
+IF OBJECT_ID('dbo.spoilage_records', 'U') IS NOT NULL
+BEGIN
+    UPDATE [dbo].[spoilage_records] SET [performed_by] = @CashierId WHERE [performed_by] > 3;
+    UPDATE [dbo].[spoilage_records] SET [approved_by] = @ManagerId WHERE [approved_by] > 3;
+END
+IF OBJECT_ID('dbo.goods_receipts', 'U') IS NOT NULL
+    UPDATE [dbo].[goods_receipts] SET [received_by] = @CashierId WHERE [received_by] > 3;
+IF OBJECT_ID('dbo.purchase_orders', 'U') IS NOT NULL
+BEGIN
+    UPDATE [dbo].[purchase_orders] SET [created_by] = @ManagerId WHERE [created_by] > 3;
+    UPDATE [dbo].[purchase_orders] SET [approved_by] = @AdminId WHERE [approved_by] > 3;
+END
+IF OBJECT_ID('dbo.system_audit_logs', 'U') IS NOT NULL
+    UPDATE [dbo].[system_audit_logs] SET [user_id] = @ManagerId WHERE [user_id] > 3;
+
+DELETE FROM [dbo].[users] WHERE [id] > 3 OR [username] NOT IN ('admin', 'manager', 'cashier');
+DELETE FROM [dbo].[roles] WHERE [id] > 3 OR [code] = 'WAREHOUSE_STAFF';
 
 -- 3. BẢNG STORE_PROFILE
 IF OBJECT_ID('dbo.store_profile', 'U') IS NULL

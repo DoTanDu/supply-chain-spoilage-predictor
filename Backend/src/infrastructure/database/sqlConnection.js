@@ -8,7 +8,7 @@ const READ_CACHE_TTL_MS = 1500;
 const readCache = new Map();
 const inFlightReads = new Map();
 
-let preferPowerShell = process.platform === 'win32';
+let preferPowerShell = false;
 
 class SqlConnection {
   static isWriteQuery(query) {
