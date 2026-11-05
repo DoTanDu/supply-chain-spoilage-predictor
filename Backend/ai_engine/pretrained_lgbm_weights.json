@@ -1,0 +1,1565 @@
+{
+  "modelVersion": "LightGBM-HistGBT-v2.1-Pretrained",
+  "optimizerEngine": "Google-OR-Tools-MILP-v1.4",
+  "datasetFile": "sample_retail_dataset.csv",
+  "totalDatasetRows": 1824,
+  "featureColumns": [
+    "store_id",
+    "product_id",
+    "day_of_week",
+    "is_weekend",
+    "is_holiday",
+    "weather_code",
+    "temperature_c",
+    "discount_pct",
+    "shelf_life_days",
+    "lag_1d",
+    "lag_7d",
+    "rolling_mean_7d",
+    "rolling_mean_14d"
+  ],
+  "metrics": {
+    "mae": 1.508,
+    "rmse": 1.892,
+    "mapePct": 10.95,
+    "confidenceScore": 0.8905,
+    "trainSamples": 1459,
+    "testSamples": 365
+  },
+  "stores": [
+    {
+      "store_id": 1,
+      "store_code": "RETAIL-STORE-01",
+      "store_name": "LHU Mart Bửu Long (Store A)",
+      "demand_scale": 1.0
+    },
+    {
+      "store_id": 2,
+      "store_code": "RETAIL-STORE-02",
+      "store_name": "LHU Mart Tân Phong (Store B)",
+      "demand_scale": 1.35
+    },
+    {
+      "store_id": 3,
+      "store_code": "RETAIL-STORE-03",
+      "store_name": "LHU Mart Trảng Dài (Store C)",
+      "demand_scale": 0.85
+    }
+  ],
+  "products": [
+    {
+      "product_id": 1,
+      "sku": "8934567890101",
+      "name": "Sữa tươi tiệt trùng Vinamilk 100% Không đường 1L",
+      "base_daily": 16.0,
+      "shelf_life": 180,
+      "cost": 28500,
+      "price": 36000
+    },
+    {
+      "product_id": 2,
+      "sku": "8934567890102",
+      "name": "Sữa tươi tiệt trùng Vinamilk 100% Có đường 1L",
+      "base_daily": 18.0,
+      "shelf_life": 180,
+      "cost": 28500,
+      "price": 36000
+    },
+    {
+      "product_id": 3,
+      "sku": "8934567890103",
+      "name": "Sữa chua ăn Vinamilk Nha Đam 100g",
+      "base_daily": 22.0,
+      "shelf_life": 45,
+      "cost": 6500,
+      "price": 8500
+    },
+    {
+      "product_id": 4,
+      "sku": "8934567890104",
+      "name": "Sữa chua uống men sống Probi 130ml",
+      "base_daily": 19.0,
+      "shelf_life": 50,
+      "cost": 7500,
+      "price": 10000
+    },
+    {
+      "product_id": 5,
+      "sku": "8934567890201",
+      "name": "Bánh mì Sandwich tươi Kinh Đô 250g",
+      "base_daily": 15.0,
+      "shelf_life": 7,
+      "cost": 16000,
+      "price": 22000
+    },
+    {
+      "product_id": 8,
+      "sku": "8934567890105",
+      "name": "Sữa tươi tiệt trùng TH True MILK Nguyên chất 1L",
+      "base_daily": 14.0,
+      "shelf_life": 180,
+      "cost": 30000,
+      "price": 37500
+    },
+    {
+      "product_id": 10,
+      "sku": "8934567890202",
+      "name": "Bánh bao nhân thịt trứng cút Thọ Phát 120g",
+      "base_daily": 13.0,
+      "shelf_life": 5,
+      "cost": 11500,
+      "price": 16000
+    },
+    {
+      "product_id": 12,
+      "sku": "8934567890204",
+      "name": "Cơm nắm Onigiri cá hồi sốt Mayo 110g",
+      "base_daily": 12.0,
+      "shelf_life": 2,
+      "cost": 13000,
+      "price": 18000
+    }
+  ],
+  "predictions": [
+    {
+      "storeId": 1,
+      "storeCode": "RETAIL-STORE-01",
+      "storeName": "LHU Mart Bửu Long (Store A)",
+      "productId": 1,
+      "sku": "8934567890101",
+      "productName": "Sữa tươi tiệt trùng Vinamilk 100% Không đường 1L",
+      "weather": "NORMAL",
+      "rollingMean14d": 18.73,
+      "predictedDailySeries": [
+        18.89,
+        15.93,
+        16.27,
+        16.19,
+        16.11,
+        16.38,
+        18.92
+      ],
+      "predictedDemand7d": 118.7
+    },
+    {
+      "storeId": 1,
+      "storeCode": "RETAIL-STORE-01",
+      "storeName": "LHU Mart Bửu Long (Store A)",
+      "productId": 1,
+      "sku": "8934567890101",
+      "productName": "Sữa tươi tiệt trùng Vinamilk 100% Không đường 1L",
+      "weather": "SUNNY",
+      "rollingMean14d": 18.73,
+      "predictedDailySeries": [
+        22.16,
+        18.74,
+        19.0,
+        19.0,
+        18.91,
+        18.94,
+        22.19
+      ],
+      "predictedDemand7d": 138.9
+    },
+    {
+      "storeId": 1,
+      "storeCode": "RETAIL-STORE-01",
+      "storeName": "LHU Mart Bửu Long (Store A)",
+      "productId": 1,
+      "sku": "8934567890101",
+      "productName": "Sữa tươi tiệt trùng Vinamilk 100% Không đường 1L",
+      "weather": "RAINY",
+      "rollingMean14d": 18.73,
+      "predictedDailySeries": [
+        14.53,
+        12.47,
+        12.65,
+        12.56,
+        12.56,
+        12.95,
+        14.59
+      ],
+      "predictedDemand7d": 92.3
+    },
+    {
+      "storeId": 1,
+      "storeCode": "RETAIL-STORE-01",
+      "storeName": "LHU Mart Bửu Long (Store A)",
+      "productId": 2,
+      "sku": "8934567890102",
+      "productName": "Sữa tươi tiệt trùng Vinamilk 100% Có đường 1L",
+      "weather": "NORMAL",
+      "rollingMean14d": 12.62,
+      "predictedDailySeries": [
+        13.71,
+        12.09,
+        12.08,
+        12.04,
+        12.01,
+        12.2,
+        13.71
+      ],
+      "predictedDemand7d": 87.8
+    },
+    {
+      "storeId": 1,
+      "storeCode": "RETAIL-STORE-01",
+      "storeName": "LHU Mart Bửu Long (Store A)",
+      "productId": 2,
+      "sku": "8934567890102",
+      "productName": "Sữa tươi tiệt trùng Vinamilk 100% Có đường 1L",
+      "weather": "SUNNY",
+      "rollingMean14d": 12.62,
+      "predictedDailySeries": [
+        15.49,
+        13.64,
+        13.64,
+        13.73,
+        13.7,
+        13.72,
+        15.49
+      ],
+      "predictedDemand7d": 99.4
+    },
+    {
+      "storeId": 1,
+      "storeCode": "RETAIL-STORE-01",
+      "storeName": "LHU Mart Bửu Long (Store A)",
+      "productId": 2,
+      "sku": "8934567890102",
+      "productName": "Sữa tươi tiệt trùng Vinamilk 100% Có đường 1L",
+      "weather": "RAINY",
+      "rollingMean14d": 12.62,
+      "predictedDailySeries": [
+        11.5,
+        10.44,
+        10.4,
+        10.37,
+        10.34,
+        10.4,
+        11.53
+      ],
+      "predictedDemand7d": 75.0
+    },
+    {
+      "storeId": 1,
+      "storeCode": "RETAIL-STORE-01",
+      "storeName": "LHU Mart Bửu Long (Store A)",
+      "productId": 3,
+      "sku": "8934567890103",
+      "productName": "Sữa chua ăn Vinamilk Nha Đam 100g",
+      "weather": "NORMAL",
+      "rollingMean14d": 25.1,
+      "predictedDailySeries": [
+        25.24,
+        21.61,
+        21.85,
+        21.74,
+        21.86,
+        22.04,
+        25.24
+      ],
+      "predictedDemand7d": 159.6
+    },
+    {
+      "storeId": 1,
+      "storeCode": "RETAIL-STORE-01",
+      "storeName": "LHU Mart Bửu Long (Store A)",
+      "productId": 3,
+      "sku": "8934567890103",
+      "productName": "Sữa chua ăn Vinamilk Nha Đam 100g",
+      "weather": "SUNNY",
+      "rollingMean14d": 25.1,
+      "predictedDailySeries": [
+        29.94,
+        26.03,
+        26.03,
+        25.92,
+        26.02,
+        26.1,
+        29.94
+      ],
+      "predictedDemand7d": 190.0
+    },
+    {
+      "storeId": 1,
+      "storeCode": "RETAIL-STORE-01",
+      "storeName": "LHU Mart Bửu Long (Store A)",
+      "productId": 3,
+      "sku": "8934567890103",
+      "productName": "Sữa chua ăn Vinamilk Nha Đam 100g",
+      "weather": "RAINY",
+      "rollingMean14d": 25.1,
+      "predictedDailySeries": [
+        20.5,
+        17.58,
+        17.67,
+        17.6,
+        17.6,
+        17.76,
+        20.5
+      ],
+      "predictedDemand7d": 129.2
+    },
+    {
+      "storeId": 1,
+      "storeCode": "RETAIL-STORE-01",
+      "storeName": "LHU Mart Bửu Long (Store A)",
+      "productId": 4,
+      "sku": "8934567890104",
+      "productName": "Sữa chua uống men sống Probi 130ml",
+      "weather": "NORMAL",
+      "rollingMean14d": 24.39,
+      "predictedDailySeries": [
+        24.4,
+        20.87,
+        20.93,
+        20.86,
+        21.0,
+        21.4,
+        24.4
+      ],
+      "predictedDemand7d": 153.9
+    },
+    {
+      "storeId": 1,
+      "storeCode": "RETAIL-STORE-01",
+      "storeName": "LHU Mart Bửu Long (Store A)",
+      "productId": 4,
+      "sku": "8934567890104",
+      "productName": "Sữa chua uống men sống Probi 130ml",
+      "weather": "SUNNY",
+      "rollingMean14d": 24.39,
+      "predictedDailySeries": [
+        28.59,
+        23.4,
+        23.33,
+        23.19,
+        23.31,
+        23.33,
+        28.59
+      ],
+      "predictedDemand7d": 173.7
+    },
+    {
+      "storeId": 1,
+      "storeCode": "RETAIL-STORE-01",
+      "storeName": "LHU Mart Bửu Long (Store A)",
+      "productId": 4,
+      "sku": "8934567890104",
+      "productName": "Sữa chua uống men sống Probi 130ml",
+      "weather": "RAINY",
+      "rollingMean14d": 24.39,
+      "predictedDailySeries": [
+        20.3,
+        17.11,
+        17.22,
+        17.15,
+        17.15,
+        17.36,
+        20.33
+      ],
+      "predictedDemand7d": 126.6
+    },
+    {
+      "storeId": 1,
+      "storeCode": "RETAIL-STORE-01",
+      "storeName": "LHU Mart Bửu Long (Store A)",
+      "productId": 5,
+      "sku": "8934567890201",
+      "productName": "Bánh mì Sandwich tươi Kinh Đô 250g",
+      "weather": "NORMAL",
+      "rollingMean14d": 10.49,
+      "predictedDailySeries": [
+        11.74,
+        10.21,
+        10.17,
+        10.17,
+        10.14,
+        10.26,
+        11.74
+      ],
+      "predictedDemand7d": 74.4
+    },
+    {
+      "storeId": 1,
+      "storeCode": "RETAIL-STORE-01",
+      "storeName": "LHU Mart Bửu Long (Store A)",
+      "productId": 5,
+      "sku": "8934567890201",
+      "productName": "Bánh mì Sandwich tươi Kinh Đô 250g",
+      "weather": "SUNNY",
+      "rollingMean14d": 10.49,
+      "predictedDailySeries": [
+        13.07,
+        11.34,
+        11.37,
+        11.46,
+        11.43,
+        11.44,
+        13.07
+      ],
+      "predictedDemand7d": 83.2
+    },
+    {
+      "storeId": 1,
+      "storeCode": "RETAIL-STORE-01",
+      "storeName": "LHU Mart Bửu Long (Store A)",
+      "productId": 5,
+      "sku": "8934567890201",
+      "productName": "Bánh mì Sandwich tươi Kinh Đô 250g",
+      "weather": "RAINY",
+      "rollingMean14d": 10.49,
+      "predictedDailySeries": [
+        9.08,
+        8.39,
+        8.36,
+        8.35,
+        8.2,
+        8.21,
+        9.08
+      ],
+      "predictedDemand7d": 59.7
+    },
+    {
+      "storeId": 1,
+      "storeCode": "RETAIL-STORE-01",
+      "storeName": "LHU Mart Bửu Long (Store A)",
+      "productId": 8,
+      "sku": "8934567890105",
+      "productName": "Sữa tươi tiệt trùng TH True MILK Nguyên chất 1L",
+      "weather": "NORMAL",
+      "rollingMean14d": 15.83,
+      "predictedDailySeries": [
+        18.34,
+        15.02,
+        15.09,
+        15.02,
+        14.96,
+        15.54,
+        18.39
+      ],
+      "predictedDemand7d": 112.4
+    },
+    {
+      "storeId": 1,
+      "storeCode": "RETAIL-STORE-01",
+      "storeName": "LHU Mart Bửu Long (Store A)",
+      "productId": 8,
+      "sku": "8934567890105",
+      "productName": "Sữa tươi tiệt trùng TH True MILK Nguyên chất 1L",
+      "weather": "SUNNY",
+      "rollingMean14d": 15.83,
+      "predictedDailySeries": [
+        21.45,
+        18.16,
+        18.23,
+        18.3,
+        18.23,
+        18.5,
+        21.46
+      ],
+      "predictedDemand7d": 134.3
+    },
+    {
+      "storeId": 1,
+      "storeCode": "RETAIL-STORE-01",
+      "storeName": "LHU Mart Bửu Long (Store A)",
+      "productId": 8,
+      "sku": "8934567890105",
+      "productName": "Sữa tươi tiệt trùng TH True MILK Nguyên chất 1L",
+      "weather": "RAINY",
+      "rollingMean14d": 15.83,
+      "predictedDailySeries": [
+        15.37,
+        12.77,
+        12.82,
+        12.74,
+        12.68,
+        12.85,
+        15.41
+      ],
+      "predictedDemand7d": 94.6
+    },
+    {
+      "storeId": 1,
+      "storeCode": "RETAIL-STORE-01",
+      "storeName": "LHU Mart Bửu Long (Store A)",
+      "productId": 10,
+      "sku": "8934567890202",
+      "productName": "Bánh bao nhân thịt trứng cút Thọ Phát 120g",
+      "weather": "NORMAL",
+      "rollingMean14d": 9.61,
+      "predictedDailySeries": [
+        10.42,
+        9.02,
+        8.99,
+        8.98,
+        8.99,
+        9.0,
+        10.42
+      ],
+      "predictedDemand7d": 65.8
+    },
+    {
+      "storeId": 1,
+      "storeCode": "RETAIL-STORE-01",
+      "storeName": "LHU Mart Bửu Long (Store A)",
+      "productId": 10,
+      "sku": "8934567890202",
+      "productName": "Bánh bao nhân thịt trứng cút Thọ Phát 120g",
+      "weather": "SUNNY",
+      "rollingMean14d": 9.61,
+      "predictedDailySeries": [
+        11.14,
+        9.75,
+        9.72,
+        9.75,
+        9.75,
+        9.7,
+        11.14
+      ],
+      "predictedDemand7d": 71.0
+    },
+    {
+      "storeId": 1,
+      "storeCode": "RETAIL-STORE-01",
+      "storeName": "LHU Mart Bửu Long (Store A)",
+      "productId": 10,
+      "sku": "8934567890202",
+      "productName": "Bánh bao nhân thịt trứng cút Thọ Phát 120g",
+      "weather": "RAINY",
+      "rollingMean14d": 9.61,
+      "predictedDailySeries": [
+        8.34,
+        7.65,
+        7.61,
+        7.61,
+        7.48,
+        7.5,
+        8.34
+      ],
+      "predictedDemand7d": 54.5
+    },
+    {
+      "storeId": 1,
+      "storeCode": "RETAIL-STORE-01",
+      "storeName": "LHU Mart Bửu Long (Store A)",
+      "productId": 12,
+      "sku": "8934567890204",
+      "productName": "Cơm nắm Onigiri cá hồi sốt Mayo 110g",
+      "weather": "NORMAL",
+      "rollingMean14d": 8.79,
+      "predictedDailySeries": [
+        10.05,
+        8.2,
+        8.24,
+        8.24,
+        8.34,
+        8.36,
+        10.05
+      ],
+      "predictedDemand7d": 61.5
+    },
+    {
+      "storeId": 1,
+      "storeCode": "RETAIL-STORE-01",
+      "storeName": "LHU Mart Bửu Long (Store A)",
+      "productId": 12,
+      "sku": "8934567890204",
+      "productName": "Cơm nắm Onigiri cá hồi sốt Mayo 110g",
+      "weather": "SUNNY",
+      "rollingMean14d": 8.79,
+      "predictedDailySeries": [
+        11.11,
+        9.28,
+        9.25,
+        9.36,
+        9.47,
+        9.42,
+        11.11
+      ],
+      "predictedDemand7d": 69.0
+    },
+    {
+      "storeId": 1,
+      "storeCode": "RETAIL-STORE-01",
+      "storeName": "LHU Mart Bửu Long (Store A)",
+      "productId": 12,
+      "sku": "8934567890204",
+      "productName": "Cơm nắm Onigiri cá hồi sốt Mayo 110g",
+      "weather": "RAINY",
+      "rollingMean14d": 8.79,
+      "predictedDailySeries": [
+        7.79,
+        6.69,
+        6.65,
+        6.65,
+        6.63,
+        6.68,
+        7.79
+      ],
+      "predictedDemand7d": 48.9
+    },
+    {
+      "storeId": 2,
+      "storeCode": "RETAIL-STORE-02",
+      "storeName": "LHU Mart Tân Phong (Store B)",
+      "productId": 1,
+      "sku": "8934567890101",
+      "productName": "Sữa tươi tiệt trùng Vinamilk 100% Không đường 1L",
+      "weather": "NORMAL",
+      "rollingMean14d": 24.87,
+      "predictedDailySeries": [
+        24.47,
+        20.85,
+        21.05,
+        21.01,
+        21.03,
+        21.15,
+        24.48
+      ],
+      "predictedDemand7d": 154.0
+    },
+    {
+      "storeId": 2,
+      "storeCode": "RETAIL-STORE-02",
+      "storeName": "LHU Mart Tân Phong (Store B)",
+      "productId": 1,
+      "sku": "8934567890101",
+      "productName": "Sữa tươi tiệt trùng Vinamilk 100% Không đường 1L",
+      "weather": "SUNNY",
+      "rollingMean14d": 24.87,
+      "predictedDailySeries": [
+        29.42,
+        24.87,
+        24.84,
+        24.59,
+        24.6,
+        24.63,
+        29.43
+      ],
+      "predictedDemand7d": 182.4
+    },
+    {
+      "storeId": 2,
+      "storeCode": "RETAIL-STORE-02",
+      "storeName": "LHU Mart Tân Phong (Store B)",
+      "productId": 1,
+      "sku": "8934567890101",
+      "productName": "Sữa tươi tiệt trùng Vinamilk 100% Không đường 1L",
+      "weather": "RAINY",
+      "rollingMean14d": 24.87,
+      "predictedDailySeries": [
+        20.26,
+        17.35,
+        17.47,
+        17.44,
+        17.47,
+        17.68,
+        20.3
+      ],
+      "predictedDemand7d": 128.0
+    },
+    {
+      "storeId": 2,
+      "storeCode": "RETAIL-STORE-02",
+      "storeName": "LHU Mart Tân Phong (Store B)",
+      "productId": 2,
+      "sku": "8934567890102",
+      "productName": "Sữa tươi tiệt trùng Vinamilk 100% Có đường 1L",
+      "weather": "NORMAL",
+      "rollingMean14d": 41.94,
+      "predictedDailySeries": [
+        42.37,
+        37.18,
+        37.35,
+        37.35,
+        37.43,
+        37.43,
+        41.94
+      ],
+      "predictedDemand7d": 271.1
+    },
+    {
+      "storeId": 2,
+      "storeCode": "RETAIL-STORE-02",
+      "storeName": "LHU Mart Tân Phong (Store B)",
+      "productId": 2,
+      "sku": "8934567890102",
+      "productName": "Sữa tươi tiệt trùng Vinamilk 100% Có đường 1L",
+      "weather": "SUNNY",
+      "rollingMean14d": 41.94,
+      "predictedDailySeries": [
+        46.97,
+        39.11,
+        39.58,
+        39.57,
+        39.65,
+        39.65,
+        46.53
+      ],
+      "predictedDemand7d": 291.1
+    },
+    {
+      "storeId": 2,
+      "storeCode": "RETAIL-STORE-02",
+      "storeName": "LHU Mart Tân Phong (Store B)",
+      "productId": 2,
+      "sku": "8934567890102",
+      "productName": "Sữa tươi tiệt trùng Vinamilk 100% Có đường 1L",
+      "weather": "RAINY",
+      "rollingMean14d": 41.94,
+      "predictedDailySeries": [
+        36.21,
+        30.77,
+        30.8,
+        30.8,
+        30.88,
+        30.88,
+        36.21
+      ],
+      "predictedDemand7d": 226.6
+    },
+    {
+      "storeId": 2,
+      "storeCode": "RETAIL-STORE-02",
+      "storeName": "LHU Mart Tân Phong (Store B)",
+      "productId": 3,
+      "sku": "8934567890103",
+      "productName": "Sữa chua ăn Vinamilk Nha Đam 100g",
+      "weather": "NORMAL",
+      "rollingMean14d": 33.52,
+      "predictedDailySeries": [
+        31.06,
+        26.54,
+        27.21,
+        27.2,
+        27.34,
+        27.71,
+        31.1
+      ],
+      "predictedDemand7d": 198.2
+    },
+    {
+      "storeId": 2,
+      "storeCode": "RETAIL-STORE-02",
+      "storeName": "LHU Mart Tân Phong (Store B)",
+      "productId": 3,
+      "sku": "8934567890103",
+      "productName": "Sữa chua ăn Vinamilk Nha Đam 100g",
+      "weather": "SUNNY",
+      "rollingMean14d": 33.52,
+      "predictedDailySeries": [
+        39.97,
+        32.46,
+        33.47,
+        33.46,
+        33.38,
+        33.42,
+        40.01
+      ],
+      "predictedDemand7d": 246.2
+    },
+    {
+      "storeId": 2,
+      "storeCode": "RETAIL-STORE-02",
+      "storeName": "LHU Mart Tân Phong (Store B)",
+      "productId": 3,
+      "sku": "8934567890103",
+      "productName": "Sữa chua ăn Vinamilk Nha Đam 100g",
+      "weather": "RAINY",
+      "rollingMean14d": 33.52,
+      "predictedDailySeries": [
+        27.34,
+        23.04,
+        23.2,
+        23.2,
+        23.12,
+        23.2,
+        27.41
+      ],
+      "predictedDemand7d": 170.5
+    },
+    {
+      "storeId": 2,
+      "storeCode": "RETAIL-STORE-02",
+      "storeName": "LHU Mart Tân Phong (Store B)",
+      "productId": 4,
+      "sku": "8934567890104",
+      "productName": "Sữa chua uống men sống Probi 130ml",
+      "weather": "NORMAL",
+      "rollingMean14d": 27.36,
+      "predictedDailySeries": [
+        33.87,
+        28.29,
+        28.71,
+        28.57,
+        28.62,
+        29.14,
+        33.87
+      ],
+      "predictedDemand7d": 211.1
+    },
+    {
+      "storeId": 2,
+      "storeCode": "RETAIL-STORE-02",
+      "storeName": "LHU Mart Tân Phong (Store B)",
+      "productId": 4,
+      "sku": "8934567890104",
+      "productName": "Sữa chua uống men sống Probi 130ml",
+      "weather": "SUNNY",
+      "rollingMean14d": 27.36,
+      "predictedDailySeries": [
+        36.69,
+        30.69,
+        30.92,
+        30.64,
+        31.07,
+        31.07,
+        36.69
+      ],
+      "predictedDemand7d": 227.8
+    },
+    {
+      "storeId": 2,
+      "storeCode": "RETAIL-STORE-02",
+      "storeName": "LHU Mart Tân Phong (Store B)",
+      "productId": 4,
+      "sku": "8934567890104",
+      "productName": "Sữa chua uống men sống Probi 130ml",
+      "weather": "RAINY",
+      "rollingMean14d": 27.36,
+      "predictedDailySeries": [
+        28.33,
+        22.11,
+        22.18,
+        22.15,
+        22.15,
+        22.51,
+        28.36
+      ],
+      "predictedDemand7d": 167.8
+    },
+    {
+      "storeId": 2,
+      "storeCode": "RETAIL-STORE-02",
+      "storeName": "LHU Mart Tân Phong (Store B)",
+      "productId": 5,
+      "sku": "8934567890201",
+      "productName": "Bánh mì Sandwich tươi Kinh Đô 250g",
+      "weather": "NORMAL",
+      "rollingMean14d": 36.62,
+      "predictedDailySeries": [
+        36.97,
+        29.14,
+        30.17,
+        30.26,
+        30.1,
+        30.2,
+        36.93
+      ],
+      "predictedDemand7d": 223.8
+    },
+    {
+      "storeId": 2,
+      "storeCode": "RETAIL-STORE-02",
+      "storeName": "LHU Mart Tân Phong (Store B)",
+      "productId": 5,
+      "sku": "8934567890201",
+      "productName": "Bánh mì Sandwich tươi Kinh Đô 250g",
+      "weather": "SUNNY",
+      "rollingMean14d": 36.62,
+      "predictedDailySeries": [
+        44.39,
+        34.36,
+        35.62,
+        35.71,
+        35.55,
+        35.59,
+        44.34
+      ],
+      "predictedDemand7d": 265.6
+    },
+    {
+      "storeId": 2,
+      "storeCode": "RETAIL-STORE-02",
+      "storeName": "LHU Mart Tân Phong (Store B)",
+      "productId": 5,
+      "sku": "8934567890201",
+      "productName": "Bánh mì Sandwich tươi Kinh Đô 250g",
+      "weather": "RAINY",
+      "rollingMean14d": 36.62,
+      "predictedDailySeries": [
+        31.06,
+        24.79,
+        24.92,
+        24.99,
+        24.75,
+        24.79,
+        31.13
+      ],
+      "predictedDemand7d": 186.4
+    },
+    {
+      "storeId": 2,
+      "storeCode": "RETAIL-STORE-02",
+      "storeName": "LHU Mart Tân Phong (Store B)",
+      "productId": 8,
+      "sku": "8934567890105",
+      "productName": "Sữa tươi tiệt trùng TH True MILK Nguyên chất 1L",
+      "weather": "NORMAL",
+      "rollingMean14d": 21.71,
+      "predictedDailySeries": [
+        22.85,
+        18.8,
+        19.4,
+        19.31,
+        19.27,
+        19.45,
+        22.89
+      ],
+      "predictedDemand7d": 142.0
+    },
+    {
+      "storeId": 2,
+      "storeCode": "RETAIL-STORE-02",
+      "storeName": "LHU Mart Tân Phong (Store B)",
+      "productId": 8,
+      "sku": "8934567890105",
+      "productName": "Sữa tươi tiệt trùng TH True MILK Nguyên chất 1L",
+      "weather": "SUNNY",
+      "rollingMean14d": 21.71,
+      "predictedDailySeries": [
+        27.21,
+        21.15,
+        21.4,
+        21.09,
+        21.06,
+        21.07,
+        27.25
+      ],
+      "predictedDemand7d": 160.2
+    },
+    {
+      "storeId": 2,
+      "storeCode": "RETAIL-STORE-02",
+      "storeName": "LHU Mart Tân Phong (Store B)",
+      "productId": 8,
+      "sku": "8934567890105",
+      "productName": "Sữa tươi tiệt trùng TH True MILK Nguyên chất 1L",
+      "weather": "RAINY",
+      "rollingMean14d": 21.71,
+      "predictedDailySeries": [
+        18.59,
+        16.17,
+        16.32,
+        16.29,
+        16.29,
+        16.6,
+        18.66
+      ],
+      "predictedDemand7d": 118.9
+    },
+    {
+      "storeId": 2,
+      "storeCode": "RETAIL-STORE-02",
+      "storeName": "LHU Mart Tân Phong (Store B)",
+      "productId": 10,
+      "sku": "8934567890202",
+      "productName": "Bánh bao nhân thịt trứng cút Thọ Phát 120g",
+      "weather": "NORMAL",
+      "rollingMean14d": 26.31,
+      "predictedDailySeries": [
+        25.4,
+        22.88,
+        23.52,
+        23.37,
+        23.46,
+        24.13,
+        25.44
+      ],
+      "predictedDemand7d": 168.2
+    },
+    {
+      "storeId": 2,
+      "storeCode": "RETAIL-STORE-02",
+      "storeName": "LHU Mart Tân Phong (Store B)",
+      "productId": 10,
+      "sku": "8934567890202",
+      "productName": "Bánh bao nhân thịt trứng cút Thọ Phát 120g",
+      "weather": "SUNNY",
+      "rollingMean14d": 26.31,
+      "predictedDailySeries": [
+        28.13,
+        25.91,
+        26.03,
+        25.67,
+        25.7,
+        25.84,
+        28.18
+      ],
+      "predictedDemand7d": 185.5
+    },
+    {
+      "storeId": 2,
+      "storeCode": "RETAIL-STORE-02",
+      "storeName": "LHU Mart Tân Phong (Store B)",
+      "productId": 10,
+      "sku": "8934567890202",
+      "productName": "Bánh bao nhân thịt trứng cút Thọ Phát 120g",
+      "weather": "RAINY",
+      "rollingMean14d": 26.31,
+      "predictedDailySeries": [
+        20.9,
+        18.5,
+        18.7,
+        18.67,
+        18.55,
+        18.76,
+        20.95
+      ],
+      "predictedDemand7d": 135.0
+    },
+    {
+      "storeId": 2,
+      "storeCode": "RETAIL-STORE-02",
+      "storeName": "LHU Mart Tân Phong (Store B)",
+      "productId": 12,
+      "sku": "8934567890204",
+      "productName": "Cơm nắm Onigiri cá hồi sốt Mayo 110g",
+      "weather": "NORMAL",
+      "rollingMean14d": 28.35,
+      "predictedDailySeries": [
+        28.31,
+        23.3,
+        23.9,
+        23.86,
+        24.02,
+        24.77,
+        28.31
+      ],
+      "predictedDemand7d": 176.5
+    },
+    {
+      "storeId": 2,
+      "storeCode": "RETAIL-STORE-02",
+      "storeName": "LHU Mart Tân Phong (Store B)",
+      "productId": 12,
+      "sku": "8934567890204",
+      "productName": "Cơm nắm Onigiri cá hồi sốt Mayo 110g",
+      "weather": "SUNNY",
+      "rollingMean14d": 28.35,
+      "predictedDailySeries": [
+        33.06,
+        28.26,
+        28.57,
+        28.54,
+        28.63,
+        28.7,
+        33.06
+      ],
+      "predictedDemand7d": 208.8
+    },
+    {
+      "storeId": 2,
+      "storeCode": "RETAIL-STORE-02",
+      "storeName": "LHU Mart Tân Phong (Store B)",
+      "productId": 12,
+      "sku": "8934567890204",
+      "productName": "Cơm nắm Onigiri cá hồi sốt Mayo 110g",
+      "weather": "RAINY",
+      "rollingMean14d": 28.35,
+      "predictedDailySeries": [
+        25.55,
+        20.96,
+        21.04,
+        21.01,
+        20.88,
+        21.26,
+        25.55
+      ],
+      "predictedDemand7d": 156.3
+    },
+    {
+      "storeId": 3,
+      "storeCode": "RETAIL-STORE-03",
+      "storeName": "LHU Mart Trảng Dài (Store C)",
+      "productId": 1,
+      "sku": "8934567890101",
+      "productName": "Sữa tươi tiệt trùng Vinamilk 100% Không đường 1L",
+      "weather": "NORMAL",
+      "rollingMean14d": 15.11,
+      "predictedDailySeries": [
+        16.31,
+        13.26,
+        13.47,
+        13.51,
+        13.43,
+        13.84,
+        16.27
+      ],
+      "predictedDemand7d": 100.1
+    },
+    {
+      "storeId": 3,
+      "storeCode": "RETAIL-STORE-03",
+      "storeName": "LHU Mart Trảng Dài (Store C)",
+      "productId": 1,
+      "sku": "8934567890101",
+      "productName": "Sữa tươi tiệt trùng Vinamilk 100% Không đường 1L",
+      "weather": "SUNNY",
+      "rollingMean14d": 15.11,
+      "predictedDailySeries": [
+        18.66,
+        15.55,
+        15.79,
+        15.96,
+        15.87,
+        15.94,
+        18.62
+      ],
+      "predictedDemand7d": 116.4
+    },
+    {
+      "storeId": 3,
+      "storeCode": "RETAIL-STORE-03",
+      "storeName": "LHU Mart Trảng Dài (Store C)",
+      "productId": 1,
+      "sku": "8934567890101",
+      "productName": "Sữa tươi tiệt trùng Vinamilk 100% Không đường 1L",
+      "weather": "RAINY",
+      "rollingMean14d": 15.11,
+      "predictedDailySeries": [
+        13.92,
+        11.53,
+        11.53,
+        11.56,
+        11.56,
+        11.8,
+        13.92
+      ],
+      "predictedDemand7d": 85.8
+    },
+    {
+      "storeId": 3,
+      "storeCode": "RETAIL-STORE-03",
+      "storeName": "LHU Mart Trảng Dài (Store C)",
+      "productId": 2,
+      "sku": "8934567890102",
+      "productName": "Sữa tươi tiệt trùng Vinamilk 100% Có đường 1L",
+      "weather": "NORMAL",
+      "rollingMean14d": 17.61,
+      "predictedDailySeries": [
+        18.38,
+        15.42,
+        15.65,
+        15.69,
+        15.71,
+        16.08,
+        18.38
+      ],
+      "predictedDemand7d": 115.3
+    },
+    {
+      "storeId": 3,
+      "storeCode": "RETAIL-STORE-03",
+      "storeName": "LHU Mart Trảng Dài (Store C)",
+      "productId": 2,
+      "sku": "8934567890102",
+      "productName": "Sữa tươi tiệt trùng Vinamilk 100% Có đường 1L",
+      "weather": "SUNNY",
+      "rollingMean14d": 17.61,
+      "predictedDailySeries": [
+        21.76,
+        17.64,
+        17.77,
+        17.99,
+        18.01,
+        18.13,
+        21.73
+      ],
+      "predictedDemand7d": 133.0
+    },
+    {
+      "storeId": 3,
+      "storeCode": "RETAIL-STORE-03",
+      "storeName": "LHU Mart Trảng Dài (Store C)",
+      "productId": 2,
+      "sku": "8934567890102",
+      "productName": "Sữa tươi tiệt trùng Vinamilk 100% Có đường 1L",
+      "weather": "RAINY",
+      "rollingMean14d": 17.61,
+      "predictedDailySeries": [
+        14.5,
+        12.59,
+        12.6,
+        12.63,
+        12.54,
+        12.81,
+        14.49
+      ],
+      "predictedDemand7d": 92.2
+    },
+    {
+      "storeId": 3,
+      "storeCode": "RETAIL-STORE-03",
+      "storeName": "LHU Mart Trảng Dài (Store C)",
+      "productId": 3,
+      "sku": "8934567890103",
+      "productName": "Sữa chua ăn Vinamilk Nha Đam 100g",
+      "weather": "NORMAL",
+      "rollingMean14d": 20.76,
+      "predictedDailySeries": [
+        22.38,
+        19.09,
+        19.32,
+        19.6,
+        19.69,
+        19.87,
+        22.38
+      ],
+      "predictedDemand7d": 142.3
+    },
+    {
+      "storeId": 3,
+      "storeCode": "RETAIL-STORE-03",
+      "storeName": "LHU Mart Trảng Dài (Store C)",
+      "productId": 3,
+      "sku": "8934567890103",
+      "productName": "Sữa chua ăn Vinamilk Nha Đam 100g",
+      "weather": "SUNNY",
+      "rollingMean14d": 20.76,
+      "predictedDailySeries": [
+        27.0,
+        22.79,
+        22.96,
+        23.32,
+        23.41,
+        23.43,
+        27.0
+      ],
+      "predictedDemand7d": 169.9
+    },
+    {
+      "storeId": 3,
+      "storeCode": "RETAIL-STORE-03",
+      "storeName": "LHU Mart Trảng Dài (Store C)",
+      "productId": 3,
+      "sku": "8934567890103",
+      "productName": "Sữa chua ăn Vinamilk Nha Đam 100g",
+      "weather": "RAINY",
+      "rollingMean14d": 20.76,
+      "predictedDailySeries": [
+        17.81,
+        15.85,
+        15.84,
+        15.89,
+        15.89,
+        16.14,
+        17.81
+      ],
+      "predictedDemand7d": 115.2
+    },
+    {
+      "storeId": 3,
+      "storeCode": "RETAIL-STORE-03",
+      "storeName": "LHU Mart Trảng Dài (Store C)",
+      "productId": 4,
+      "sku": "8934567890104",
+      "productName": "Sữa chua uống men sống Probi 130ml",
+      "weather": "NORMAL",
+      "rollingMean14d": 17.84,
+      "predictedDailySeries": [
+        19.23,
+        16.58,
+        16.64,
+        16.7,
+        16.62,
+        16.87,
+        19.28
+      ],
+      "predictedDemand7d": 121.9
+    },
+    {
+      "storeId": 3,
+      "storeCode": "RETAIL-STORE-03",
+      "storeName": "LHU Mart Trảng Dài (Store C)",
+      "productId": 4,
+      "sku": "8934567890104",
+      "productName": "Sữa chua uống men sống Probi 130ml",
+      "weather": "SUNNY",
+      "rollingMean14d": 17.84,
+      "predictedDailySeries": [
+        23.3,
+        19.06,
+        19.13,
+        19.04,
+        18.96,
+        18.97,
+        23.31
+      ],
+      "predictedDemand7d": 141.8
+    },
+    {
+      "storeId": 3,
+      "storeCode": "RETAIL-STORE-03",
+      "storeName": "LHU Mart Trảng Dài (Store C)",
+      "productId": 4,
+      "sku": "8934567890104",
+      "productName": "Sữa chua uống men sống Probi 130ml",
+      "weather": "RAINY",
+      "rollingMean14d": 17.84,
+      "predictedDailySeries": [
+        15.47,
+        13.25,
+        13.33,
+        13.39,
+        13.3,
+        13.6,
+        15.51
+      ],
+      "predictedDemand7d": 97.8
+    },
+    {
+      "storeId": 3,
+      "storeCode": "RETAIL-STORE-03",
+      "storeName": "LHU Mart Trảng Dài (Store C)",
+      "productId": 5,
+      "sku": "8934567890201",
+      "productName": "Bánh mì Sandwich tươi Kinh Đô 250g",
+      "weather": "NORMAL",
+      "rollingMean14d": 15.68,
+      "predictedDailySeries": [
+        17.48,
+        14.16,
+        14.07,
+        14.13,
+        14.13,
+        14.52,
+        17.55
+      ],
+      "predictedDemand7d": 106.0
+    },
+    {
+      "storeId": 3,
+      "storeCode": "RETAIL-STORE-03",
+      "storeName": "LHU Mart Trảng Dài (Store C)",
+      "productId": 5,
+      "sku": "8934567890201",
+      "productName": "Bánh mì Sandwich tươi Kinh Đô 250g",
+      "weather": "SUNNY",
+      "rollingMean14d": 15.68,
+      "predictedDailySeries": [
+        20.84,
+        17.87,
+        17.74,
+        17.72,
+        17.72,
+        17.81,
+        20.88
+      ],
+      "predictedDemand7d": 130.6
+    },
+    {
+      "storeId": 3,
+      "storeCode": "RETAIL-STORE-03",
+      "storeName": "LHU Mart Trảng Dài (Store C)",
+      "productId": 5,
+      "sku": "8934567890201",
+      "productName": "Bánh mì Sandwich tươi Kinh Đô 250g",
+      "weather": "RAINY",
+      "rollingMean14d": 15.68,
+      "predictedDailySeries": [
+        14.82,
+        12.26,
+        12.19,
+        12.24,
+        12.11,
+        12.3,
+        14.86
+      ],
+      "predictedDemand7d": 90.8
+    },
+    {
+      "storeId": 3,
+      "storeCode": "RETAIL-STORE-03",
+      "storeName": "LHU Mart Trảng Dài (Store C)",
+      "productId": 8,
+      "sku": "8934567890105",
+      "productName": "Sữa tươi tiệt trùng TH True MILK Nguyên chất 1L",
+      "weather": "NORMAL",
+      "rollingMean14d": 13.07,
+      "predictedDailySeries": [
+        13.19,
+        11.45,
+        11.4,
+        11.43,
+        11.43,
+        11.62,
+        13.19
+      ],
+      "predictedDemand7d": 83.7
+    },
+    {
+      "storeId": 3,
+      "storeCode": "RETAIL-STORE-03",
+      "storeName": "LHU Mart Trảng Dài (Store C)",
+      "productId": 8,
+      "sku": "8934567890105",
+      "productName": "Sữa tươi tiệt trùng TH True MILK Nguyên chất 1L",
+      "weather": "SUNNY",
+      "rollingMean14d": 13.07,
+      "predictedDailySeries": [
+        14.38,
+        12.25,
+        12.18,
+        12.42,
+        12.42,
+        12.44,
+        14.38
+      ],
+      "predictedDemand7d": 90.5
+    },
+    {
+      "storeId": 3,
+      "storeCode": "RETAIL-STORE-03",
+      "storeName": "LHU Mart Trảng Dài (Store C)",
+      "productId": 8,
+      "sku": "8934567890105",
+      "productName": "Sữa tươi tiệt trùng TH True MILK Nguyên chất 1L",
+      "weather": "RAINY",
+      "rollingMean14d": 13.07,
+      "predictedDailySeries": [
+        11.07,
+        9.91,
+        9.84,
+        9.87,
+        9.87,
+        9.93,
+        11.1
+      ],
+      "predictedDemand7d": 71.6
+    },
+    {
+      "storeId": 3,
+      "storeCode": "RETAIL-STORE-03",
+      "storeName": "LHU Mart Trảng Dài (Store C)",
+      "productId": 10,
+      "sku": "8934567890202",
+      "productName": "Bánh bao nhân thịt trứng cút Thọ Phát 120g",
+      "weather": "NORMAL",
+      "rollingMean14d": 12.66,
+      "predictedDailySeries": [
+        11.65,
+        9.93,
+        9.91,
+        9.91,
+        9.88,
+        9.96,
+        11.65
+      ],
+      "predictedDemand7d": 72.9
+    },
+    {
+      "storeId": 3,
+      "storeCode": "RETAIL-STORE-03",
+      "storeName": "LHU Mart Trảng Dài (Store C)",
+      "productId": 10,
+      "sku": "8934567890202",
+      "productName": "Bánh bao nhân thịt trứng cút Thọ Phát 120g",
+      "weather": "SUNNY",
+      "rollingMean14d": 12.66,
+      "predictedDailySeries": [
+        12.39,
+        10.59,
+        10.57,
+        10.64,
+        10.61,
+        10.68,
+        12.39
+      ],
+      "predictedDemand7d": 77.9
+    },
+    {
+      "storeId": 3,
+      "storeCode": "RETAIL-STORE-03",
+      "storeName": "LHU Mart Trảng Dài (Store C)",
+      "productId": 10,
+      "sku": "8934567890202",
+      "productName": "Bánh bao nhân thịt trứng cút Thọ Phát 120g",
+      "weather": "RAINY",
+      "rollingMean14d": 12.66,
+      "predictedDailySeries": [
+        9.62,
+        8.43,
+        8.42,
+        8.42,
+        8.26,
+        8.28,
+        9.62
+      ],
+      "predictedDemand7d": 61.0
+    },
+    {
+      "storeId": 3,
+      "storeCode": "RETAIL-STORE-03",
+      "storeName": "LHU Mart Trảng Dài (Store C)",
+      "productId": 12,
+      "sku": "8934567890204",
+      "productName": "Cơm nắm Onigiri cá hồi sốt Mayo 110g",
+      "weather": "NORMAL",
+      "rollingMean14d": 11.61,
+      "predictedDailySeries": [
+        11.17,
+        9.73,
+        9.74,
+        9.74,
+        9.71,
+        9.79,
+        11.17
+      ],
+      "predictedDemand7d": 71.0
+    },
+    {
+      "storeId": 3,
+      "storeCode": "RETAIL-STORE-03",
+      "storeName": "LHU Mart Trảng Dài (Store C)",
+      "productId": 12,
+      "sku": "8934567890204",
+      "productName": "Cơm nắm Onigiri cá hồi sốt Mayo 110g",
+      "weather": "SUNNY",
+      "rollingMean14d": 11.61,
+      "predictedDailySeries": [
+        11.92,
+        10.48,
+        10.4,
+        10.48,
+        10.45,
+        10.52,
+        11.92
+      ],
+      "predictedDemand7d": 76.2
+    },
+    {
+      "storeId": 3,
+      "storeCode": "RETAIL-STORE-03",
+      "storeName": "LHU Mart Trảng Dài (Store C)",
+      "productId": 12,
+      "sku": "8934567890204",
+      "productName": "Cơm nắm Onigiri cá hồi sốt Mayo 110g",
+      "weather": "RAINY",
+      "rollingMean14d": 11.61,
+      "predictedDailySeries": [
+        8.9,
+        8.18,
+        8.11,
+        8.11,
+        7.95,
+        8.01,
+        8.9
+      ],
+      "predictedDemand7d": 58.2
+    }
+  ]
+}

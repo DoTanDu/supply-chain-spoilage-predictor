@@ -1,0 +1,62 @@
+====================================================================
+               GHI CHÚ HƯỚNG DẪN DỰ ÁN TỪ THẦY
+====================================================================
+
+I. NGUYÊN TẮC QUAN TRỌNG KHI DÙNG AI (CHATGPT / GEMINI / CLAUDE)
+--------------------------------------------------------------------
+1. KHÔNG nhồi nhét tất cả cùng lúc:
+   - Đưa cả dự án hoặc tài liệu quá dài sẽ bị tràn Context (100k - 1M token).
+   - AI sẽ sinh lỗi, làm ẩu, sinh code không đúng ý.
+
+2. Chia nhỏ thành từng đợt (Quy tắc 5 mục):
+   - Cứ làm kỹ 5 mục một, rà soát xong mới làm tiếp 5 mục tiếp theo.
+   - Xây dựng từ từ, làm chắc từng phần rồi mới ghép lại.
+
+3. Câu lệnh (Prompt) ban đầu:
+   - Yêu cầu AI: "Chỉ đọc, phân tích và thảo luận cấu trúc/tính năng".
+   - RÀNG BUỘC: TUYỆT ĐỐI CHƯA ĐƯỢC TỰ Ý SINH CODE hay sửa code lúc này.
+
+
+II. QUY TRÌNH CHUẨN BỊ TÀI LIỆU & ĐẶC TẢ HỆ THỐNG
+--------------------------------------------------------------------
+1. Xác định rõ đối tượng người dùng (User Roles & Permissions):
+   - Có bao nhiêu nhóm người dùng? (VD: Admin, Nhân viên, Học viên/Khách).
+   - Mỗi nhóm được làm những gì?
+   - Mỗi nhóm có những màn hình, chức năng cụ thể nào?
+   - Sử dụng trên thiết bị gì (Web, Mobile, Tablet)?
+
+2. Thiết lập bộ quy tắc thiết kế (UI/UX Guidelines):
+   - Phải đưa khung nguyên tắc thiết kế cho AI bám vào (Design system/rules).
+   - Không để AI tự ý vẽ lung tung các thành phần (như sidebar, thanh menu, nút bấm...).
+   - Có thể nhờ AI phác thảo wireframe/bố cục trước để chốt.
+
+3. Rà soát file đặc tả (File Markdown / Word):
+   - Kiểm tra kỹ các phần: Kiến trúc hệ thống, Frontend, Backend, Database, API.
+   - Thấy thiếu gì thì bổ sung ngay vào tài liệu.
+   - Thống nhất tài liệu hoàn chỉnh trước khi bắt đầu code giao diện.
+
+
+III. ĐỊNH HƯỚNG CÔNG NGHỆ & KIẾN TRÚC
+--------------------------------------------------------------------
+1. Frontend:
+   - Next.js (làm được cả giao diện lẫn API backend nhẹ), hoặc ReactJS.
+
+2. Backend:
+   - NestJS hoặc NodeJS.
+   - Nếu dùng NestJS, bắt buộc phải chia cấu trúc theo từng Module riêng biệt.
+
+3. Phần tích hợp AI:
+   - CHƯA CẦN GẮN AI NGAY.
+   - Hãy làm web quản lý chạy ổn định, đúng nghiệp vụ trước.
+   - Tính năng AI (dự báo, phân tích...) sẽ coi là 1 Module độc lập để bổ sung sau.
+
+
+IV. NHIỆM VỤ CẦN BÁO CÁO CHO BUỔI HỌC TỚI (TUẦN SAU)
+--------------------------------------------------------------------
+- KHÔNG CẦN làm hết toàn bộ trang web.
+- Mục tiêu chính:
+  + Hoàn thiện thật kỹ file đặc tả / thiết kế.
+  + Triển khai demo từ 2 đến 3 Module trọng tâm (VD: Module Trang chủ/Tổng quan, Module Admin quản lý người dùng...).
+  + Đảm bảo các module này làm đúng chuẩn, chuẩn chỉnh từng màn hình.
+
+====================================================================

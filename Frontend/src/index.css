@@ -1,55 +1,148 @@
-/* Modern CSS Design System for Supply Chain Spoilage Predictor */
-:root {
-  --bg-primary: #0b0f19;
-  --bg-secondary: #111827;
-  --bg-card: rgba(17, 24, 39, 0.85);
-  --bg-card-hover: rgba(30, 41, 59, 0.85);
-  --bg-glass: rgba(255, 255, 255, 0.04);
-  
-  --border-color: rgba(255, 255, 255, 0.08);
-  --border-focus: rgba(16, 185, 129, 0.5);
-  
-  --text-main: #f9fafb;
-  --text-muted: #9ca3af;
-  --text-dim: #6b7280;
-  
-  /* Status Colors */
-  --safe-green: #10b981;
-  --safe-green-bg: rgba(16, 185, 129, 0.15);
-  --warning-yellow: #f59e0b;
-  --warning-yellow-bg: rgba(245, 158, 11, 0.15);
-  --danger-red: #ef4444;
-  --danger-red-bg: rgba(239, 68, 68, 0.15);
-  --expired-purple: #a855f7;
-  --expired-purple-bg: rgba(168, 85, 247, 0.15);
-  
-  --accent-blue: #3b82f6;
-  --accent-blue-bg: rgba(59, 130, 246, 0.15);
-  --accent-cyan: #06b6d4;
-  
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
-  
-  --shadow-card: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
-  --shadow-glow: 0 0 20px rgba(16, 185, 129, 0.2);
+/* ==========================================================================
+   LHU MART - SUPPLY CHAIN SPOILAGE PREDICTOR 2.0
+   Design Language: Impeccable Standard (Operate Mode - Dual Theme: Light & Dark)
+   Principles:
+   - Dynamic theme switching (Light / Dark) saved to localStorage
+   - Restrained, purposeful color encoding (action, state, wayfinding)
+   - Genuine depth: crisp surfaces with clean subtle border and natural soft shadows
+   - Authentic Vietnamese typography: Be Vietnam Pro
+   - Zero gradient text (emphasis from weight and size)
+   - Zero arbitrary thick colored borders
+   - High contrast WCAG 2.1 AA compliant text on both light and dark modes
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Light Theme Only (High-Contrast Projector Standard - 100% Light Mode)
+   -------------------------------------------------------------------------- */
+:root,
+[data-theme="light"],
+[data-theme="dark"] {
+  /* Surfaces & Canvas Hierarchy */
+  --bg-primary: #f8fafc;
+  /* Canvas xám trắng sáng rõ nét (Slate 50) */
+  --bg-secondary: #ffffff;
+  /* Nền thanh điều hướng Header & Sidebar */
+  --bg-surface: #ffffff;
+  /* Bề mặt panel, bảng dữ liệu, cards */
+  --bg-surface-elevated: #ffffff;
+  /* Bề mặt nổi, dropdown, modal */
+  --bg-subtle: #f1f5f9;
+  /* Khối con lồng nhau, nền hover (Slate 100) */
+
+  /* Borders & Dividers */
+  --border-subtle: #e2e8f0;
+  /* Viền phân cách rõ nét (Slate 200) */
+  --border-color: #cbd5e1;
+  /* Viền input, card viền rõ (Slate 300) */
+  --border-hover: #94a3b8;
+  /* Viền khi hover (Slate 400) */
+  --border-focus: rgba(79, 70, 229, 0.45);
+
+  /* Typography Colors - High Contrast for Projector */
+  --text-main: #0f172a;
+  /* Tiêu đề & dữ liệu chính (Slate 900) */
+  --text-secondary: #1e293b;
+  /* Nội dung phụ, bảng biểu (Slate 800) */
+  --text-muted: #475569;
+  /* Nhãn trường, đơn vị đo rõ nét (Slate 600) */
+  --text-dim: #64748b;
+  /* Metadata, mã SKU, ngày giờ (Slate 500) */
+
+  /* Primary Brand Accent (Royal Indigo Sapphire) */
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+  --primary-bg: #eef2ff;
+  --primary-border: #c7d2fe;
+
+  /* Semantic State Colors */
+  --safe-green: #059669;
+  --safe-green-light: #047857;
+  --safe-green-bg: #ecfdf5;
+  --safe-green-border: #a7f3d0;
+
+  --warning-yellow: #d97706;
+  --warning-yellow-light: #b45309;
+  --warning-yellow-bg: #fffbeb;
+  --warning-yellow-border: #fde68a;
+
+  --danger-red: #e11d48;
+  --danger-red-light: #be123c;
+  --danger-red-bg: #fff1f2;
+  --danger-red-border: #fecdd3;
+
+  --expired-purple: #9333ea;
+  --expired-purple-light: #7e22ce;
+  --expired-purple-bg: #faf5ff;
+  --expired-purple-border: #e9d5ff;
+
+  --accent-blue: #2563eb;
+  --accent-blue-light: #1d4ed8;
+  --accent-blue-bg: #eff6ff;
+  --accent-blue-border: #bfdbfe;
+
+  /* Aliases & Fallbacks for Component Compatibility */
+  --bg-card: #ffffff;
+  --bg-hover: #f1f5f9;
+  --accent-primary: #4f46e5;
+  --critical-red: #e11d48;
+  --critical-red-bg: #fff1f2;
+  --critical-red-border: #fecdd3;
+  --warning-amber: #d97706;
+  --warning-amber-bg: #fffbeb;
+  --warning-amber-border: #fde68a;
+
+  /* Natural Depth Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(15, 23, 42, 0.06);
+  --shadow-card: 0 1px 3px 0 rgba(15, 23, 42, 0.08), 0 1px 2px -1px rgba(15, 23, 42, 0.05);
+  --shadow-elevated: 0 10px 15px -3px rgba(15, 23, 42, 0.1), 0 4px 6px -4px rgba(15, 23, 42, 0.05);
+
+  --scroll-thumb: rgba(15, 23, 42, 0.2);
+  --scroll-thumb-hover: rgba(15, 23, 42, 0.35);
+  --modal-backdrop: rgba(15, 23, 42, 0.45);
 }
 
-* {
+/* Common System Setup */
+:root {
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+}
+
+/* Base Reset */
+*,
+*::before,
+*::after {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
+html {
+  font-size: 14.5px;
+  scroll-behavior: smooth;
+}
+
 body {
-  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background-color: var(--bg-primary);
   color: var(--text-main);
   min-height: 100vh;
   overflow-x: hidden;
   line-height: 1.5;
+  letter-spacing: -0.012em;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Tabular figures for financial and inventory data */
+.num-tabular,
+strong,
+.kpi-value {
+  font-variant-numeric: tabular-nums;
 }
 
 /* Custom Scrollbars */
@@ -57,34 +150,37 @@ body {
   width: 6px;
   height: 6px;
 }
+
 ::-webkit-scrollbar-track {
-  background: var(--bg-primary);
-}
-::-webkit-scrollbar-thumb {
-  background: #374151;
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #4b5563;
+  background: transparent;
 }
 
-/* Glassmorphism Effect */
+::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-thumb-hover);
+}
+
+/* Surfaces */
 .glass-panel {
-  background: var(--bg-card);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-card);
 }
 
 .glass-panel-interactive {
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
+
 .glass-panel-interactive:hover {
-  background: var(--bg-card-hover);
-  border-color: rgba(255, 255, 255, 0.15);
-  transform: translateY(-2px);
+  background: var(--bg-surface-elevated);
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-elevated);
+  transform: translateY(-1px);
 }
 
 /* Buttons */
@@ -92,159 +188,304 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 7px;
   padding: 8px 16px;
-  font-size: 0.875rem;
+  font-family: inherit;
+  font-size: 0.85rem;
   font-weight: 600;
   border-radius: var(--radius-md);
   border: 1px solid transparent;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
   white-space: nowrap;
+  outline: none;
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  background: var(--primary);
   color: #ffffff;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-}
-.btn-primary:hover {
-  filter: brightness(1.1);
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+  box-shadow: 0 1px 2px rgba(79, 70, 229, 0.25);
 }
 
-.btn-danger {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-  color: #ffffff;
-}
-.btn-danger:hover {
-  filter: brightness(1.1);
+.btn-primary:hover:not(:disabled) {
+  background: var(--primary-hover);
 }
 
 .btn-warning {
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  background: var(--warning-yellow);
   color: #ffffff;
+  box-shadow: 0 1px 2px rgba(217, 119, 6, 0.2);
 }
-.btn-warning:hover {
-  filter: brightness(1.1);
+
+.btn-warning:hover:not(:disabled) {
+  background: var(--warning-yellow-light);
+}
+
+.btn-danger {
+  background: var(--danger-red);
+  color: #ffffff;
+  box-shadow: 0 1px 2px rgba(225, 29, 72, 0.2);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--danger-red-light);
 }
 
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--bg-surface);
   color: var(--text-main);
-  border-color: var(--border-color);
+  border: 1px solid var(--border-color);
 }
-.btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.15);
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--bg-subtle);
+  border-color: var(--border-hover);
 }
 
 /* Badges */
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  border-radius: 9999px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  gap: 5px;
+  padding: 3px 8px;
+  font-size: 0.725rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 
 .badge-safe {
-  background: var(--safe-green-bg);
-  color: var(--safe-green);
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  background: var(--primary-bg);
+  color: var(--primary);
+  border: 1px solid var(--primary-border);
 }
 
 .badge-warning {
   background: var(--warning-yellow-bg);
-  color: var(--warning-yellow);
-  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: var(--warning-yellow-light);
+  border: 1px solid var(--warning-yellow-border);
 }
 
 .badge-danger {
   background: var(--danger-red-bg);
-  color: var(--danger-red);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  animation: pulse-red 2s infinite;
+  color: var(--danger-red-light);
+  border: 1px solid var(--danger-red-border);
 }
 
 .badge-expired {
   background: var(--expired-purple-bg);
-  color: var(--expired-purple);
-  border: 1px solid rgba(168, 85, 247, 0.3);
+  color: var(--expired-purple-light);
+  border: 1px solid var(--expired-purple-border);
 }
 
 .badge-blue {
   background: var(--accent-blue-bg);
-  color: var(--accent-blue);
-  border: 1px solid rgba(59, 130, 246, 0.3);
+  color: var(--accent-blue-light);
+  border: 1px solid var(--accent-blue-border);
 }
 
-@keyframes pulse-red {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
-}
-
-/* Inputs */
-.form-input, .form-select {
+/* Form Controls */
+.form-input,
+.form-select,
+input[type="text"],
+input[type="password"],
+input[type="number"],
+select {
   width: 100%;
-  padding: 10px 14px;
-  background: rgba(17, 24, 39, 0.7);
+  box-sizing: border-box;
+  padding: 8px 12px;
+  background: var(--bg-surface);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   color: var(--text-main);
-  font-size: 0.9rem;
+  font-family: inherit;
+  font-size: 0.85rem;
   outline: none;
-  transition: border-color 0.2s;
-}
-.form-input:focus, .form-select:focus {
-  border-color: var(--safe-green);
-  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-/* Tables */
+.form-input:focus,
+.form-select:focus,
+input:focus,
+select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2);
+}
+
+select option {
+  background-color: var(--bg-surface-elevated);
+  color: var(--text-main);
+  padding: 6px;
+}
+
+/* Hide scrollbar while preserving scroll functionality */
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  /* IE and Edge */
+  scrollbar-width: none;
+  /* Firefox */
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+  /* Chrome, Safari, Opera */
+}
+
+/* Modern Tables */
 .modern-table {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
 }
+
 .modern-table th {
-  background: rgba(31, 41, 55, 0.5);
+  background: var(--bg-subtle);
   color: var(--text-muted);
-  font-size: 0.75rem;
+  font-size: 0.725rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  padding: 12px 16px;
+  padding: 10px 14px;
   text-align: left;
-  border-bottom: 1px solid var(--border-color);
-}
-.modern-table td {
-  padding: 14px 16px;
-  font-size: 0.875rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-  vertical-align: middle;
-}
-.modern-table tr:hover td {
-  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid var(--border-subtle);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
-/* Utilities */
-.text-gradient-emerald {
-  background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+.modern-table td {
+  padding: 12px 14px;
+  font-size: 0.835rem;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-main);
+  vertical-align: middle;
 }
-.text-gradient-amber {
-  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+
+.modern-table tr:hover td {
+  background: var(--bg-subtle);
 }
-.text-gradient-rose {
-  background: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+
+/* ==========================================================================
+   ANIMATION KEYFRAMES & RESPONSIVE LAYOUT RULES
+   ========================================================================== */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (max-width: 1024px) {
+  html {
+    font-size: 13.75px;
+  }
+  .modern-table th,
+  .modern-table td {
+    padding: 9px 10px;
+  }
+}
+
+@media (max-width: 768px) {
+  html {
+    font-size: 13.25px;
+  }
+  .btn {
+    padding: 7px 12px;
+    font-size: 0.8rem;
+  }
+}
+
+/* ==========================================================================
+   PRINT STYLESHEET (HÓA ĐƠN K80, TEM NHÃN LÔ DC & STICKER GIẢM GIÁ)
+   ========================================================================== */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  body * {
+    visibility: hidden;
+  }
+  #pos-printable-receipt, #pos-printable-receipt *,
+  #print-batch-label-container, #print-batch-label-container *,
+  #print-discount-sticker-container, #print-discount-sticker-container * {
+    visibility: visible;
+  }
+  #pos-printable-receipt {
+    position: fixed;
+    left: 50% !important;
+    top: 20px !important;
+    transform: translateX(-50%) !important;
+    width: 80mm !important;
+    max-width: 80mm !important;
+    margin: 0 !important;
+    padding: 12px !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 0 !important;
+  }
+  #print-batch-label-container {
+    position: fixed;
+    left: 50% !important;
+    top: 20px !important;
+    transform: translateX(-50%) !important;
+    width: 100mm !important;
+    max-width: 100mm !important;
+    margin: 0 !important;
+    padding: 14px !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+    border: 2px solid #000000 !important;
+    border-radius: 4px !important;
+  }
+  #print-discount-sticker-container {
+    position: static !important;
+    display: block !important;
+    width: 85mm !important;
+    max-width: 85mm !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+  .print-discount-sticker-item {
+    page-break-inside: avoid !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    width: 85mm !important;
+    max-width: 85mm !important;
+    margin: 0 auto 10mm auto !important;
+    padding: 12px !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+    border: 2px solid #000000 !important;
+    border-radius: 6px !important;
+    box-sizing: border-box !important;
+  }
 }

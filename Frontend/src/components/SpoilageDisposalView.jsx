@@ -1,447 +1,817 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Trash2, 
-  AlertTriangle, 
-  CheckCircle, 
-  ShieldCheck, 
-  FileText, 
-  TrendingDown, 
+import {
+  Trash2,
+  AlertTriangle,
+  CheckCircle,
+  ShieldCheck,
+  FileText,
+  TrendingDown,
   Lock,
   Search,
   Filter,
   CheckCircle2,
   Calendar,
   Package,
-  X
+  X,
+  Sparkles,
+  AlertCircle,
+  Clock,
+  ArrowRight,
+  Boxes,
+  History,
+  DollarSign,
+  Download,
+  FileSpreadsheet,
+  Printer,
+  Plus
 } from 'lucide-react';
+import { exportSpoilageLedgerToExcel } from '../utils/exportUtils';
+import PrintSpoilageReceiptModal from './PrintSpoilageReceiptModal';
+import DisposalFormModal from './DisposalFormModal';
 
-// Helper: Normalize Vietnamese strings without diacritics
+// Helper: Chuẩn hóa chuỗi tiếng Việt không dấu
 function stripVietnamese(str) {
   if (!str) return '';
   return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'd').toLowerCase().trim();
 }
 
-export default function SpoilageDisposalView({ 
-  disposals, 
-  batches, 
-  currentRole, 
-  onCreateDisposal, 
+// Helper: Icon ngành hàng
+function getCategoryIcon(catName) {
+  if (!catName) return '📦';
+  if (catName.includes('Sữa')) return '🥛';
+  if (catName.includes('Bánh')) return '🍞';
+  if (catName.includes('Nước')) return '🥤';
+  if (catName.includes('Thịt') || catName.includes('Cá') || catName.includes('Trứng')) return '🥩';
+  if (catName.includes('Rau') || catName.includes('Trái')) return '🥗';
+  if (catName.includes('chế biến')) return '🌭';
+  if (catName.includes('khô')) return '🍜';
+  return '📦';
+}
+
+export default function SpoilageDisposalView({
+  disposals = [],
+  batches = [],
+  products = [],
+  currentUser = null,
+  currentRole = 'STAFF',
+  isAdmin = false,
+  storeProfile = null,
+  onCreateDisposal,
   onApproveDisposal,
-  preselectedBatchId
+  preselectedBatchId,
+  onRequestAdminLogin
 }) {
-  // Eligible batches for disposal (has quantity > 0)
-  const availableBatches = batches.filter(b => b.quantity > 0);
+  // Lô hàng có tồn > 0 và chưa tiêu hủy
+  const availableBatches = batches.filter(b => (Number(b.currentQuantity ?? b.quantity ?? 0) > 0) && b.status !== 'DISPOSED');
 
-  // Search & Filter states
-  const [searchBatch, setSearchBatch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('ALL'); // ALL, EXPIRED, CRITICAL, WARNING, SAFE
+  // Lô nguy cơ: Quá hạn, Vùng Đỏ cận date, Vùng Vàng
+  const atRiskBatches = availableBatches.filter(b =>
+    b.status === 'EXPIRED' || b.status === 'CRITICAL' || b.status === 'WARNING'
+  );
 
-  const [selectedBatchId, setSelectedBatchId] = useState(() => {
-    if (preselectedBatchId) return Number(preselectedBatchId);
-    // Default to the first expired or critical batch, or first batch
-    const priority = availableBatches.find(b => b.status === 'EXPIRED') || 
-                     availableBatches.find(b => b.status === 'CRITICAL') || 
-                     availableBatches[0];
-    return priority ? priority.id : 101;
-  });
+  // Tabs: 'risk-batches' (Lô cần xử lý) | 'disposal-records' (Sổ biên bản tiêu hủy)
+  const [activeTab, setActiveTab] = useState('risk-batches');
 
-  const [disposalQty, setDisposalQty] = useState(() => {
-    const initId = preselectedBatchId ? Number(preselectedBatchId) : selectedBatchId;
-    const b = batches.find(x => x.id === initId);
-    return b ? b.quantity : 1;
-  });
+  // Bộ lọc cho danh sách lô
+  const [batchSearch, setBatchSearch] = useState('');
+  const [batchFilterMode, setBatchFilterMode] = useState('RISK'); // RISK, EXPIRED, CRITICAL, WARNING, ALL
 
-  const [reason, setReason] = useState('EXPIRED');
-  const [notes, setNotes] = useState('');
+  // Bộ lọc cho sổ biên bản
+  const [recordSearch, setRecordSearch] = useState('');
+  const [recordStatusFilter, setRecordStatusFilter] = useState('ALL'); // ALL, APPROVED, PENDING
+
+  // State Modal Lập Phiếu Tiêu Hủy
+  const [isDisposalModalOpen, setIsDisposalModalOpen] = useState(false);
+  const [modalInitialBatchId, setModalInitialBatchId] = useState(null);
+
+  // Banner thông báo kết quả
   const [bannerMsg, setBannerMsg] = useState('');
+  const [selectedRecordToPrint, setSelectedRecordToPrint] = useState(null);
 
-  // Auto-sync when user navigates from FEFO Monitor by clicking "Hủy Lô"
+  // Tự động mở modal nếu được điều hướng từ FEFO Monitor kèm preselectedBatchId
   useEffect(() => {
     if (preselectedBatchId) {
-      setSelectedBatchId(Number(preselectedBatchId));
-      const targetBatch = batches.find(b => b.id === Number(preselectedBatchId));
-      if (targetBatch) {
-        setDisposalQty(targetBatch.quantity); // Default to full remaining quantity for disposal
-        if (targetBatch.status === 'EXPIRED') setReason('EXPIRED');
-        else if (targetBatch.status === 'CRITICAL') setReason('COLD_CHAIN_FAIL');
-      }
+      setModalInitialBatchId(Number(preselectedBatchId));
+      setIsDisposalModalOpen(true);
     }
-  }, [preselectedBatchId, batches]);
+  }, [preselectedBatchId]);
 
-  // Filtered batches according to search and status filter
+  // Lọc danh sách Lô
   const filteredBatches = availableBatches.filter(b => {
-    const matchesStatus = statusFilter === 'ALL' || b.status === statusFilter;
-    if (!searchBatch.trim()) return matchesStatus;
+    let matchesMode = true;
+    if (batchFilterMode === 'RISK') {
+      matchesMode = b.status === 'EXPIRED' || b.status === 'CRITICAL' || b.status === 'WARNING';
+    } else if (batchFilterMode !== 'ALL') {
+      matchesMode = b.status === batchFilterMode;
+    }
 
-    const normSearch = stripVietnamese(searchBatch);
+    if (!batchSearch.trim()) return matchesMode;
+
+    const normSearch = stripVietnamese(batchSearch);
     const normName = stripVietnamese(b.productName);
     const normCode = (b.batchCode || '').toLowerCase();
-    const tokens = normSearch.split(/\s+/).filter(Boolean);
-
-    const matchesSearch = tokens.every(tok => normName.includes(tok) || normCode.includes(tok));
-    return matchesStatus && matchesSearch;
+    return matchesMode && (normName.includes(normSearch) || normCode.includes(normSearch));
   });
 
-  const currentSelectedBatch = batches.find(b => b.id === Number(selectedBatchId));
+  // Lọc sổ biên bản
+  const filteredRecords = disposals.filter(d => {
+    const matchesStatus = recordStatusFilter === 'ALL' || d.status === recordStatusFilter;
+    if (!recordSearch.trim()) return matchesStatus;
 
-  const totalFinancialLoss = disposals.reduce((sum, d) => sum + d.totalLoss, 0);
+    const normSearch = stripVietnamese(recordSearch);
+    const normId = (d.id || d.recordCode || '').toLowerCase();
+    const normProd = stripVietnamese(d.productName || '');
+    const normBatch = (d.batchCode || '').toLowerCase();
+    return matchesStatus && (normId.includes(normSearch) || normProd.includes(normSearch) || normBatch.includes(normSearch));
+  });
 
-  const handleSelectBatch = (batch) => {
-    setSelectedBatchId(batch.id);
-    // When selecting a batch, default disposal quantity to its remaining stock
-    setDisposalQty(batch.quantity);
-    if (batch.status === 'EXPIRED') setReason('EXPIRED');
-    else if (batch.status === 'CRITICAL') setReason('COLD_CHAIN_FAIL');
+  // Thống kê tài chính
+  const totalFinancialLoss = disposals.reduce((sum, d) => sum + (d.totalLoss || d.costLoss || 0), 0);
+  const totalDisposedItems = disposals.reduce((sum, d) => sum + (d.quantity || d.quantityDisposed || 0), 0);
+  const approvedCount = disposals.filter(d => d.status === 'APPROVED').length;
+  const pendingCount = disposals.filter(d => d.status === 'PENDING').length;
+
+  // Xử lý gửi phiếu từ Modal
+  const handleModalSubmit = async (recordData) => {
+    if (onCreateDisposal) {
+      const res = await onCreateDisposal(recordData);
+      if (res && res.success === false) {
+        throw new Error(res.message || 'Lỗi ghi nhận CSDL');
+      }
+      const finalCode = res?.recordCode || recordData.id;
+      setBannerMsg(recordData.status === 'APPROVED'
+        ? `✓ Đã lập biên bản ${finalCode} và DUYỆT trừ kho thành công! CostLoss: ${recordData.costLoss.toLocaleString('vi-VN')} đ`
+        : `✓ Đã lập đề xuất tiêu hủy ${finalCode}! Biên bản đang ở trạng thái Chờ duyệt.`);
+      setTimeout(() => setBannerMsg(''), 6000);
+
+      // Mở modal in biên bản
+      setSelectedRecordToPrint({
+        ...recordData,
+        recordCode: finalCode,
+        id: finalCode
+      });
+    }
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!currentSelectedBatch) return;
-
-    if (disposalQty <= 0 || disposalQty > currentSelectedBatch.quantity) {
-      alert(`Số lượng hủy phải từ 1 đến ${currentSelectedBatch.quantity}!`);
-      return;
-    }
-
-    const newRecord = {
-      id: `DISP-${Date.now().toString().slice(-6)}`,
-      date: '2026-09-24',
-      batchId: currentSelectedBatch.id,
-      batchCode: currentSelectedBatch.batchCode,
-      productName: currentSelectedBatch.productName,
-      quantity: Number(disposalQty),
-      costPrice: currentSelectedBatch.costPrice,
-      totalLoss: Number(disposalQty) * currentSelectedBatch.costPrice,
-      reason: reason === 'EXPIRED' ? 'Quá hạn sử dụng (EXPIRED)' : 
-              reason === 'DAMAGED_SHELF' ? 'Rách bao bì trên kệ (DAMAGED_SHELF)' : 
-              reason === 'COLD_CHAIN_FAIL' ? 'Lỗi bảo quản lạnh (COLD_CHAIN_FAIL)' : 'Hư hỏng vận chuyển',
-      approvedBy: currentRole === 'STORE_MANAGER' ? 'Quản lý Cửa hàng' : 'Chờ phê duyệt',
-      status: currentRole === 'STORE_MANAGER' ? 'APPROVED' : 'PENDING'
-    };
-
-    onCreateDisposal(newRecord);
-    setBannerMsg(currentRole === 'STORE_MANAGER' ? 
-      `✓ Đã lập phiếu ${newRecord.id} và PHÊ DUYỆT tiêu hủy thành công! Tồn kho lô ${currentSelectedBatch.batchCode} đã được trừ sạch.` : 
-      `✓ Đã lập phiếu đề xuất tiêu hủy ${newRecord.id}! Chờ Cửa hàng trưởng phê duyệt.`);
-    
-    setTimeout(() => setBannerMsg(''), 7000);
+  const handleOpenDisposalForBatch = (b) => {
+    setModalInitialBatchId(b ? b.id : null);
+    setIsDisposalModalOpen(true);
   };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '460px 1fr', gap: '24px', alignItems: 'start' }}>
-      
-      {/* Form: Create Disposal Record */}
-      <div className="glass-panel" style={{ padding: '24px' }}>
-        <div style={{ marginBottom: '18px' }}>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Trash2 size={22} color="#ef4444" />
-            Lập Phiếu Tiêu Hủy Hàng Hỏng
-          </h2>
-          <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-            Quy tắc: Hạch toán chính xác số tiền thiệt hại = Số lượng hủy × Giá vốn.
-          </p>
-        </div>
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '12px',
+      minHeight: 'calc(100vh - 115px)'
+    }}>
 
-        {bannerMsg && (
+      {/* HEADER & THANH ĐIỀU PHỐI CHÍNH (FULL-WIDTH) */}
+      <div style={{
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-subtle)',
+        borderRadius: '12px',
+        padding: '12px 18px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '12px',
+        flexShrink: 0
+      }}>
+        {/* Tiêu đề & Thông tin cửa hàng */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{
-            background: 'rgba(16, 185, 129, 0.15)',
-            border: '1px solid var(--safe-green)',
-            borderRadius: '10px',
-            padding: '12px 14px',
-            marginBottom: '16px',
-            fontSize: '0.85rem',
-            color: '#a7f3d0',
+            width: '38px',
+            height: '38px',
+            borderRadius: '9px',
+            background: 'rgba(239, 68, 68, 0.15)',
+            border: '1px solid rgba(239, 68, 68, 0.35)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '8px'
+            justifyContent: 'center',
+            color: '#ef4444'
           }}>
-            <span>{bannerMsg}</span>
-            <button onClick={() => setBannerMsg('')} style={{ background: 'none', border: 'none', color: '#a7f3d0', cursor: 'pointer' }}>
-              <X size={16} />
-            </button>
+            <Trash2 size={20} />
           </div>
-        )}
-
-        {/* Search & Status Filters for Batches */}
-        <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '14px', marginBottom: '16px' }}>
-          <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#ffffff', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Search size={14} color="var(--safe-green)" />
-            Tìm kiếm & Lọc Lô Cần Tiêu Hủy:
-          </label>
-          
-          <div style={{ position: 'relative', marginBottom: '10px' }}>
-            <input
-              type="text"
-              className="form-input"
-              style={{ width: '100%', paddingLeft: '34px', fontSize: '0.85rem' }}
-              placeholder="Gõ mã lô hoặc tên sản phẩm..."
-              value={searchBatch}
-              onChange={(e) => setSearchBatch(e.target.value)}
-            />
-            <Search size={16} color="var(--text-dim)" style={{ position: 'absolute', left: '10px', top: '10px' }} />
-            {searchBatch && (
-              <button 
-                onClick={() => setSearchBatch('')}
-                style={{ position: 'absolute', right: '10px', top: '9px', background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer' }}
-              >
-                <X size={14} />
-              </button>
-            )}
-          </div>
-
-          {/* Status filter chips */}
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            {[
-              { id: 'ALL', label: 'Tất cả', count: availableBatches.length },
-              { id: 'EXPIRED', label: 'Quá hạn (Đỏ)', count: availableBatches.filter(b => b.status === 'EXPIRED').length },
-              { id: 'CRITICAL', label: 'Cận date (Đỏ)', count: availableBatches.filter(b => b.status === 'CRITICAL').length },
-              { id: 'WARNING', label: 'Cảnh báo (Vàng)', count: availableBatches.filter(b => b.status === 'WARNING').length }
-            ].map(tab => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setStatusFilter(tab.id)}
-                style={{
-                  fontSize: '0.725rem',
-                  padding: '4px 10px',
-                  borderRadius: '20px',
-                  border: statusFilter === tab.id ? '1px solid var(--safe-green)' : '1px solid rgba(255,255,255,0.08)',
-                  background: statusFilter === tab.id ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255,255,255,0.03)',
-                  color: statusFilter === tab.id ? 'var(--safe-green)' : 'var(--text-muted)',
-                  cursor: 'pointer',
-                  fontWeight: statusFilter === tab.id ? 700 : 500,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}
-              >
-                <span>{tab.label}</span>
-                <span style={{ fontSize: '0.65rem', opacity: 0.8 }}>({tab.count})</span>
-              </button>
-            ))}
-          </div>
-
-          {/* Quick-pick list */}
-          <div style={{ marginTop: '10px', maxHeight: '160px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {filteredBatches.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '12px', fontSize: '0.8rem', color: 'var(--text-dim)' }}>
-                Không tìm thấy lô hàng nào khớp điều kiện tìm kiếm.
-              </div>
-            ) : (
-              filteredBatches.map(b => {
-                const isSelected = b.id === Number(selectedBatchId);
-                return (
-                  <div
-                    key={b.id}
-                    onClick={() => handleSelectBatch(b)}
-                    style={{
-                      padding: '8px 10px',
-                      borderRadius: '8px',
-                      border: isSelected ? '1px solid var(--safe-green)' : '1px solid rgba(255,255,255,0.06)',
-                      background: isSelected ? 'rgba(16, 185, 129, 0.1)' : 'rgba(0,0,0,0.2)',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontSize: '0.825rem', fontWeight: 700, color: isSelected ? '#ffffff' : 'var(--text-color)' }}>
-                        {b.productName}
-                      </div>
-                      <div style={{ fontSize: '0.725rem', color: 'var(--text-dim)', display: 'flex', gap: '6px' }}>
-                        <span>Lô: <strong>{b.batchCode}</strong></span>
-                        <span>• HSD: {b.expiryDate}</span>
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <span className={`badge ${b.status === 'EXPIRED' ? 'badge-expired' : b.status === 'CRITICAL' ? 'badge-critical' : b.status === 'WARNING' ? 'badge-warning' : 'badge-safe'}`} style={{ fontSize: '0.65rem', padding: '2px 6px' }}>
-                        Tồn: {b.quantity}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })
-            )}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <h2 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0, color: 'var(--text-main)', letterSpacing: '-0.02em' }}>
+                Sổ Hao Hụt Tài Chính & Tiêu Hủy Hàng Hỏng
+              </h2>
+              
+            </div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+              Cơ sở: <strong style={{ color: 'var(--primary)' }}>{storeProfile?.storeCode || 'RETAIL-STORE-01'}</strong> ({storeProfile?.storeName || 'LHU Mart'}) 
+            </div>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          
-          <div>
-            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px', display: 'block' }}>
-              Lô hàng được chọn xử lý:
-            </label>
-            <select 
-              className="form-select"
-              value={selectedBatchId}
-              onChange={(e) => {
-                const b = batches.find(x => x.id === Number(e.target.value));
-                if (b) handleSelectBatch(b);
-              }}
-            >
-              {availableBatches.map(b => (
-                <option key={b.id} value={b.id}>
-                  {b.batchCode} - {b.productName} (Tồn: {b.quantity} | {b.status})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px', display: 'block' }}>
-              Số lượng tiêu hủy (Tối đa: {currentSelectedBatch?.quantity || 0}):
-            </label>
-            <input 
-              type="number"
-              className="form-input"
-              min="1"
-              max={currentSelectedBatch?.quantity || 1}
-              value={disposalQty}
-              onChange={(e) => setDisposalQty(e.target.value)}
-              required
-            />
-          </div>
-
-          <div>
-            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px', display: 'block' }}>
-              Lý do tiêu hủy:
-            </label>
-            <select 
-              className="form-select"
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-            >
-              <option value="EXPIRED">Quá hạn sử dụng (EXPIRED)</option>
-              <option value="DAMAGED_SHELF">Rách/vỡ bao bì trên kệ (DAMAGED_SHELF)</option>
-              <option value="COLD_CHAIN_FAIL">Lỗi nhiệt độ bảo quản lạnh (COLD_CHAIN_FAIL)</option>
-              <option value="TRANSIT_DEFECT">Hư hỏng do vận chuyển từ DC</option>
-            </select>
-          </div>
-
-          {currentSelectedBatch && (
-            <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '10px', padding: '12px', fontSize: '0.825rem' }}>
-              <div style={{ color: 'var(--text-muted)' }}>Ước tính thiệt hại tài chính:</div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#ef4444', marginTop: '2px' }}>
-                {((disposalQty || 0) * currentSelectedBatch.costPrice).toLocaleString('vi-VN')} đ
-              </div>
-              <div style={{ fontSize: '0.725rem', color: 'var(--text-dim)', marginTop: '4px' }}>
-                Giá vốn nhập: {currentSelectedBatch.costPrice.toLocaleString('vi-VN')} đ / đơn vị
-              </div>
-            </div>
-          )}
-
-          <button 
-            type="submit" 
-            className="btn btn-danger"
-            style={{ width: '100%', padding: '12px', marginTop: '6px' }}
+        {/* Cụm Nút Thao Tác: Lập Phiếu Tiêu Hủy & Xuất Excel */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <button
+            type="button"
+            onClick={() => exportSpoilageLedgerToExcel(filteredRecords)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '7px 12px',
+              borderRadius: '8px',
+              background: 'var(--bg-subtle)',
+              border: '1px solid var(--border-color)',
+              color: 'var(--text-main)',
+              fontSize: '0.785rem',
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+            title="Xuất dữ liệu Sổ hao hụt tài chính ra file Excel CSV"
           >
-            <FileText size={18} /> Gửi Phiếu Tiêu Hủy
+            <Download size={14} color="#10b981" />
+            <span>Xuất Excel</span>
           </button>
-        </form>
 
-        <div style={{ marginTop: '16px', fontSize: '0.75rem', color: 'var(--text-dim)', borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
-          * Lưu ý: Nếu thao tác bởi Nhân viên, phiếu sẽ chuyển sang trạng thái <em>Chờ duyệt</em>. Cửa hàng trưởng có quyền bấm phê duyệt ngay.
+          <button
+            type="button"
+            onClick={() => handleOpenDisposalForBatch(null)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '7px 16px',
+              borderRadius: '8px',
+              background: '#ef4444',
+              border: 'none',
+              color: '#ffffff',
+              fontSize: '0.825rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              boxShadow: '0 2px 4px rgba(239, 68, 68, 0.3)'
+            }}
+          >
+            <Plus size={16} />
+            <span>+ Lập Phiếu Tiêu Hủy Mới</span>
+          </button>
         </div>
       </div>
 
-      {/* Disposals List & Approval Panel */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        
-        {/* Loss Summary Bar */}
-        <div className="glass-panel" style={{ padding: '18px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      {/* BANNER THÔNG BÁO TÁC VỤ */}
+      {bannerMsg && (
+        <div style={{
+          background: bannerMsg.startsWith('❌') ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+          border: bannerMsg.startsWith('❌') ? '1px solid rgba(239, 68, 68, 0.35)' : '1px solid rgba(16, 185, 129, 0.35)',
+          color: bannerMsg.startsWith('❌') ? '#dc2626' : '#047857',
+          padding: '8px 14px',
+          borderRadius: '8px',
+          fontSize: '0.8rem',
+          fontWeight: 600,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexShrink: 0
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {bannerMsg.startsWith('❌') ? <AlertCircle size={16} /> : <CheckCircle2 size={16} />}
+            <span>{bannerMsg}</span>
+          </div>
+          <button onClick={() => setBannerMsg('')} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0 }}>
+            <X size={15} />
+          </button>
+        </div>
+      )}
+
+      {/* DẢI 3 CHỈ SỐ KPI TÀI CHÍNH HAO HỤT */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px', flexShrink: 0 }}>
+        <div style={{
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: '10px',
+          padding: '12px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}>
           <div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>TỔNG THIỆT HẠI HÀNG HỦY</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#ef4444' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              Tổng Tổn Thất Hao Hụt (CostLoss)
+            </span>
+            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#dc2626', marginTop: '2px' }}>
               {totalFinancialLoss.toLocaleString('vi-VN')} đ
             </div>
           </div>
+          <DollarSign size={24} color="#dc2626" style={{ opacity: 0.8 }} />
+        </div>
 
-          <div style={{ textAlign: 'right' }}>
-            <span className="badge badge-warning">
-              Quyền hiện tại: {currentRole === 'STORE_MANAGER' ? 'Cửa hàng trưởng (Có quyền duyệt)' : 'Nhân viên (Chỉ lập phiếu)'}
+        <div style={{
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: '10px',
+          padding: '12px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}>
+          <div>
+            <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              Hàng Đã Tiêu Hủy
             </span>
+            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#d97706', marginTop: '2px' }}>
+              {totalDisposedItems} món
+            </div>
+          </div>
+          <Package size={24} color="#d97706" style={{ opacity: 0.8 }} />
+        </div>
+
+        <div style={{
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: '10px',
+          padding: '12px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}>
+          <div>
+            <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              Tình Trạng Phê Duyệt Sổ
+            </span>
+            <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#047857', marginTop: '4px', display: 'flex', gap: '10px' }}>
+              <span>✓ {approvedCount} đã chốt</span>
+              {pendingCount > 0 && <span style={{ color: '#d97706' }}>⏳ {pendingCount} chờ duyệt</span>}
+            </div>
+          </div>
+          <ShieldCheck size={24} color="#047857" style={{ opacity: 0.8 }} />
+        </div>
+      </div>
+
+      {/* CONTAINER CHÍNH CHỨA 2 TABS TO RỘNG 100% FULL-WIDTH */}
+      <div style={{
+        flex: 1,
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-subtle)',
+        borderRadius: '12px',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden'
+      }}>
+        {/* Tab Switcher Toolbar */}
+        <div style={{
+          padding: '10px 16px',
+          borderBottom: '1px solid var(--border-subtle)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '10px',
+          background: 'var(--bg-subtle)'
+        }}>
+          {/* 2 Tabs chuyển đổi */}
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={() => setActiveTab('risk-batches')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                borderRadius: '8px',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: 700,
+                fontSize: '0.825rem',
+                background: activeTab === 'risk-batches' ? 'rgba(239, 68, 68, 0.14)' : 'transparent',
+                color: activeTab === 'risk-batches' ? '#dc2626' : 'var(--text-muted)',
+                outline: activeTab === 'risk-batches' ? '1px solid #dc2626' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <AlertTriangle size={15} />
+              <span>Lô Cần Xử Lý ({atRiskBatches.length} Lô)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('disposal-records')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                borderRadius: '8px',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: 700,
+                fontSize: '0.825rem',
+                background: activeTab === 'disposal-records' ? 'rgba(16, 185, 129, 0.14)' : 'transparent',
+                color: activeTab === 'disposal-records' ? '#047857' : 'var(--text-muted)',
+                outline: activeTab === 'disposal-records' ? '1px solid #059669' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <FileText size={15} />
+              <span>Sổ Biên Bản Tiêu Hủy ({disposals.length} Phiếu)</span>
+            </button>
+          </div>
+
+          {/* Ô Tìm Kiếm theo ngữ cảnh của Tab đang chọn */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {activeTab === 'risk-batches' ? (
+              <>
+                <div style={{ position: 'relative', width: '260px' }}>
+                  <Search size={14} style={{ position: 'absolute', left: '10px', top: '9px', color: 'var(--text-muted)' }} />
+                  <input
+                    type="text"
+                    className="form-input"
+                    style={{
+                      width: '100%',
+                      paddingLeft: '30px',
+                      paddingRight: '10px',
+                      height: '32px',
+                      fontSize: '0.785rem',
+                      borderRadius: '6px',
+                      boxSizing: 'border-box'
+                    }}
+                    placeholder="Tìm mã lô (LOT-...), tên sp..."
+                    value={batchSearch}
+                    onChange={(e) => setBatchSearch(e.target.value)}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  {[
+                    { id: 'RISK', label: 'Cần xử lý', count: atRiskBatches.length },
+                    { id: 'EXPIRED', label: 'Quá hạn', count: availableBatches.filter(b => b.status === 'EXPIRED').length },
+                    { id: 'CRITICAL', label: 'Cận date', count: availableBatches.filter(b => b.status === 'CRITICAL').length },
+                    { id: 'ALL', label: 'Tất cả lô', count: availableBatches.length }
+                  ].map(chip => (
+                    <button
+                      key={chip.id}
+                      type="button"
+                      onClick={() => setBatchFilterMode(chip.id)}
+                      style={{
+                        fontSize: '0.72rem',
+                        padding: '4px 8px',
+                        borderRadius: '6px',
+                        border: batchFilterMode === chip.id ? '1px solid #dc2626' : '1px solid var(--border-subtle)',
+                        background: batchFilterMode === chip.id ? 'rgba(239, 68, 68, 0.12)' : 'var(--bg-surface)',
+                        color: batchFilterMode === chip.id ? '#dc2626' : 'var(--text-muted)',
+                        cursor: 'pointer',
+                        fontWeight: batchFilterMode === chip.id ? 700 : 500
+                      }}
+                    >
+                      {chip.label} ({chip.count})
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ position: 'relative', width: '280px' }}>
+                  <Search size={14} style={{ position: 'absolute', left: '10px', top: '9px', color: 'var(--text-muted)' }} />
+                  <input
+                    type="text"
+                    className="form-input"
+                    style={{
+                      width: '100%',
+                      paddingLeft: '30px',
+                      paddingRight: '10px',
+                      height: '32px',
+                      fontSize: '0.785rem',
+                      borderRadius: '6px',
+                      boxSizing: 'border-box'
+                    }}
+                    placeholder="Tìm mã phiếu (DISP-...), tên sản phẩm..."
+                    value={recordSearch}
+                    onChange={(e) => setRecordSearch(e.target.value)}
+                  />
+                </div>
+
+                <select
+                  className="form-select"
+                  style={{
+                    width: '150px',
+                    height: '32px',
+                    padding: '0 8px',
+                    fontSize: '0.785rem',
+                    borderRadius: '6px',
+                    boxSizing: 'border-box'
+                  }}
+                  value={recordStatusFilter}
+                  onChange={(e) => setRecordStatusFilter(e.target.value)}
+                >
+                  <option value="ALL">Tất cả trạng thái</option>
+                  <option value="APPROVED">Đã phê duyệt</option>
+                  <option value="PENDING">Chờ duyệt</option>
+                </select>
+              </>
+            )}
           </div>
         </div>
 
-        {/* Table of Disposals */}
-        <div className="glass-panel" style={{ overflow: 'hidden' }}>
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <FileText size={18} color="var(--safe-green)" />
-            <h3 style={{ fontSize: '0.95rem', fontWeight: 700, margin: 0 }}>
-              Danh Sách Phiếu Tiêu Hủy Hàng Hóa & Biên Bản Hạch Toán
-            </h3>
-          </div>
-
-          <div style={{ overflowX: 'auto' }}>
-            <table className="modern-table">
-              <thead>
+        {/* ========================================================================= */}
+        {/* NỘI DUNG TAB 1: BẢNG LÔ CẦN XỬ LÝ (100% FULL-WIDTH) */}
+        {/* ========================================================================= */}
+        {activeTab === 'risk-batches' && (
+          <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
+            <table className="modern-table" style={{ margin: 0, width: '100%' }}>
+              <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-secondary)' }}>
                 <tr>
-                  <th>Mã Phiếu & Ngày</th>
-                  <th>Sản Phẩm & Lô</th>
-                  <th>Số Lượng</th>
-                  <th>Lý Do Hủy</th>
-                  <th>Thiệt Hại</th>
-                  <th>Trạng Thái / Phê Duyệt</th>
+                  <th style={{ width: '140px', padding: '10px 14px' }}>Mã Lô</th>
+                  <th style={{ padding: '10px 14px' }}>Sản Phẩm & Ngành Hàng</th>
+                  <th style={{ width: '110px', padding: '10px 14px' }}>Hạn Dùng</th>
+                  <th style={{ width: '90px', padding: '10px 14px' }}>Tồn Kho</th>
+                  <th style={{ width: '100px', padding: '10px 14px' }}>Giá Vốn</th>
+                  <th style={{ width: '120px', textAlign: 'right', padding: '10px 14px' }}>Thiệt Hại Lô</th>
+                  <th style={{ width: '100px', textAlign: 'center', padding: '10px 14px' }}>Trạng Thái</th>
+                  <th style={{ width: '120px', textAlign: 'center', padding: '10px 14px' }}>Thao Tác</th>
                 </tr>
               </thead>
               <tbody>
-                {disposals.map((item) => (
-                  <tr key={item.id}>
-                    <td>
-                      <div style={{ fontWeight: 700, color: '#ffffff' }}>{item.id}</div>
-                      <div style={{ fontSize: '0.725rem', color: 'var(--text-dim)' }}>{item.date}</div>
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: 600 }}>{item.productName}</div>
-                      <div style={{ fontSize: '0.725rem', color: 'var(--text-dim)' }}>Lô: {item.batchCode}</div>
-                    </td>
-                    <td>
-                      <strong style={{ color: '#ef4444' }}>-{item.quantity}</strong>
-                    </td>
-                    <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      {item.reason}
-                    </td>
-                    <td>
-                      <strong style={{ color: '#f59e0b' }}>{item.totalLoss.toLocaleString('vi-VN')} đ</strong>
-                    </td>
-                    <td>
-                      {item.status === 'APPROVED' ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span className="badge badge-safe" style={{ fontSize: '0.65rem' }}>Đã Phê Duyệt</span>
-                          <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>{item.approvedBy}</span>
-                        </div>
-                      ) : (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span className="badge badge-warning" style={{ fontSize: '0.65rem' }}>Chờ Duyệt</span>
-                          {currentRole === 'STORE_MANAGER' ? (
-                            <button 
-                              className="btn btn-primary"
-                              style={{ fontSize: '0.7rem', padding: '4px 8px' }}
-                              onClick={() => {
-                                onApproveDisposal(item.id);
-                                setBannerMsg(`✓ Đã phê duyệt phiếu tiêu hủy ${item.id}!`);
-                                setTimeout(() => setBannerMsg(''), 5000);
-                              }}
-                            >
-                              <ShieldCheck size={12} /> Duyệt Hủy
-                            </button>
-                          ) : (
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>Cần Quản lý</span>
-                          )}
-                        </div>
-                      )}
+                {filteredBatches.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                      Không có lô hàng nào cần xử lý hoặc khớp điều kiện tìm kiếm.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  filteredBatches.map((b) => {
+                    const stockQty = Number(b.currentQuantity ?? b.quantity ?? 0);
+                    const estLoss = stockQty * (b.importPrice || b.costPrice || 25000);
+                    return (
+                      <tr key={b.id}>
+                        {/* Batch Code */}
+                        <td style={{ padding: '8px 14px' }}>
+                          <span style={{ fontWeight: 700, color: 'var(--primary)', fontFamily: 'monospace', fontSize: '0.825rem' }}>
+                            {b.batchCode}
+                          </span>
+                        </td>
+
+                        {/* Product & Category */}
+                        <td style={{ padding: '8px 14px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '1.1rem' }}>{getCategoryIcon(b.category)}</span>
+                            <div>
+                              <div style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.85rem' }}>
+                                {b.productName}
+                              </div>
+                              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                {b.category}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Expiry Date */}
+                        <td style={{ padding: '8px 14px' }}>
+                          <span style={{
+                            fontSize: '0.825rem',
+                            fontWeight: 700,
+                            color: b.status === 'EXPIRED' ? '#dc2626' : b.status === 'CRITICAL' ? '#ea580c' : '#d97706'
+                          }}>
+                            {b.expiryDate}
+                          </span>
+                        </td>
+
+                        {/* Stock */}
+                        <td style={{ padding: '8px 14px' }}>
+                          <strong style={{ fontSize: '0.875rem', color: 'var(--text-main)' }}>
+                            {stockQty}
+                          </strong>
+                        </td>
+
+                        {/* Cost Price */}
+                        <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)', padding: '8px 14px' }}>
+                          {(b.importPrice || b.costPrice || 25000).toLocaleString('vi-VN')} đ
+                        </td>
+
+                        {/* Est Loss */}
+                        <td style={{ textAlign: 'right', fontWeight: 800, color: '#dc2626', fontSize: '0.85rem', padding: '8px 14px' }}>
+                          {estLoss.toLocaleString('vi-VN')} đ
+                        </td>
+
+                        {/* Status Badge */}
+                        <td style={{ textAlign: 'center', padding: '8px 14px' }}>
+                          <span className={`badge ${b.status === 'EXPIRED' ? 'badge-danger' : b.status === 'CRITICAL' ? 'badge-danger' : b.status === 'WARNING' ? 'badge-warning' : 'badge-safe'}`} style={{ fontSize: '0.675rem' }}>
+                            {b.status}
+                          </span>
+                        </td>
+
+                        {/* Action: Bấm mở Modal Tiêu Hủy */}
+                        <td style={{ textAlign: 'center', padding: '8px 14px' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDisposalForBatch(b)}
+                            style={{
+                              fontSize: '0.75rem',
+                              padding: '5px 10px',
+                              borderRadius: '6px',
+                              border: '1px solid #fecdd3',
+                              background: '#fff1f2',
+                              color: '#be123c',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              transition: 'all 0.15s ease'
+                            }}
+                            title="Mở cửa sổ lập phiếu tiêu hủy cho lô này"
+                          >
+                            <Trash2 size={12} />
+                            <span>Lập Hủy</span>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
-        </div>
+        )}
 
+        {/* ========================================================================= */}
+        {/* NỘI DUNG TAB 2: SỔ BIÊN BẢN TIÊU HỦY & HẠCH TOÁN (100% FULL-WIDTH) */}
+        {/* ========================================================================= */}
+        {activeTab === 'disposal-records' && (
+          <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
+            <table className="modern-table" style={{ margin: 0, width: '100%' }}>
+              <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-secondary)' }}>
+                <tr>
+                  <th style={{ width: '150px', padding: '10px 14px' }}>Mã Biên Bản & Ngày</th>
+                  <th style={{ padding: '10px 14px' }}>Sản Phẩm & Lô Hàng</th>
+                  <th style={{ width: '130px', padding: '10px 14px' }}>SL × Giá Vốn</th>
+                  <th style={{ padding: '10px 14px' }}>Lý Do & Ghi Chú</th>
+                  <th style={{ width: '160px', padding: '10px 14px' }}>Người Lập / Ký Duyệt</th>
+                  <th style={{ width: '130px', textAlign: 'right', padding: '10px 14px' }}>Thiệt hại vốn</th>
+                  <th style={{ width: '150px', textAlign: 'center', padding: '10px 14px' }}>Trạng Thái / Thao Tác</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRecords.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                      Chưa có biên bản tiêu hủy nào khớp với điều kiện tìm kiếm.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredRecords.map((item) => {
+                    const qtyDisposed = item.quantityDisposed ?? item.quantity ?? 0;
+                    const impPrice = item.importPrice ?? item.costPrice ?? 0;
+                    const lossVal = item.costLoss ?? item.totalLoss ?? (qtyDisposed * impPrice);
+                    const reasonLabel = item.reason === 'EXPIRED'
+                      ? 'EXPIRED (Hết hạn)'
+                      : item.reason === 'DAMAGED'
+                        ? 'DAMAGED (Hỏng bao bì)'
+                        : item.reason === 'SPOILED'
+                          ? 'SPOILED (Biến chất)'
+                          : item.reason;
+
+                    return (
+                      <tr key={item.id || item.recordCode}>
+                        {/* ID & Date */}
+                        <td style={{ padding: '8px 14px' }}>
+                          <div style={{ fontWeight: 700, color: 'var(--text-main)', fontFamily: 'monospace', fontSize: '0.825rem' }}>
+                            {item.recordCode || item.id}
+                          </div>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                            {item.disposedDate || item.date}
+                          </div>
+                        </td>
+
+                        {/* Product & Batch */}
+                        <td style={{ padding: '8px 14px' }}>
+                          <div style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.85rem' }}>{item.productName}</div>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--primary)', fontFamily: 'monospace' }}>Lô: {item.batchCode}</div>
+                        </td>
+
+                        {/* Quantity x Price */}
+                        <td style={{ padding: '8px 14px' }}>
+                          <div>
+                            <strong style={{ color: '#ef4444', fontSize: '0.85rem' }}>-{qtyDisposed}</strong>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: '3px' }}>
+                              {item.unit || 'hộp'}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                            × {Number(impPrice).toLocaleString('vi-VN')} đ
+                          </div>
+                        </td>
+
+                        {/* Reason & Notes */}
+                        <td style={{ padding: '8px 14px' }}>
+                          <div style={{ fontSize: '0.75rem', fontWeight: 700, color: item.reason === 'EXPIRED' ? '#dc2626' : '#d97706' }}>
+                            {reasonLabel}
+                          </div>
+                          {item.notes && (
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                              {item.notes}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* PerformedBy & ApprovedBy */}
+                        <td style={{ padding: '8px 14px', fontSize: '0.725rem' }}>
+                          <div style={{ color: 'var(--text-main)' }}>
+                            Lập: <strong>{item.performedByName || 'Nhân viên ca'}</strong>
+                          </div>
+                          <div style={{ color: item.status === 'APPROVED' ? '#047857' : '#d97706', marginTop: '2px' }}>
+                            Duyệt: <strong>{item.approvedByName || item.approvedBy || 'Chờ duyệt'}</strong>
+                          </div>
+                        </td>
+
+                        {/* CostLoss */}
+                        <td style={{ textAlign: 'right', fontWeight: 800, color: '#dc2626', fontSize: '0.875rem', padding: '8px 14px' }}>
+                          {Number(lossVal).toLocaleString('vi-VN')} đ
+                        </td>
+
+                        {/* Status & Actions */}
+                        <td style={{ textAlign: 'center', padding: '8px 14px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                            {item.status === 'APPROVED' ? (
+                              <span className="badge badge-safe" style={{ fontSize: '0.675rem', padding: '2px 8px' }}>✓ Đã Chốt Sổ</span>
+                            ) : (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span className="badge badge-warning" style={{ fontSize: '0.65rem' }}>Chờ Duyệt</span>
+                                {(isAdmin || currentRole === 'ADMIN' || currentRole === 'STORE_MANAGER') && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-primary"
+                                    style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '5px' }}
+                                    onClick={async () => {
+                                      if (onApproveDisposal) {
+                                        const res = await onApproveDisposal(item.recordCode || item.id);
+                                        if (res && res.success === false) {
+                                          setBannerMsg(`❌ Lỗi phê duyệt: ${res.message}`);
+                                          return;
+                                        }
+                                      }
+                                      setBannerMsg(`✓ Đã ký phê duyệt biên bản ${item.recordCode || item.id} và chốt Sổ hao hụt tài chính!`);
+                                      setTimeout(() => setBannerMsg(''), 5000);
+                                    }}
+                                  >
+                                    <ShieldCheck size={12} /> Duyệt
+                                  </button>
+                                )}
+                              </div>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => setSelectedRecordToPrint(item)}
+                              style={{
+                                background: '#eff6ff',
+                                border: '1px solid #bfdbfe',
+                                color: '#1d4ed8',
+                                borderRadius: '5px',
+                                padding: '3px 8px',
+                                fontSize: '0.675rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px'
+                              }}
+                              title="Xem và in biên bản tiêu hủy chuẩn K80"
+                            >
+                              <Printer size={11} /> In K80
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
+
+      {/* CỬA SỔ BẬT RA (MODAL): LẬP PHIẾU TIÊU HỦY */}
+      <DisposalFormModal
+        isOpen={isDisposalModalOpen}
+        onClose={() => {
+          setIsDisposalModalOpen(false);
+          setModalInitialBatchId(null);
+        }}
+        availableBatches={availableBatches}
+        initialBatchId={modalInitialBatchId}
+        storeProfile={storeProfile}
+        currentUser={currentUser}
+        currentRole={currentRole}
+        isAdmin={isAdmin}
+        onSubmitDisposal={handleModalSubmit}
+      />
+
+      {/* CỬA SỔ BẬT RA (MODAL): IN BIÊN BẢN TIÊU HỦY K80 */}
+      <PrintSpoilageReceiptModal
+        isOpen={Boolean(selectedRecordToPrint)}
+        onClose={() => setSelectedRecordToPrint(null)}
+        record={selectedRecordToPrint}
+        storeProfile={storeProfile}
+      />
 
     </div>
   );
