@@ -1,226 +1,149 @@
+// server.js - Supply Chain Spoilage Predictor API
+// Clean Architecture 4-Tier Server with Microsoft SQL Server LocalDB
+
 const express = require('express');
 const cors = require('cors');
-const db = require('./db');
+
+// Import Clean Architecture Routes
+const authRoutes = require('./src/presentation/routes/authRoutes');
+const userRoutes = require('./src/presentation/routes/userRoutes');
+const storeProfileRoutes = require('./src/presentation/routes/storeProfileRoutes');
+const catalogRoutes = require('./src/presentation/routes/catalogRoutes');
+const categoryRoutes = require('./src/presentation/routes/categoryRoutes');
+const batchRoutes = require('./src/presentation/routes/batchRoutes');
+const salesRoutes = require('./src/presentation/routes/salesRoutes');
+const spoilageRoutes = require('./src/presentation/routes/spoilageRoutes');
+const forecastRoutes = require('./src/presentation/routes/forecastRoutes');
+const purchaseOrderRoutes = require('./src/presentation/routes/purchaseOrderRoutes');
+const dashboardRoutes = require('./src/presentation/routes/dashboardRoutes');
+const shiftHandoverRoutes = require('./src/presentation/routes/shiftHandoverRoutes');
+const supplierRoutes = require('./src/presentation/routes/supplierRoutes');
+const stockTransferRoutes = require('./src/presentation/routes/stockTransferRoutes');
+
+// Import DI Container
+const { auditLogRepository } = require('./src/container');
+const SqlConnection = require('./src/infrastructure/database/sqlConnection');
+
+// Import Middlewares
+const errorHandler = require('./src/presentation/middlewares/errorHandler');
+const authMiddleware = require('./src/presentation/middlewares/authMiddleware');
+const roleMiddleware = require('./src/presentation/middlewares/roleMiddleware');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Global Middlewares
 app.use(cors());
 app.use(express.json());
 
-// 1. Health Check
+// 1. Health Check Endpoint
 app.get('/api/health', (req, res) => {
   res.json({
     success: true,
     statusCode: 200,
-    message: "Supply Chain Spoilage Predictor API is healthy",
-    database: "Microsoft SQL Server LocalDB (retail_spoilage_db)",
+    message: 'Supply Chain Spoilage Predictor API is operational (Clean Architecture)',
+    database: 'Microsoft SQL Server LocalDB (retail_spoilage_db)',
+    storeCode: 'RETAIL-STORE-01',
+    storeName: 'LHU Mart - Co.op Smile Liên kết ĐH Lạc Hồng',
     timestamp: new Date().toISOString()
   });
 });
 
-// 2. Real Executive Dashboard Stats
-app.get('/api/dashboard/stats', async (req, res) => {
+// 2. Audit Logs Endpoint
+app.get('/api/audit-logs', async (req, res, next) => {
   try {
-    const stats = await db.getDashboardStats();
-    res.json({ success: true, data: stats });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// 3. Real Products
-app.get('/api/products', async (req, res) => {
-  try {
-    const products = await db.getProducts();
-    res.json({ success: true, data: products });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// 4. Real Batches
-app.get('/api/batches', async (req, res) => {
-  try {
-    const batches = await db.getBatches();
-    res.json({ success: true, data: batches });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// 5. Real Disposals
-app.get('/api/disposals', async (req, res) => {
-  try {
-    const disposals = await db.getDisposals();
-    res.json({ success: true, data: disposals });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// 6. Real Audit Logs
-app.get('/api/audit-logs', async (req, res) => {
-  try {
-    const logs = await db.getAuditLogs();
-    res.json({ success: true, data: logs });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// 7. Receive New Batch from DC (Insert into SQL Server)
-app.post('/api/batches', async (req, res) => {
-  try {
-    const batchData = req.body;
-    await db.insertBatch(batchData);
-    res.status(201).json({
+    const limit = Number(req.query.limit || 50);
+    const logs = await auditLogRepository.findRecent(limit);
+    res.json({
       success: true,
-      message: `Đã ghi nhận Lô ${batchData.batchCode} vào SQL Server thành công!`
+      count: logs.length,
+      data: logs
     });
   } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
+    next(err);
   }
 });
 
-// 8. Process FEFO Sale (Deduct from SQL Server Batches + Record Sales History)
-app.post('/api/sales', async (req, res) => {
-  try {
-    const { items, weather } = req.body;
-    if (!items || !items.length) {
-      return res.status(400).json({ success: false, message: "Giỏ hàng rỗng" });
-    }
-    const result = await db.processFefoSale(items, weather || {});
-    res.status(201).json(result);
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+// 2.1 Shift Handover Modules (Bàn Giao Ca Trực 4 Bước - Mục 15 SSOT)
+app.use('/api/shift-handover', shiftHandoverRoutes);
 
-// 9. Record Spoilage Disposal (Insert Spoilage Record + Deduct Batch in SQL Server)
-app.post('/api/spoilage', async (req, res) => {
+// 2.2 Goods Receipts Endpoint (Mục 17.7 SSOT - Lịch sử Tiếp nhận Hàng DC)
+app.get('/api/goods-receipts', async (req, res, next) => {
   try {
-    const disposalData = req.body;
-    await db.recordDisposal(disposalData);
-    res.status(201).json({
+    const limit = Number(req.query.limit || 50);
+    const sql = `
+      SELECT TOP (${limit})
+        gr.id,
+        gr.receipt_number AS receiptNumber,
+        gr.supplier_id AS supplierId,
+        sup.name AS supplierName,
+        gr.received_by AS receivedById,
+        u.full_name AS receivedByName,
+        gr.receipt_date AS receiptDate,
+        gr.total_cost AS totalCost,
+        gr.status,
+        gr.notes,
+        gr.created_at AS createdAt,
+        (SELECT COUNT(*) FROM batches WHERE receipt_id = gr.id) AS batchCount
+      FROM goods_receipts gr
+      LEFT JOIN suppliers sup ON gr.supplier_id = sup.id
+      LEFT JOIN users u ON gr.received_by = u.id
+      ORDER BY gr.id DESC;
+    `;
+    const data = await SqlConnection.queryJson(sql);
+    res.json({
       success: true,
-      message: `Đã lưu phiếu tiêu hủy ${disposalData.id} vào SQL Server và cập nhật tồn kho!`
+      count: data.length,
+      data
     });
   } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
+    next(err);
   }
 });
 
-// 10. Quick Discount (Update Batch in SQL Server)
-app.patch('/api/batches/:id/discount', async (req, res) => {
-  try {
-    const batchId = req.params.id;
-    const { percent } = req.body;
-    const sql = `
-      UPDATE batches 
-      SET discount_percent = ${percent || 30} 
-      WHERE id = ${batchId};
+// 3. Mount Clean Architecture Modules
+app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/store-profile', storeProfileRoutes);
+app.use('/api/catalog', catalogRoutes);
+app.use('/api/categories', categoryRoutes);
+app.use('/api/suppliers', supplierRoutes);
+app.use('/api/batches', batchRoutes);
+app.use('/api/sales', salesRoutes);
+app.use('/api/spoilage', spoilageRoutes);
+app.use('/api/forecast', forecastRoutes);
+app.use('/api/purchase-orders', purchaseOrderRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/stock-transfers', stockTransferRoutes);
+app.use('/api/ai', stockTransferRoutes);
 
-      INSERT INTO system_audit_logs (user_id, action_type, description, ip_address)
-      VALUES (2, N'Xả hàng giảm giá', N'Giảm giá ${percent || 30}% cho Lô ID ${batchId}', '127.0.0.1');
-    `;
-    await db.executeSql(sql);
-    res.json({ success: true, message: `Đã cập nhật giảm giá ${percent || 30}% vào SQL Server!` });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+// 4. Aliases for Backward Compatibility with existing frontend
+app.use('/api/products', catalogRoutes);
+app.use('/api/disposals', spoilageRoutes);
 
-// 10b. Rotate Shelf according to FEFO (Update Batch and Log in SQL Server)
-app.patch('/api/batches/:id/rotate', async (req, res) => {
-  try {
-    const batchId = req.params.id;
-    await db.rotateBatch(batchId);
-    res.json({ success: true, message: `Đã ghi nhận Đảo Lô ${batchId} ra mặt tiền kệ theo FEFO vào CSDL SQL Server!` });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+// 5. Centralized Error Handling Middleware
+app.use(errorHandler);
 
-// Helper: String normalization and near-duplicate detector
-function stripVietnamese(str) {
-  if (!str) return '';
-  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'd').toLowerCase().trim();
+// Start HTTP Server
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`[SERVER] API running on http://localhost:${PORT}`);
+    console.log(`[DATABASE] Microsoft SQL Server LocalDB (retail_spoilage_db)`);
+    console.log(`[ROUTING] Clean Architecture endpoints ready:`);
+    console.log(`  - POST /api/auth/login`);
+    console.log(`  - GET  /api/store-profile`);
+    console.log(`  - GET  /api/catalog/products`);
+    console.log(`  - GET  /api/suppliers`);
+    console.log(`  - GET  /api/batches (vw_Batches_ShelfLife_Alerts)`);
+    console.log(`  - POST /api/batches/receive-inbound (RSL >= 70%)`);
+    console.log(`  - PATCH /api/batches/:id/discount (Quick Markdown 15%-50%)`);
+    console.log(`  - PATCH /api/batches/:id/rotate (FEFO SOP Đảo kệ)`);
+    console.log(`  - POST /api/sales (FEFO Split Order Deduct)`);
+    console.log(`  - POST /api/spoilage (Disposal & Sổ Hao hụt)`);
+    console.log(`  - GET  /api/forecast/rop (Weather & Holiday Factors)`);
+    console.log(`  - POST /api/forecast/purchase-orders (PO gửi DC)`);
+    console.log(`  - GET  /api/dashboard/overview (6 KPI & Action Board)`);
+  });
 }
 
-function cleanKeywords(str) {
-  if (!str) return '';
-  let clean = stripVietnamese(str);
-  clean = clean.replace(/\b\d+(\.\d+)?\s*(ml|l|lit|g|gram|kg|lon|chai|hop|khay|mieng|cay|goi|thung|can|thanh|qua)\b/gi, ' ');
-  clean = clean.replace(/\b\d+%\b/gi, ' ');
-  clean = clean.replace(/\b\d+\b/gi, ' ');
-  clean = clean.replace(/\b(tiet trung|thanh trung|truyen thong|nguyen chat|tuoi|sach|chuan|huu co|khong duong|co duong|it duong)\b/gi, ' ');
-  clean = clean.replace(/[^a-z0-9]/gi, ' ');
-  return clean.replace(/\s+/g, ' ').trim();
-}
-
-function checkNearDuplicate(newProdName, existingName) {
-  const s1 = stripVietnamese(newProdName);
-  const s2 = stripVietnamese(existingName);
-  if (!s1 || !s2) return false;
-  if (s1 === s2) return true;
-  if (s1.length >= 4 && s2.length >= 4 && (s1.includes(s2) || s2.includes(s1))) return true;
-  
-  const c1 = cleanKeywords(newProdName);
-  const c2 = cleanKeywords(existingName);
-  if (c1 && c2 && c1.length >= 3 && c2.length >= 3) {
-    if (c1 === c2 || c1.includes(c2) || c2.includes(c1)) return true;
-  }
-  return false;
-}
-
-// 11. Add New Product to System (with duplicate / near-duplicate prevention)
-app.post('/api/products', async (req, res) => {
-  try {
-    const { name, categoryId, sku, unit, costPrice, sellingPrice, shelfLifeDays, minStock } = req.body;
-    if (!name || !name.trim()) {
-      return res.status(400).json({ success: false, message: 'Tên sản phẩm không được để trống!' });
-    }
-
-    const trimmedName = name.trim();
-
-    // Check duplicate or near-duplicate with existing products
-    const existingProducts = await db.getProducts();
-    const duplicate = existingProducts.find(p => checkNearDuplicate(trimmedName, p.name));
-
-    if (duplicate) {
-      return res.status(400).json({ 
-        success: false, 
-        duplicate: true,
-        matchedProduct: duplicate.name,
-        matchedSku: duplicate.sku,
-        message: `Sản phẩm này đã tồn tại hoặc gần giống với "${duplicate.name}" (SKU: ${duplicate.sku}) trong danh mục CSDL! Vui lòng chọn sản phẩm có sẵn để tiếp nhận lô hàng.`
-      });
-    }
-
-    const generatedSku = sku || ('893' + Date.now().toString().slice(-10));
-    const sql = `
-      INSERT INTO products (
-        sku, name, category_id, default_supplier_id, unit, cost_price, selling_price,
-        standard_shelf_life_days, min_stock_level, max_stock_level, custom_warning_days, is_active
-      ) VALUES (
-        N'${generatedSku}', N'${trimmedName}', ${categoryId || 1}, 1,
-        N'${unit || 'Cái'}', ${costPrice || 10000}, ${sellingPrice || 15000}, ${shelfLifeDays || 30},
-        ${minStock || 15}, ${(minStock || 15) * 5}, 3, 1
-      );
-
-      INSERT INTO system_audit_logs (user_id, action_type, description, ip_address)
-      VALUES (2, N'Thêm sản phẩm mới', N'Tạo mới sản phẩm: ${trimmedName} (SKU: ${generatedSku})', '127.0.0.1');
-    `;
-    await db.executeSql(sql);
-    res.status(201).json({ success: true, message: `Đã thêm sản phẩm "${trimmedName}" thành công!` });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
-
-// Start Server
-app.listen(PORT, () => {
-  console.log(`Backend API running on http://localhost:${PORT}`);
-  console.log(`Connected to Microsoft SQL Server LocalDB (retail_spoilage_db)`);
-});
+module.exports = app;

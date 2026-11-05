@@ -31,4 +31,17 @@ __pycache__/
 
 # Microsoft Office temporary lock files
 ~$*
+*.bak
+*.bak_*
+
+# Scratch & temporary debug files
+Backend/scratch_*.js
+Backend/temp/
+Backend/temp_*
+Backend/check_dark_patterns.py
+Database/backups/
+Docs/_Archive_Old_Files/
+.codex/
+.impeccable/
+
 
