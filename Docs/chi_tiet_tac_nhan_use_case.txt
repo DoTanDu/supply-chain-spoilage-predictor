@@ -1,0 +1,98 @@
+﻿========================================================================================
+BỘ MÔN CÔNG NGHỆ THÔNG TIN - ĐẠI HỌC LẠC HỒNG (LHU)
+ĐỀ TÀI: NỀN TẢNG QUẢN TRỊ CHUỖI CUNG ỨNG CHỐNG LÃNG PHÍ (SUPPLY CHAIN SPOILAGE PREDICTOR)
+GVHD: ThS. Lê Minh Nhật
+SVTH: Đỗ Tấn Du (123001364) & Đoàn Minh Quân (123000946)
+========================================================================================
+
+BẢNG ĐẶC TẢ CHI TIẾT CÁC TÁC NHÂN VÀ CÔNG VIỆC TRONG SƠ ĐỒ USE CASE
+(Dựa trên Sơ đồ Use Case 6 Phân hệ nghiệp vụ khép kín)
+
+----------------------------------------------------------------------------------------
+I. TỔNG QUAN HỆ THỐNG VÀ CÁC TÁC NHÂN (ACTORS)
+----------------------------------------------------------------------------------------
+Hệ thống vận hành theo mô hình phân quyền chặt chẽ giữa 3 tác nhân chính và 1 tiến trình tự động ngầm:
+1. NHÂN VIÊN / THỦ KHO (Store Staff / Cashier) - Tác nhân người dùng trực tiếp (Primary Actor)
+2. CỬA HÀNG TRƯỞNG (Store Manager / Admin) - Tác nhân quản trị & phê duyệt (Primary Actor)
+3. KHO TỔNG (DC - Distribution Center) - Tác nhân đối tác bên ngoài (Secondary / External Actor)
+4. HỆ THỐNG TỰ ĐỘNG (Automated System Engine) - Thực thi các Sub-Use Case ngầm
+
+----------------------------------------------------------------------------------------
+II. CHI TIẾT CÔNG VIỆC CỦA TỪNG TÁC NHÂN
+----------------------------------------------------------------------------------------
+
+1. TÁC NHÂN: NHÂN VIÊN / THỦ KHO (Store Staff / Cashier)
+----------------------------------------------------------------------------------------
+Là người trực tiếp thao tác hàng ngày tại sàn bán lẻ, quầy thu ngân (POS) và kho bảo quản.
+
+* Đăng nhập hệ thống (UC-00):
+  - Đăng nhập tài khoản nhân viên được cấp bằng cơ chế xác thực JWT.
+  - Phân quyền giới hạn: chỉ thấy các chức năng tác nghiệp hàng ngày, không can thiệp cấu hình hệ thống hay duyệt hủy/đặt hàng.
+
+* Phân hệ 1 - Tiếp nhận & Nhập lô từ Kho tổng (UC-01):
+  - Tiếp nhận chuyến xe hàng chuyển về từ Kho trung tâm (DC).
+  - «include» Kiểm đếm số lượng & Kiểm tra HSD thực tế (UC-01.1): Trực tiếp kiểm tra số lượng bao bì, đối chiếu ngày sản xuất (MFG) và hạn sử dụng (EXP) in thực tế trên từng thùng sản phẩm.
+  - «include» Nhập thông tin lô & Kích hoạt theo dõi HSD (UC-01.2): Nhập Mã lô (Batch Code), HSD, Số lượng vào phần mềm. Kích hoạt tính vòng đời ban đầu (Shelf-Life) và chuyển lô sang trạng thái hoạt động (ACTIVE).
+  - «extend» In nhãn kệ / Mã vạch lô hàng (UC-01.3): In mã QR/Barcode của lô hàng để dán lên khay kệ trưng bày tại cửa hàng.
+
+* Phân hệ 2 - Bán hàng lẻ & Xuất kho FEFO (UC-02):
+  - Bán hàng lẻ tại quầy (POS): Dùng máy quét mã vạch sản phẩm (SKU) khi khách thanh toán.
+  - Không cần chọn lô thủ công: Hệ thống tự động quét chọn lô có HSD gần nhất (First Expired, First Out - FEFO) để xuất kho (UC-02.1), trừ tồn kho chính xác (UC-02.2) và lưu vết giao dịch kèm dữ liệu thời tiết, ngày lễ (UC-02.3).
+
+* Phân hệ 3 - Theo dõi HSD & Cảnh báo hết hạn (UC-03):
+  - Giám sát danh sách cảnh báo hạn dùng đa cấp (Xanh, Vàng, Đỏ).
+  - «extend» Đảo hàng ra trước kệ & Dán tem giảm giá (UC-03.3): Khi nhận cảnh báo Đỏ (lô hàng cận date mức khẩn cấp), nhân viên ra quầy kệ đảo lô hàng này ra mặt tiền phía trước và in tem dán giảm giá (20% - 50%) để kích thích khách mua nhanh trước khi hỏng.
+
+* Phân hệ 4 - Xử lý hàng hỏng & Quá hạn (UC-04):
+  - Lập phiếu yêu cầu tiêu hủy hàng hỏng: Khi phát hiện sản phẩm bị dập nát, hỏng bao bì hoặc hàng quá date bị hệ thống khóa bán, nhân viên tạo phiếu đề xuất tiêu hủy, nhập mã lô, số lượng và chụp ảnh/ghi rõ lý do để trình Cửa hàng trưởng phê duyệt.
+
+
+2. TÁC NHÂN: CỬA HÀNG TRƯỞNG (Store Manager / Admin)
+----------------------------------------------------------------------------------------
+Là người chịu trách nhiệm cao nhất tại cửa hàng, kiểm soát doanh thu, chi phí, tỷ lệ hao hụt và quyết định luồng luân chuyển hàng hóa.
+
+* Đăng nhập hệ thống (UC-00):
+  - Đăng nhập tài khoản quản trị cao cấp (Admin/Store Manager) với toàn quyền kiểm soát.
+
+* Phân hệ 3 - Giám sát Hạn sử dụng toàn diện (UC-03):
+  - Theo dõi bức tranh tổng thể hạn dùng của toàn bộ kho hàng và quầy kệ theo thời gian thực (3 mức RSL: Xanh - Vàng - Đỏ).
+
+* Phân hệ 4 - Phê duyệt tiêu hủy hàng hỏng (UC-05):
+  - Nhận thông báo và xem xét các phiếu yêu cầu tiêu hủy do nhân viên gửi lên.
+  - Trực tiếp kiểm tra tình trạng hàng thực tế và bấm "Phê duyệt tiêu hủy".
+  - Lệnh duyệt này kích hoạt hệ thống tự động trừ sạch tồn kho về 0 (UC-04.1) và hạch toán chi phí thiệt hại vào sổ theo dõi lãng phí tài chính (UC-04.2).
+
+* Phân hệ 5 - Dự báo tiêu thụ & Đặt hàng Kho tổng (UC-09):
+  - Xem kết quả phân tích tốc độ bán (d) kết hợp biến ngoại cảnh thời tiết, ngày lễ (UC-06).
+  - Xem điểm đặt hàng lại ROP và cảnh báo nguy cơ ế thừa hàng DOS > DUE (UC-07).
+  - Xem đề xuất số lượng đặt hàng tối ưu do hệ thống tự động tính toán (UC-08).
+  - Duyệt & Gửi đơn đặt hàng về Kho tổng (DC) (UC-09): Rà soát, tùy chỉnh số lượng nếu cần và bấm xác nhận gửi đơn điều phối điện tử về Kho tổng.
+
+* Phân hệ 6 - Quản trị hệ thống & Dashboard báo cáo:
+  - Quản lý Danh mục & Cấu hình ngưỡng date (UC-10): Thêm/sửa sản phẩm, thiết lập ngưỡng cảnh báo date riêng cho từng nhóm ngành hàng (ví dụ: rau củ quả báo trước 2 ngày, sữa tươi 5 ngày, đồ hộp 30 ngày).
+  - Import file Excel bán hàng & Đồng bộ dữ liệu POS (UC-11): Nạp dữ liệu lịch sử bán hàng từ các tệp Excel ngoại tuyến để huấn luyện mô hình dự báo.
+  - Xem Dashboard trực quan & Tỷ lệ lãng phí (%) (UC-12): Theo dõi biểu đồ doanh thu, tỷ lệ hao hụt Spoilage Rate (%), giá trị tiền tổn thất và hiệu quả giảm lãng phí.
+  - Xuất báo cáo kiểm kê & Báo cáo lãng phí (UC-13): Xuất báo cáo kiểm kê kho định kỳ, báo cáo hao hụt theo chuẩn kế toán gửi lên ban giám đốc chuỗi.
+
+
+3. TÁC NHÂN: KHO TỔNG - DC (Distribution Center)
+----------------------------------------------------------------------------------------
+Là tác nhân thứ cấp / Hệ thống đối tác chuỗi cung ứng ở cấp trung tâm.
+
+* Tiếp nhận đơn đặt hàng từ Cửa hàng (UC-09):
+  - Tiếp nhận đơn đặt hàng bổ sung điện tử do Cửa hàng trưởng phê duyệt gửi tới.
+* Soạn hàng & Điều phối xe giao hàng:
+  - Xuất kho trung tâm và vận chuyển các lô hàng mới về cửa hàng bán lẻ, làm đầu vào cho quy trình "Tiếp nhận lô hàng" (UC-01) của Nhân viên/Thủ kho.
+
+
+4. THÀNH PHẦN HỆ THỐNG TỰ ĐỘNG (Automated System Engine)
+----------------------------------------------------------------------------------------
+Chạy các thuật toán và tiến trình nền tự động, đảm bảo dữ liệu toàn vẹn và giảm tải thao tác con người:
+* FEFO Engine: Tự động tìm kiếm và xuất đúng lô có date gần nhất khi bán lẻ tại POS (UC-02.1, UC-02.2).
+* Shelf-Life Cron Job: Hàng ngày tự động đếm lùi ngày HSD (UC-03.1), phân loại nhãn cảnh báo Xanh/Vàng/Đỏ (UC-03.2).
+* Auto-Lock POS: Tự động khóa mã vạch, cấm thu ngân quét bán ra ngoài nếu sản phẩm chạm mốc quá hạn <= 0 ngày (UC-03.4).
+* Auto-Accounting: Tự động tính toán thiệt hại = Số lượng hủy x Giá vốn, ghi vào bảng Spoilage Records ngay khi Manager duyệt hủy (UC-04.2).
+* Demand Forecast & ROP Engine: Tự động tính tốc độ bán bình quân (d), nhân hệ số thời tiết (K), tính điểm đặt hàng ROP = (d * L) + SS và cảnh báo DOS > DUE để gợi ý đơn đặt hàng tối ưu (UC-06, UC-07, UC-08).
+
+========================================================================================
+
