@@ -1,15 +1,14 @@
 const fs = require('fs');
 const path = require('path');
-const { exec } = require('child_process');
+const { exec, execFile } = require('child_process');
 
 function executeSql(query) {
   return new Promise((resolve, reject) => {
     const tempFile = path.join(__dirname, `temp_${Date.now()}_${Math.random().toString(36).substring(7)}.sql`);
     fs.writeFileSync(tempFile, 'SET NOCOUNT ON;\n' + query, 'utf8');
 
-    const cmd = `sqlcmd -f 65001 -y 0 -S "(localdb)\\mssqllocaldb" -d retail_spoilage_db -i "${tempFile}"`;
-
-    exec(cmd, { encoding: 'utf8', maxBuffer: 25 * 1024 * 1024 }, (error, stdout, stderr) => {
+    const runnerScript = path.join(__dirname, 'sql_runner.ps1');
+    execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', runnerScript, tempFile], { encoding: 'utf8', maxBuffer: 25 * 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
       try { fs.unlinkSync(tempFile); } catch (e) {}
       if (error) {
         return reject(error);

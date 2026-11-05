@@ -8,6 +8,8 @@ const READ_CACHE_TTL_MS = 1500;
 const readCache = new Map();
 const inFlightReads = new Map();
 
+let preferPowerShell = process.platform === 'win32';
+
 class SqlConnection {
   static isWriteQuery(query) {
     if (!query) return false;
@@ -46,26 +48,7 @@ class SqlConnection {
       );
       fs.writeFileSync(tempFile, 'SET NOCOUNT ON;\n' + normalizedSql, 'utf8');
 
-      const args = [
-        '-b',
-        '-f', '65001',
-        '-y', '0',
-        '-S', '(localdb)\\mssqllocaldb',
-        '-d', 'retail_spoilage_db',
-        '-i', tempFile
-      ];
-
-      execFile('sqlcmd', args, { encoding: 'utf8', maxBuffer: 30 * 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
-        try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch (e) {}
-        if (error) {
-          const errMsg = (stdout && stdout.trim()) || (stderr && stderr.trim()) || error.message;
-          const sqlErr = new Error(errMsg);
-          sqlErr.code = error.code;
-          return reject(sqlErr);
-        }
-        if (stdout && stdout.includes('Msg ') && /Level (1[1-9]|2[0-9])/i.test(stdout)) {
-          return reject(new Error(stdout.trim()));
-        }
+      const handleSuccess = (stdout) => {
         if (isWrite) {
           this.clearCache();
         } else {
@@ -76,7 +59,53 @@ class SqlConnection {
           readCache.set(normalizedSql, { data: stdout, timestamp: Date.now() });
         }
         resolve(stdout);
-      });
+      };
+
+      const runWithPs = () => {
+        const runnerScript = path.join(__dirname, '..', '..', '..', 'sql_runner.ps1');
+        execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', runnerScript, tempFile], { encoding: 'utf8', maxBuffer: 30 * 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
+          try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch (e) {}
+          if (error) {
+            const errMsg = (stderr && stderr.trim()) || (stdout && stdout.trim()) || error.message;
+            const sqlErr = new Error(errMsg);
+            sqlErr.code = error.code;
+            return reject(sqlErr);
+          }
+          handleSuccess(stdout);
+        });
+      };
+
+      if (preferPowerShell) {
+        runWithPs();
+      } else {
+        const args = [
+          '-b',
+          '-f', '65001',
+          '-y', '0',
+          '-S', '(localdb)\\mssqllocaldb',
+          '-d', 'retail_spoilage_db',
+          '-i', tempFile
+        ];
+
+        execFile('sqlcmd', args, { encoding: 'utf8', maxBuffer: 30 * 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
+          if (error) {
+            const errMsg = (stdout && stdout.trim()) || (stderr && stderr.trim()) || error.message;
+            if (process.platform === 'win32' && (errMsg.includes('ODBC') || errMsg.includes('Data source') || errMsg.includes('error: 52'))) {
+              preferPowerShell = true;
+              return runWithPs();
+            }
+            try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch (e) {}
+            const sqlErr = new Error(errMsg);
+            sqlErr.code = error.code;
+            return reject(sqlErr);
+          }
+          try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch (e) {}
+          if (stdout && stdout.includes('Msg ') && /Level (1[1-9]|2[0-9])/i.test(stdout)) {
+            return reject(new Error(stdout.trim()));
+          }
+          handleSuccess(stdout);
+        });
+      }
     }).finally(() => {
       if (!isWrite) {
         inFlightReads.delete(normalizedSql);

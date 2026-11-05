@@ -47,7 +47,7 @@ END
 GO
 
 -- ------------------------------------------------------------------------------
--- 3.1 BỔ SUNG CỘT CHO BẢNG store_profile (Sức chứa quầy kệ theo Mục 3.1 SSOT)
+-- 3.1 BỔ SUNG CỘT CHO BẢNG store_profile (Sức chứa quầy kệ & Giờ hoạt động theo Mục 3.1 SSOT)
 -- ------------------------------------------------------------------------------
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.store_profile') AND name = 'shelf_capacity_skus')
 BEGIN
@@ -56,7 +56,28 @@ BEGIN
     PRINT N'[OK] Đã thêm cột shelf_capacity_skus và shelf_capacity_units vào store_profile.';
 END
 GO
-UPDATE [dbo].[store_profile] SET [shelf_capacity_skus] = 1500, [shelf_capacity_units] = 5000 WHERE [shelf_capacity_skus] IS NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.store_profile') AND name = 'open_time')
+BEGIN
+    ALTER TABLE [dbo].[store_profile] ADD [open_time] NVARCHAR(10) NULL DEFAULT N'06:00';
+    ALTER TABLE [dbo].[store_profile] ADD [close_time] NVARCHAR(10) NULL DEFAULT N'22:00';
+    PRINT N'[OK] Đã thêm cột open_time và close_time vào store_profile.';
+END
+GO
+UPDATE [dbo].[store_profile] 
+SET [shelf_capacity_skus] = ISNULL([shelf_capacity_skus], 1500), 
+    [shelf_capacity_units] = ISNULL([shelf_capacity_units], 5000),
+    [open_time] = ISNULL([open_time], N'06:00'),
+    [close_time] = ISNULL([close_time], N'22:00');
+GO
+
+-- ------------------------------------------------------------------------------
+-- 3.2 BỔ SUNG CỘT CHO BẢNG batches (Cờ đảo kệ mặt tiền Rule 10 SSOT)
+-- ------------------------------------------------------------------------------
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.batches') AND name = 'is_shelf_rotated')
+BEGIN
+    ALTER TABLE [dbo].[batches] ADD [is_shelf_rotated] BIT NOT NULL DEFAULT 0;
+    PRINT N'[OK] Đã thêm cột is_shelf_rotated vào batches.';
+END
 GO
 
 -- ------------------------------------------------------------------------------

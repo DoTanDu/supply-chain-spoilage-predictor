@@ -27,7 +27,8 @@ class SqlStockTransferRepository {
   runLivePklInference(limit = 10) {
     return new Promise((resolve, reject) => {
       const safeLimit = Math.max(1, Math.min(50, Number(limit) || 10));
-      const cmd = `python "${PREDICT_CLI_PATH}" ${safeLimit}`;
+      const pyBin = process.platform === 'win32' ? 'py' : 'python3';
+      const cmd = `${pyBin} "${PREDICT_CLI_PATH}" ${safeLimit}`;
       exec(cmd, { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
         if (err) {
           return reject(new Error(stderr || err.message));
