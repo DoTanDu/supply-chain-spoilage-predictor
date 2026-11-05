@@ -26,7 +26,7 @@
 | **Quản trị viên Tối cao** (`ADMIN`) | `admin` | `Password123@` | Toàn quyền cấu hình cửa hàng, quản lý nhân sự, phân quyền RBAC, mở khóa tài khoản bị Brute-force, xem toàn bộ hệ thống. |
 | **Cửa hàng trưởng** (`STORE_MANAGER`) | `manager` | `Password123@` | Xem Dashboard điều hành Visual Analytics 14 ngày, duyệt biên bản tiêu hủy Spoilage (SoD), duyệt đơn đặt hàng PO gửi DC Biên Hòa, áp dụng Quick Markdown. |
 | **Thu ngân Quầy POS** (`CASHIER`) | `cashier` | `Password123@` | Bán lẻ xuất kho trực tiếp theo chuẩn FEFO (tự động bẻ lô cận date), in hóa đơn, tra cứu lịch sử bán hàng, thực hiện Bàn giao ca trực điện tử 4 bước. |
-| **Nhân viên Kho & Kệ** (`WAREHOUSE_STAFF`) | `warehouse` | `Password123@` | Thẩm định tiếp nhận xe tải DC ($RSL \ge 70\%$), lập biên bản từ chối nhận hàng ($RSL < 70\%$), thực hiện SOP 5 bước đảo kệ mặt tiền, lập phiếu đề xuất tiêu hủy hàng hỏng. |
+| **Nhân viên Kho & Kệ** (`CASHIER`) | `warehouse` | `Password123@` | Thẩm định tiếp nhận xe tải DC ($RSL \ge 70\%$), lập biên bản từ chối nhận hàng ($RSL < 70\%$), thực hiện SOP 5 bước đảo kệ mặt tiền, lập phiếu đề xuất tiêu hủy hàng hỏng. |
 
 ---
 

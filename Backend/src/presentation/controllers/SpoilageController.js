@@ -11,12 +11,12 @@ class SpoilageController {
     try {
       const { batchId, quantityDisposed, quantity, reason, notes } = req.body;
       const finalQty = quantityDisposed !== undefined ? quantityDisposed : quantity;
-      const performedBy = req.user ? req.user.id : (req.body.performedBy || 4);
+      const performedBy = req.user ? req.user.id : (req.body.performedBy || 3);
       const performedByName = req.user ? (req.user.fullName || req.user.username) : (req.body.performedByName || 'Nhân viên ca trực');
 
       // Tuân thủ nguyên tắc Tách biệt trách nhiệm (SoD - Mục 4 & 16 SSOT):
       // Chỉ ADMIN và STORE_MANAGER mới có thẩm quyền tự phê duyệt ngay khi lập phiếu;
-      // CASHIER và WAREHOUSE_STAFF lập phiếu ở trạng thái PENDING (approvedBy = null) chờ Quản lý duyệt.
+      // CASHIER (Nhân viên cửa hàng) lập phiếu ở trạng thái PENDING (approvedBy = null) chờ Quản lý duyệt.
       const userRole = req.user ? req.user.roleCode : '';
       const canAutoApprove = userRole === 'ADMIN' || userRole === 'STORE_MANAGER';
       const approvedBy = canAutoApprove ? (req.user ? req.user.id : (req.body.approvedBy || 2)) : null;

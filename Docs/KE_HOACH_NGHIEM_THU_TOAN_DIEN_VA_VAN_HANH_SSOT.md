@@ -55,7 +55,7 @@ flowchart TD
   1. `admin` (Role: `ADMIN`) - Quản trị hệ thống, StoreProfile, Audit Log.
   2. `manager` (Role: `STORE_MANAGER`) - Cửa hàng trưởng, duyệt Markdown, duyệt Spoilage, duyệt PO.
   3. `cashier` (Role: `CASHIER`) - Thu ngân quầy POS.
-  4. `warehouse` (Role: `WAREHOUSE_STAFF`) - Nhân viên kho nhận hàng DC, đảo kệ mặt tiền.
+  4. `warehouse` (Role: `CASHIER`) - Nhân viên kho nhận hàng DC, đảo kệ mặt tiền.
 - **Tập Lô hàng đa dạng vòng đời chuẩn hóa theo Ngưỡng WarningDays ngành hàng:**
   - Nhóm lô Date xa (Vùng Xanh - `SAFE`, $DaysLeft > WarningDays$ của ngành hàng / sản phẩm).
   - Nhóm lô Cảnh báo (Vùng Vàng - `WARNING`, $3 < DaysLeft \le WarningDays$ với $WarningDays = COALESCE(p.custom\_warning\_days, c.default\_warning\_days, 7)$).

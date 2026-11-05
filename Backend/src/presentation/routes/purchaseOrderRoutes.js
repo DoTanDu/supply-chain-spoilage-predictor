@@ -40,7 +40,7 @@ router.post(
 router.patch(
   '/:id/status',
   authMiddleware,
-  roleMiddleware(['ADMIN', 'STORE_MANAGER', 'WAREHOUSE_STAFF', 'CASHIER']),
+  roleMiddleware(['ADMIN', 'STORE_MANAGER', 'CASHIER']),
   (req, res, next) => forecastController.updatePOStatus(req, res, next)
 );
 

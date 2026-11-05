@@ -91,14 +91,12 @@ class SqlUserRepository extends IUserRepository {
       'STORE_MANAGER': 2,
       'MANAGER': 2,
       'CASHIER': 3,
-      'STAFF': 3,
-      'WAREHOUSE_STAFF': 4
+      'STAFF': 3
     };
     const codeMap = {
       1: 'ADMIN',
       2: 'STORE_MANAGER',
-      3: 'CASHIER',
-      4: 'WAREHOUSE_STAFF'
+      3: 'CASHIER'
     };
 
     const finalRoleCode = (roleCode || (roleId ? codeMap[Number(roleId)] : 'CASHIER')).toUpperCase();
@@ -163,14 +161,12 @@ class SqlUserRepository extends IUserRepository {
       'STORE_MANAGER': 2,
       'MANAGER': 2,
       'CASHIER': 3,
-      'STAFF': 3,
-      'WAREHOUSE_STAFF': 4
+      'STAFF': 3
     };
     const codeMap = {
       1: 'ADMIN',
       2: 'STORE_MANAGER',
-      3: 'CASHIER',
-      4: 'WAREHOUSE_STAFF'
+      3: 'CASHIER'
     };
 
     const updates = [];

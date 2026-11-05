@@ -19,19 +19,19 @@ router.get('/:id', (req, res, next) => batchController.getById(req, res, next));
 router.post(
   '/receive-inbound',
   authMiddleware,
-  roleMiddleware(['ADMIN', 'STORE_MANAGER', 'WAREHOUSE_STAFF', 'CASHIER']),
+  roleMiddleware(['ADMIN', 'STORE_MANAGER', 'CASHIER']),
   (req, res, next) => batchController.receiveInboundDC(req, res, next)
 );
 router.post(
   '/inbound',
   authMiddleware,
-  roleMiddleware(['ADMIN', 'STORE_MANAGER', 'WAREHOUSE_STAFF', 'CASHIER']),
+  roleMiddleware(['ADMIN', 'STORE_MANAGER', 'CASHIER']),
   (req, res, next) => batchController.receiveInboundDC(req, res, next)
 );
 router.post(
   '/',
   authMiddleware,
-  roleMiddleware(['ADMIN', 'STORE_MANAGER', 'WAREHOUSE_STAFF', 'CASHIER']),
+  roleMiddleware(['ADMIN', 'STORE_MANAGER', 'CASHIER']),
   (req, res, next) => batchController.receiveInboundDC(req, res, next)
 );
 
@@ -39,7 +39,7 @@ router.post(
 router.post(
   '/reject-inbound',
   authMiddleware,
-  roleMiddleware(['ADMIN', 'STORE_MANAGER', 'WAREHOUSE_STAFF', 'CASHIER']),
+  roleMiddleware(['ADMIN', 'STORE_MANAGER', 'CASHIER']),
   (req, res, next) => batchController.rejectInboundDC(req, res, next)
 );
 
@@ -55,7 +55,7 @@ router.patch(
 router.patch(
   '/:id/rotate',
   authMiddleware,
-  roleMiddleware(['ADMIN', 'STORE_MANAGER', 'WAREHOUSE_STAFF', 'CASHIER']),
+  roleMiddleware(['ADMIN', 'STORE_MANAGER', 'CASHIER']),
   (req, res, next) => batchController.confirmRotation(req, res, next)
 );
 

@@ -17,9 +17,9 @@ Hệ thống quản lý các nhóm dữ liệu chính:
 1. Thông tin cửa hàng bán lẻ duy nhất
 2. Kho tổng cung ứng liên kết (DC Biên Hòa)
 3. Danh mục ngành hàng FMCG và thực phẩm
-4. Sản phẩm hàng hóa bán lẻ
+4. Sản phẩm hàng hóa bán lẻ (80 sản phẩm FMCG thuộc 7 ngành hàng chuẩn)
 5. Lô hàng và vòng đời hạn sử dụng (Shelf-Life)
-6. Người dùng và phân quyền (Admin, Cửa hàng trưởng, Thu ngân, Nhân viên kho)
+6. Người dùng và phân quyền 3 vai trò RBAC (Chủ chuỗi / Admin, Quản lý Cửa hàng, Nhân viên Cửa hàng - POS & Kho kệ)
 7. Phiếu tiếp nhận hàng từ Kho tổng DC (Goods Receipts)
 8. Đơn bán lẻ tại quầy POS (Bán hàng = Xuất kho FEFO)
 9. Giám sát hạn dùng và cảnh báo 3 cấp màu (Xanh / Vàng / Đỏ)
@@ -70,16 +70,15 @@ Các yêu cầu khi thiết kế database:
 - Có transaction khi xuất bán lẻ POS FEFO, nhập kho DC, tiêu hủy hàng hỏng
 - Có index cho các bảng lô hàng, sản phẩm, lịch sử bán hàng, nhật ký kiểm toán
 
-# 4. Nhóm người dùng trong hệ thống
+# 4. Nhóm người dùng trong hệ thống (3 Actor = 3 Vai trò RBAC)
 
-Hệ thống áp dụng mô hình phân quyền dựa trên vai trò (RBAC) với 4 nhóm người dùng chuẩn (chi tiết hóa từ 3 Actor cốt lõi: `OWNER` → `ADMIN`, `MANAGER` → `STORE_MANAGER`, và `STAFF` tách biệt trách nhiệm thành `CASHIER` & `WAREHOUSE_STAFF`), đảm bảo tính tách biệt trách nhiệm (Separation of Duties - SoD), quyền tối thiểu (Least Privilege) và lưu vết kiểm toán bất biến (Rule 11).
+Hệ thống áp dụng mô hình phân quyền dựa trên vai trò (RBAC) với **3 nhóm người dùng chuẩn** tương ứng trực tiếp 1-1 với **3 Actor cốt lõi** (`OWNER` → `ADMIN`, `MANAGER` → `STORE_MANAGER`, và `STAFF` → `CASHIER` - Nhân viên Cửa hàng kiêm nhiệm POS & Kho kệ), đảm bảo tính tách biệt trách nhiệm giữa cấp Quản lý phê duyệt và cấp Nhân viên thực thi (Separation of Duties - SoD), quyền tối thiểu (Least Privilege) và lưu vết kiểm toán bất biến (Rule 11).
 
-| Nhóm Actor gốc | Vai trò hệ thống (`RoleCode`) | Tên hiển thị | Thiết bị sử dụng chính | Màn hình mặc định sau đăng nhập |
-| :--- | :--- | :--- | :--- | :--- |
-| **OWNER / ADMIN** | `ADMIN` | Quản trị viên hệ thống | Desktop / Laptop quản trị | Dashboard Tổng điều hành (`/dashboard`) |
-| **MANAGER** | `STORE_MANAGER` | Cửa hàng trưởng | Desktop / Tablet quản lý | Dashboard Tổng điều hành (`/dashboard`) |
-| **STAFF (Cửa ra)** | `CASHIER` | Nhân viên thu ngân POS | Máy POS cảm ứng + Đầu đọc Barcode | Quầy Bán lẻ POS (`/pos-checkout`) |
-| **STAFF (Cửa vào & Kệ)** | `WAREHOUSE_STAFF` | Nhân viên kho & quầy kệ | Tablet / Máy kiểm kho cầm tay | Tiếp nhận hàng DC (`/dc-intake`) |
+| Nhóm Actor gốc | Vai trò hệ thống (`RoleCode`) | Tên hiển thị | Tài khoản chuẩn | Thiết bị sử dụng chính | Màn hình mặc định sau đăng nhập |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **OWNER / ADMIN** | `ADMIN` | Chủ chuỗi / Quản trị viên | `admin` | Desktop / Laptop quản trị | Dashboard Tổng điều hành (`/dashboard`) |
+| **MANAGER** | `STORE_MANAGER` | Quản lý Cửa hàng | `manager` (Đỗ Tấn Du) | Desktop / Tablet quản lý | Dashboard Tổng điều hành (`/dashboard`) |
+| **STAFF (POS & Kho kệ)** | `CASHIER` | Nhân viên Cửa hàng (POS & Kho kệ) | `cashier` (Đoàn Minh Quân) | Máy POS cảm ứng + Máy quét Barcode / Tablet | Quầy Bán lẻ POS (`/pos-checkout`) |
 
 ## 4.0 Quy chuẩn Trang Đăng nhập riêng (`/login`) & Bảo mật tài khoản chung
 
@@ -122,38 +121,23 @@ Chức năng chính:
 - Xem báo cáo tài chính, doanh thu, tỷ lệ lãng phí Spoilage Rate % và tra cứu Audit Log cấp cửa hàng
 - Ranh giới bảo vệ (SoD): Không có quyền tạo mới/khóa tài khoản người dùng, không được xóa lịch sử giao dịch bán hàng hoặc xóa vết kiểm toán
 
-## 4.3 Nhân viên thu ngân (Cashier) — RoleCode: `CASHIER`
+## 4.3 Nhân viên Cửa hàng - POS & Kho kệ (Store Staff) — RoleCode: `CASHIER`
 
-Nhân viên thu ngân trực tiếp thực hiện bán lẻ tại quầy POS, là mắt xích kiểm soát cửa ra của hàng hóa đến tay khách hàng.
-
-Chức năng chính:
-
-- Quét mã vạch Barcode / SKU sản phẩm tại quầy bán lẻ POS
-- Hệ thống tự động bẻ lô trừ kho theo nguyên tắc FEFO (thu ngân không tự ý chọn lô thủ công)
-- Tự động áp dụng giá xả hàng ưu đãi nếu lô hàng đang có chính sách Quick Markdown đã duyệt
-- Hàng rào khóa cứng: Tự động chặn xuất bán và cảnh báo nếu quét trúng sản phẩm đã quá hạn (DaysLeft <= 0 - Rule 5)
-- Lựa chọn ngữ cảnh bán hàng: Thời tiết và Cờ ngày lễ phục vụ dữ liệu huấn luyện ROP
-- Tra cứu tồn kho khả dụng và xem danh sách cảnh báo lô hàng 3 cấp màu để hỗ trợ tư vấn cho khách mua hàng
-- Lập đề xuất tiêu hủy nhanh cho sản phẩm bị móp méo, vỡ hỏng phát sinh tại quầy (trạng thái chờ Quản lý duyệt)
-- Thực hiện chốt ca thu ngân, kiểm đếm tiền mặt két và ký bàn giao ca trực điện tử
-- Ranh giới bảo vệ (SoD): Không được tự chọn lô xuất bán thủ công, không có quyền nhập kho DC, không tự ý kích hoạt giảm giá Quick Markdown, không xác nhận đảo kệ và không tự duyệt tiêu hủy
-
-## 4.4 Nhân viên kho & quầy kệ (Warehouse Staff) — RoleCode: `WAREHOUSE_STAFF`
-
-Nhân viên kho phụ trách tiếp nhận hàng từ xe tải DC, quản lý sắp xếp quầy kệ và theo dõi hạn sử dụng thực tế.
+Nhân viên Cửa hàng trực tiếp đảm nhiệm vận hành tác nghiệp tại cửa hàng tiện lợi tinh gọn LHU Mart, hợp nhất nhiệm vụ bán lẻ tại quầy POS và quản lý tiếp nhận kho – đảo kệ mặt tiền trong ca trực:
 
 Chức năng chính:
 
-- Người gác cổng chất lượng đầu vào (Rule 7): Kiểm tra date xe tải DC, tính RSL; từ chối nhận nếu RSL < 70%
-- Nhập phiếu tiếp nhận hàng từ Kho tổng DC (tạo lô hàng mới và cập nhật giá vốn chuẩn vào CSDL)
-- Xem Action Board ca trực: Lọc nhanh danh sách lô hàng Vùng Vàng và Vùng Đỏ cần xử lý khẩn cấp
-- Thực hiện Quy trình SOP 5 bước đảo lô hàng cận date ra mặt tiền quầy kệ theo chuẩn FEFO (Rule 10)
-- Xác nhận điện tử đã hoàn tất đảo kệ lên hệ thống để lưu vết kiểm toán (Rule 11)
-- In và dán tem nhãn giảm giá xả hàng Quick Markdown lên bao bì theo phê duyệt của Quản lý
-- Thu gom hàng hỏng, rách bao bì, hết hạn vào khu cách ly và lập đề xuất tiêu hủy (trạng thái chờ Quản lý duyệt)
-- Xem cảnh báo điểm đặt hàng ROP để chủ động chuẩn bị vị trí lưu kho và quầy kệ
-- Thực hiện kiểm đếm hàng tồn/hàng chờ hủy và ký xác nhận Biên bản bàn giao ca trực điện tử
-- Ranh giới bảo vệ (SoD): Không có quyền bán lẻ POS, không tự ý sửa giá/duyệt Quick Markdown, không có quyền tạo/duyệt đơn đặt hàng PO gửi DC và không tự duyệt tiêu hủy
+- **Tại quầy thu ngân POS (Cửa ra):**
+  - Quét mã vạch Barcode / SKU sản phẩm tại quầy bán lẻ POS; hệ thống tự động bẻ lô trừ kho theo nguyên tắc FEFO tuyệt đối (Rule 2) và tự động áp dụng giá xả hàng ưu đãi nếu lô đang có Quick Markdown.
+  - Tự động chặn xuất bán và cảnh báo nếu quét trúng sản phẩm đã quá hạn ($DaysLeft \le 0$ - Rule 5).
+  - Lựa chọn ngữ cảnh bán hàng: Thời tiết (`SUNNY` / `RAINY` / `NORMAL`) và Cờ ngày lễ phục vụ dữ liệu huấn luyện dự báo AI-ROP.
+- **Tại khu vực tiếp nhận & quầy kệ (Cửa vào & Kệ trưng bày):**
+  - Người gác cổng chất lượng đầu vào (Rule 7): Kiểm tra hạn sử dụng xe tải DC Biên Hòa giao đến, tính chỉ số độ tươi $RSL$; lập biên bản từ chối nhận hàng nếu $RSL < 70\%$.
+  - Nhập phiếu tiếp nhận hàng từ Kho tổng DC đạt chuẩn, tạo lô hàng mới vào CSDL.
+  - Thực hiện Quy trình SOP 5 bước đảo lô hàng cận date (Vùng Vàng / Vùng Đỏ) ra sát mép mặt tiền quầy kệ theo chuẩn FEFO (Rule 10) và xác nhận điện tử lên hệ thống.
+  - Thu gom hàng hỏng, rách bao bì, hết hạn vào khu cách ly và lập phiếu đề xuất tiêu hủy ở trạng thái chờ duyệt (`PENDING` - chờ Cửa hàng trưởng phê duyệt theo nguyên tắc SoD).
+  - Thực hiện chốt ca thu ngân, kiểm đếm tiền mặt két 6 mệnh giá, kiểm tra lô cận date và ký Biên bản bàn giao ca trực điện tử 4 bước.
+- **Ranh giới bảo vệ (SoD):** Không được tự chọn lô xuất bán thủ công, không có quyền tự ý kích hoạt/sửa mức giảm giá Quick Markdown, không có quyền tạo/duyệt đơn đặt hàng PO gửi DC, không có quyền tự phê duyệt tiêu hủy (`APPROVED`) và không có quyền truy cập cấu hình hệ thống hay quản trị tài khoản.
 
 # 5. Quản lý thông tin cửa hàng bán lẻ duy nhất
 
@@ -232,7 +216,7 @@ Phân loại hàng hóa theo đặc thù thời hạn sử dụng và điều ki
 
 - **Bảo vệ toàn vẹn khóa ngoại (FK Integrity):** Tuyệt đối không cho phép xóa danh mục ngành hàng (`Categories`) nếu đang có sản phẩm thuộc ngành hàng đó.
 - **Bảo vệ toàn vẹn lô hàng (Batch Integrity):** Tuyệt đối không cho phép xóa hoặc chuyển sang trạng thái ngừng kinh doanh (`IsActive = 0`) đối với sản phẩm nếu sản phẩm đó đang còn ít nhất một lô hàng khả dụng trong kho (`current_quantity > 0` và trạng thái `ACTIVE` hoặc `WARNING`). Bắt buộc phải xả bán hết hoặc thanh lý/tiêu hủy toàn bộ tồn kho trước khi ngừng kinh doanh.
-- **Ranh giới Phân quyền (SoD):** Chỉ Quản trị viên (`ADMIN`) và Cửa hàng trưởng (`STORE_MANAGER`) mới có quyền Thêm mới, Sửa thông tin, Cập nhật giá bán, Điều chỉnh ngưỡng tồn kho và Quản lý danh mục ngành hàng. Thu ngân (`CASHIER`) và Nhân viên kho (`WAREHOUSE_STAFF`) chỉ có quyền tra cứu (Read-only) để phục vụ xuất bán POS và tiếp nhận hàng DC. Mọi thao tác đều được ghi vết bất biến vào `system_audit_logs` (Rule 11), bám sát nguyên tắc phân định trách nhiệm 3 Actor (OWNER/ADMIN, MANAGER, STAFF) trong tài liệu định hướng *SmartSupply AI — Phân tích nghiệp vụ 3 Actor*.
+- **Ranh giới Phân quyền (SoD):** Chỉ Quản trị viên (`ADMIN`) và Cửa hàng trưởng (`STORE_MANAGER`) mới có quyền Thêm mới, Sửa thông tin, Cập nhật giá bán, Điều chỉnh ngưỡng tồn kho và Quản lý danh mục ngành hàng. Nhân viên Cửa hàng (`CASHIER`) chỉ có quyền tra cứu (Read-only) để phục vụ xuất bán POS và tiếp nhận hàng DC. Mọi thao tác đều được ghi vết bất biến vào `system_audit_logs` (Rule 11), bám sát nguyên tắc phân định trách nhiệm 3 Actor (OWNER/ADMIN, MANAGER, STAFF) trong tài liệu định hướng *SmartSupply AI — Phân tích nghiệp vụ 3 Actor*.
 
 # 7. Quản lý lô hàng & Vòng đời hạn sử dụng (Shelf-Life Management)
 
@@ -336,21 +320,21 @@ Hệ thống tự động phân loại rủi ro của toàn bộ các lô hàng 
 - **Cơ chế Expiry Watchdog:** Trước mỗi giao dịch xuất bán, kiểm kê hoặc truy vấn danh sách lô hàng, hệ thống tự động quét và cập nhật trạng thái `EXPIRED` cho tất cả các lô có $DaysLeft \le 0$.
 - **Tính bất biến của lịch sử (Immutability):** Nghiêm cấm xóa vật lý (Hard Delete) bất kỳ lô hàng nào đã phát sinh giao dịch bán lẻ (`sales_history`) hoặc biên bản tiêu hủy (`spoilage_records`).
 
-## 7.7 Ma trận Phân định Trách nhiệm (SoD Matrix 4 Actor) cho Nghiệp vụ Lô hàng
+## 7.7 Ma trận Phân định Trách nhiệm (SoD Matrix 3 Actor) cho Nghiệp vụ Lô hàng
 
 Tham chiếu từ tài liệu phân tích nghiệp vụ 3 Actor (*SmartSupply AI — Phân tích nghiệp vụ 3 Actor*), thẩm quyền của từng vị trí đối với nghiệp vụ quản lý lô hàng được phân định nghiêm ngặt:
 
-| Nghiệp vụ Quản lý Lô hàng | ADMIN | STORE_MANAGER | WAREHOUSE_STAFF | CASHIER |
-| :--- | :---: | :---: | :---: | :---: |
-| Tiếp nhận lô hàng DC ($RSL \ge 70\%$) | Cho phép | Cho phép | **Tác nghiệp chính** | Từ chối (Chặn) |
-| Từ chối nhận hàng DC ($RSL < 70\%$) & lập biên bản | Cho phép | Cho phép | **Tác nghiệp chính** | Từ chối (Chặn) |
-| In tem nhãn Barcode lô hàng dán kệ | Cho phép | Cho phép | **Tác nghiệp chính** | Chỉ xem |
-| Giám sát 3 vùng màu & Vốn rủi ro lãng phí | Toàn quyền | Toàn quyền | Xem ca trực | Xem phục vụ bán |
-| Kích hoạt Quick Markdown (15%, 30%, 40%, 50%) | **Phê duyệt** | **Phê duyệt** | Chỉ xem (Chặn) | Chỉ xem (Chặn) |
-| Thực hiện SOP 5 bước đảo kệ mặt tiền | Giám sát | Giám sát | **Thực hiện chính** | Chỉ xem |
-| In tem Sticker xả hàng giảm giá | Cho phép | Cho phép | Cho phép | Cho phép |
-| Đề xuất tiêu hủy lô hàng quá hạn / hư hỏng | Đề xuất | Đề xuất | **Đề xuất chính** | Đề xuất (Hàng hư quầy) |
-| Phê duyệt chốt Sổ hao hụt tài chính | **Chốt sổ** | **Chốt sổ** | Từ chối (Chặn) | Từ chối (Chặn) |
+| Nghiệp vụ Quản lý Lô hàng | ADMIN | STORE_MANAGER | CASHIER (Nhân viên Cửa hàng) |
+| :--- | :---: | :---: | :---: |
+| Tiếp nhận lô hàng DC ($RSL \ge 70\%$) | Cho phép | Cho phép | **Tác nghiệp chính** |
+| Từ chối nhận hàng DC ($RSL < 70\%$) & lập biên bản | Cho phép | Cho phép | **Tác nghiệp chính** |
+| In tem nhãn Barcode lô hàng dán kệ | Cho phép | Cho phép | **Tác nghiệp chính** |
+| Giám sát 3 vùng màu & Vốn rủi ro lãng phí | Toàn quyền | Toàn quyền | Xem phục vụ ca trực |
+| Kích hoạt Quick Markdown (15%, 30%, 40%, 50%) | **Phê duyệt** | **Phê duyệt** | Chỉ xem (Chặn 403) |
+| Thực hiện SOP 5 bước đảo kệ mặt tiền | Giám sát | Giám sát | **Thực hiện chính** |
+| In tem Sticker xả hàng giảm giá | Cho phép | Cho phép | Cho phép |
+| Đề xuất tiêu hủy lô hàng quá hạn / hư hỏng | Đề xuất | Đề xuất | **Đề xuất chính (`PENDING`)** |
+| Phê duyệt chốt Sổ hao hụt tài chính | **Chốt sổ** | **Chốt sổ** | Từ chối (Chặn 403) |
 
 ## 7.8 Tiêu chuẩn Tem Nhãn Mã Vạch & Tem Sticker Xả Hàng Giảm Giá
 
@@ -450,17 +434,17 @@ Giao dịch xuất bán lẻ tại quầy POS chỉ được phép hoàn tất k
 6. Tuyệt đối không cho phép tồn kho âm ($current\_quantity \ge 0$ được bảo vệ bằng CHECK constraint và logic Domain).
 7. Giao dịch thực thi an toàn trong SQL Server Transaction có khóa dòng `WITH (UPDLOCK, ROWLOCK)`.
 
-## 8.6 Ma trận Phân định Trách nhiệm (SoD Matrix 4 Actor) tại Quầy POS
+## 8.6 Ma trận Phân định Trách nhiệm (SoD Matrix 3 Actor) tại Quầy POS
 
-| Nghiệp vụ Bán lẻ POS | CASHIER | WAREHOUSE_STAFF | STORE_MANAGER | ADMIN |
-| :--- | :---: | :---: | :---: | :---: |
-| Quét Barcode SKU & Thêm giỏ hàng POS | **Tác nghiệp chính** | Cho phép | Cho phép | Cho phép |
-| Can thiệp chọn lô xuất kho thủ công | **TUYỆT ĐỐI CẤM** | **TUYỆT ĐỐI CẤM** | **TUYỆT ĐỐI CẤM** | **TUYỆT ĐỐI CẤM** |
-| Chọn cờ ngữ cảnh Thời tiết & Ngày lễ | **Thực hiện** | Thực hiện | Thực hiện | Thực hiện |
-| Thu tiền mặt, tính tiền thối, thanh toán POS | **Tác nghiệp chính** | Cho phép | Cho phép | Cho phép |
-| In lại hóa đơn lịch sử bán lẻ (`reprint`) | Cho phép | Cho phép | Cho phép | Cho phép |
-| Hủy hóa đơn đã thanh toán hoàn tất | Chặn | Chặn | **Cần duyệt lý do** | **Toàn quyền** |
-| Xem lịch sử bán lẻ & Doanh số trong ca | Xem ca trực | Xem phục vụ kho | Xem toàn cửa hàng | Toàn quyền |
+| Nghiệp vụ Bán lẻ POS | CASHIER (Nhân viên Cửa hàng) | STORE_MANAGER | ADMIN |
+| :--- | :---: | :---: | :---: |
+| Quét Barcode SKU & Thêm giỏ hàng POS | **Tác nghiệp chính** | Cho phép | Cho phép |
+| Can thiệp chọn lô xuất kho thủ công | **TUYỆT ĐỐI CẤM** | **TUYỆT ĐỐI CẤM** | **TUYỆT ĐỐI CẤM** |
+| Chọn cờ ngữ cảnh Thời tiết & Ngày lễ | **Thực hiện** | Thực hiện | Thực hiện |
+| Thu tiền mặt, tính tiền thối, thanh toán POS | **Tác nghiệp chính** | Cho phép | Cho phép |
+| In lại hóa đơn lịch sử bán lẻ (`reprint`) | Cho phép | Cho phép | Cho phép |
+| Hủy hóa đơn đã thanh toán hoàn tất | Chặn (403) | **Cần duyệt lý do** | **Toàn quyền** |
+| Xem lịch sử bán lẻ & Doanh số trong ca | Xem ca trực | Xem toàn cửa hàng | Toàn quyền |
 
 ## 8.7 Quy chuẩn Biên lai Hóa đơn In nhiệt K80/K57 (Thermal Receipt Standards)
 
@@ -580,18 +564,18 @@ Khi hàng hóa bị quá hạn ($DaysLeft \le 0$) hoặc hư hỏng cơ học (m
 
 ---
 
-## 9.6 Ma trận Phân quyền & Tách biệt Trách nhiệm (SoD 4 Actor - Mục 16 SSOT)
+## 9.6 Ma trận Phân quyền & Tách biệt Trách nhiệm (SoD 3 Actor - Mục 16 SSOT)
 
-Nhằm triệt tiêu nguy cơ gian lận nội bộ (nhân viên tự ý tẩu tán hàng hóa rồi báo tiêu hủy ảo), hệ thống áp dụng nguyên tắc **Tách biệt Trách nhiệm (Separation of Duties - SoD)**:
+Nhằm triệt tiêu nguy cơ gian lận nội bộ (nhân viên tự ý tẩu tán hàng hóa rồi báo tiêu hủy ảo), hệ thống áp dụng nguyên tắc **Tách biệt Trách nhiệm (Separation of Duties - SoD)** giữa 3 nhóm vai trò:
 
-| Hành vi Nghiệp vụ | Thu ngân (CASHIER) | Nhân viên kho (WAREHOUSE) | Cửa hàng trưởng (STORE_MANAGER) | Quản trị viên (ADMIN) |
-| :--- | :---: | :---: | :---: | :---: |
-| Xem cảnh báo 3 cấp màu & Quá hạn | Có | Có | Có | Có |
-| Kích hoạt giảm giá Quick Markdown | Không | Không | **Có** | **Có** |
-| Xác nhận SOP 5 bước Đảo kệ | Có | **Có** | Có | Có |
-| Lập phiếu đề xuất tiêu hủy (`PENDING`) | **Có** | **Có** | Có | Có |
-| Phê duyệt tiêu hủy (`APPROVED`) & Chốt Sổ | **KHÓA (403)** | **KHÓA (403)** | **Có** | **Có** |
-| Xem Sổ hao hụt tài chính & Thống kê | Chỉ xem ca trực | Chỉ xem ca trực | **Toàn bộ** | **Toàn bộ** |
+| Hành vi Nghiệp vụ | Nhân viên Cửa hàng (`CASHIER`) | Cửa hàng trưởng (`STORE_MANAGER`) | Quản trị viên (`ADMIN`) |
+| :--- | :---: | :---: | :---: |
+| Xem cảnh báo 3 cấp màu & Quá hạn | Có | Có | Có |
+| Kích hoạt giảm giá Quick Markdown | **KHÓA (403)** | **Có** | **Có** |
+| Xác nhận SOP 5 bước Đảo kệ | **Có** | Có | Có |
+| Lập phiếu đề xuất tiêu hủy (`PENDING`) | **Có** | Có | Có |
+| Phê duyệt tiêu hủy (`APPROVED`) & Chốt Sổ | **KHÓA (403)** | **Có** | **Có** |
+| Xem Sổ hao hụt tài chính & Thống kê | Chỉ xem ca trực | **Toàn bộ** | **Toàn bộ** |
 
 ---
 
@@ -717,8 +701,8 @@ $$RSL_{inbound} (\%) = \frac{\text{ExpiryDate} - \text{ImportDate}}{\text{Expiry
 
 | Khoảng $RSL_{inbound}$ | Trạng thái Kiểm định | Hành vi Hệ thống (System Reaction) | Thẩm quyền Xử lý |
 | :---: | :---: | :--- | :--- |
-| **$RSL \ge 70\%$** | **ĐẠT CHUẨN (PASS)** | - Hiển thị huy hiệu Xanh lá **"ĐẠT CHUẨN TIẾP NHẬN (>= 70%)"**.<br>- Cho phép nhập số lượng thực nhận và đơn giá vốn.<br>- Mở khóa nút **"Lưu Phiếu Nhập Kho"**. | `WAREHOUSE_STAFF`<br>`STORE_MANAGER` |
-| **$RSL < 70\%$** | **VI PHẠM (REJECT)** | - **KHÓA CỨNG** nút **"Lưu Phiếu Nhập Kho"** (Disabled).<br>- Hiển thị cảnh báo Đỏ: *"Vi phạm Rule 7: Hàng không đạt chuẩn độ tươi mới tối thiểu 70%"*.<br>- Tự động kích hoạt nút **"Lập Biên Bản Từ Chối Nhận Hàng DC"**.<br>- Bắt buộc xe tải DC nhận lại toàn bộ kiện hàng vi phạm. | `WAREHOUSE_STAFF`<br>`STORE_MANAGER` |
+| **$RSL \ge 70\%$** | **ĐẠT CHUẨN (PASS)** | - Hiển thị huy hiệu Xanh lá **"ĐẠT CHUẨN TIẾP NHẬN (>= 70%)"**.<br>- Cho phép nhập số lượng thực nhận và đơn giá vốn.<br>- Mở khóa nút **"Lưu Phiếu Nhập Kho"**. | `CASHIER`<br>`STORE_MANAGER` |
+| **$RSL < 70\%$** | **VI PHẠM (REJECT)** | - **KHÓA CỨNG** nút **"Lưu Phiếu Nhập Kho"** (Disabled).<br>- Hiển thị cảnh báo Đỏ: *"Vi phạm Rule 7: Hàng không đạt chuẩn độ tươi mới tối thiểu 70%"*.<br>- Tự động kích hoạt nút **"Lập Biên Bản Từ Chối Nhận Hàng DC"**.<br>- Bắt buộc xe tải DC nhận lại toàn bộ kiện hàng vi phạm. | `CASHIER`<br>`STORE_MANAGER` |
 
 ---
 
@@ -729,7 +713,7 @@ Quy trình nhập kho từ xe tải DC Biên Hòa được chuẩn hóa qua 6 b�
 ```mermaid
 sequenceDiagram
     autonumber
-    actor NV as Nhân viên Kho (Warehouse Staff)
+    actor NV as Nhân viên Cửa hàng (POS & Kho kệ)
     participant UI as Giao diện Nhập Kho (DcIntakeView)
     participant BE as Backend Use Case (ReceiveDCBatchUseCase)
     participant DB as SQL Server LocalDB
@@ -839,23 +823,23 @@ Toàn bộ các lô hàng tiếp nhận đạt chuẩn phải được in tem nh
 
 ---
 
-## 12.5 Ma trận Phân quyền & Tách biệt Trách nhiệm (SoD Matrix 4 Actor - Rule 7)
+## 12.5 Ma trận Phân quyền & Tách biệt Trách nhiệm (SoD Matrix 3 Actor - Rule 7)
 
-Nghiệp vụ tiếp nhận hàng hóa từ Kho tổng DC tuân thủ ma trận phân quyền phân định trách nhiệm rõ ràng giữa các vai trò trong cửa hàng:
+Nghiệp vụ tiếp nhận hàng hóa từ Kho tổng DC tuân thủ ma trận phân quyền phân định trách nhiệm rõ ràng giữa 3 vai trò trong cửa hàng:
 
-| Thao tác / Quyền hạn | Quản Trị Viên (`ADMIN`) | Cửa Hàng Trưởng (`STORE_MANAGER`) | Nhân Viên Kho (`WAREHOUSE_STAFF`) | Nhân Viên Thu Ngân (`CASHIER`) |
-| :--- | :---: | :---: | :---: | :---: |
-| **Cấu hình ngưỡng $RSL_{min}$ cửa hàng** | **Toàn quyền** | Chỉ xem | Chỉ xem | Không có quyền |
-| **Duyệt Đơn đặt hàng PO trước khi gửi DC** | Toàn quyền | **Toàn quyền** | Không có quyền | Không có quyền |
-| **Mở màn hình Tiếp nhận hàng DC (`DcIntakeView`)** | Cho phép | Cho phép | **Toàn quyền (Mặc định)** | **BỊ KHÓA (Ẩn)** |
-| **Quét date & Máy tính $RSL_{inbound}$** | Cho phép | Cho phép | **Toàn quyền** | Không có quyền |
-| **Xác nhận Lưu Phiếu Nhập & Sinh Lô** | Cho phép | Cho phép | **Toàn quyền** | **BỊ CHẶN (HTTP 403)** |
-| **Lập Biên bản Từ chối Nhận hàng DC** | Cho phép | Cho phép | **Toàn quyền** | Không có quyền |
-| **In Tem Nhãn Lô Hàng Barcode/QR** | Cho phép | Cho phép | **Toàn quyền** | Không có quyền |
-| **Xem Sổ Kiểm toán Nhập kho & Từ chối** | **Toàn quyền** | **Toàn quyền** | Xem lịch sử ca | Không có quyền |
+| Thao tác / Quyền hạn | Quản Trị Viên (`ADMIN`) | Cửa Hàng Trưởng (`STORE_MANAGER`) | Nhân Viên Cửa Hàng (`CASHIER`) |
+| :--- | :---: | :---: | :---: |
+| **Cấu hình ngưỡng $RSL_{min}$ cửa hàng** | **Toàn quyền** | Được cập nhật | Chỉ xem |
+| **Duyệt Đơn đặt hàng PO trước khi gửi DC** | Toàn quyền | **Toàn quyền** | Không có quyền (Chặn 403) |
+| **Mở màn hình Tiếp nhận hàng DC (`DcIntakeView`)** | Cho phép | Cho phép | **Toàn quyền** |
+| **Quét date & Máy tính $RSL_{inbound}$** | Cho phép | Cho phép | **Toàn quyền** |
+| **Xác nhận Lưu Phiếu Nhập & Sinh Lô** | Cho phép | Cho phép | **Toàn quyền** |
+| **Lập Biên bản Từ chối Nhận hàng DC** | Cho phép | Cho phép | **Toàn quyền** |
+| **In Tem Nhãn Lô Hàng Barcode/QR** | Cho phép | Cho phép | **Toàn quyền** |
+| **Xem Sổ Kiểm toán Nhập kho & Từ chối** | **Toàn quyền** | **Toàn quyền** | Xem lịch sử ca |
 
 > [!IMPORTANT]
-> **Nguyên tắc Tách biệt Trách nhiệm (SoD):** Nhân viên thu ngân (`CASHIER`) tuyệt đối không được phép thao tác trên giao diện Tiếp nhận hàng DC hoặc gọi API tiếp nhận hàng. Bán hàng tại quầy POS và Tiếp nhận hàng tại kho phải được phân định độc lập nhằm ngăn ngừa thất thoát và gian lận số liệu tồn kho.
+> **Nguyên tắc Tách biệt Trách nhiệm (SoD):** Nhân viên Cửa hàng (`CASHIER`) phụ trách tiếp nhận xe tải DC và kiểm định $RSL \ge 70\%$, nhưng tuyệt đối không có quyền lập hoặc phê duyệt Đơn đặt hàng bổ sung (`PO`) gửi DC. Việc lập và duyệt PO thuộc thẩm quyền của Cửa hàng trưởng (`STORE_MANAGER`) hoặc Chủ chuỗi (`ADMIN`) nhằm ngăn ngừa thông đồng đặt hàng khống.
 
 
 
@@ -961,18 +945,18 @@ Cơ chế kết nối giữa Phân hệ Điều hành Giá (Markdown Engine) và
 
 ---
 
-## 13.5 Ma trận Phân quyền & Tách biệt Trách nhiệm (SoD Matrix 4 Actor)
+## 13.5 Ma trận Phân quyền & Tách biệt Trách nhiệm (SoD Matrix 3 Actor)
 
-Nghiệp vụ điều chỉnh giá bán và đảo kệ được kiểm soát chặt chẽ bằng ma trận phân quyền RBAC nhằm ngăn chặn tình trạng thất thoát doanh thu hoặc trục lợi chính sách giảm giá:
+Nghiệp vụ điều chỉnh giá bán và đảo kệ được kiểm soát chặt chẽ bằng ma trận phân quyền RBAC 3 vai trò nhằm ngăn chặn tình trạng thất thoát doanh thu hoặc trục lợi chính sách giảm giá:
 
-| Quyền Hạn / Tác Vụ Nghiệp Vụ | Quản Trị Viên (`ADMIN`) | Cửa Hàng Trưởng (`STORE_MANAGER`) | Nhân Viên Thu Ngân (`CASHIER`) | Nhân Viên Kho & Kệ (`WAREHOUSE_STAFF`) |
-| :--- | :---: | :---: | :---: | :---: |
-| **Kích hoạt Quick Markdown (15%, 30%, 40%, 50%)** | Toàn quyền (Phê duyệt & Can thiệp) | **Thẩm quyền chính** (Trực tiếp phê duyệt giá) | ❌ Cấm tuyệt đối (`403 Forbidden`) | ❌ Cấm tuyệt đối (`403 Forbidden`) |
-| **Hủy chiết khấu xả hàng (Đưa về 0%)** | Toàn quyền | **Thẩm quyền chính** | ❌ Cấm tuyệt đối | ❌ Cấm tuyệt đối |
-| **Thực hiện & Xác nhận SOP Đảo kệ 5 bước** | Kiểm tra & Giám sát | Phê duyệt & Đôn đốc ca trực | ❌ Không phụ trách quầy kệ | **Thẩm quyền chính** (Trực tiếp thực hiện) |
-| **In Tem Sticker Giảm Giá xả hàng** | Hỗ trợ in ấn | Cho phép in tem | ❌ Không được cấp quyền | **Thẩm quyền chính** (In dán lên kệ) |
-| **Thu ngân bán lẻ ghi nhận giá xả hàng** | Kiểm tra doanh thu | Giám sát báo cáo ca | **Thực thi tự động qua POS** | ❌ Không phụ trách quầy thu ngân |
-| **Truy vết Nhật ký Kiểm toán (Audit Logs)** | Xem toàn diện hệ thống | Xem trong phạm vi cửa hàng | ❌ Không được xem | ❌ Không được xem |
+| Quyền Hạn / Tác Vụ Nghiệp Vụ | Quản Trị Viên (`ADMIN`) | Cửa Hàng Trưởng (`STORE_MANAGER`) | Nhân Viên Cửa Hàng (`CASHIER`) |
+| :--- | :---: | :---: | :---: |
+| **Kích hoạt Quick Markdown (15%, 30%, 40%, 50%)** | Toàn quyền (Phê duyệt & Can thiệp) | **Thẩm quyền chính** (Trực tiếp phê duyệt giá) | ❌ Cấm tuyệt đối (`403 Forbidden`) |
+| **Hủy chiết khấu xả hàng (Đưa về 0%)** | Toàn quyền | **Thẩm quyền chính** | ❌ Cấm tuyệt đối (`403 Forbidden`) |
+| **Thực hiện & Xác nhận SOP Đảo kệ 5 bước** | Kiểm tra & Giám sát | Phê duyệt & Đôn đốc ca trực | **Thẩm quyền chính** (Trực tiếp thực hiện) |
+| **In Tem Sticker Giảm Giá xả hàng** | Hỗ trợ in ấn | Cho phép in tem | **Thẩm quyền chính** (In dán lên kệ) |
+| **Bán lẻ POS ghi nhận giá xả hàng** | Kiểm tra doanh thu | Giám sát báo cáo ca | **Thực thi tự động qua POS** |
+| **Truy vết Nhật ký Kiểm toán (Audit Logs)** | Xem toàn diện hệ thống | Xem trong phạm vi cửa hàng | ❌ Không được xem |
 
 ---
 
@@ -1089,7 +1073,7 @@ sequenceDiagram
 ### Chi tiết 2 Pha Xử lý:
 
 1. **Pha 1 – Lập Đề xuất Tiêu hủy (Pending Draft Phase):**
-   * Người thực hiện: `CASHIER`, `WAREHOUSE_STAFF` (hoặc `STORE_MANAGER`, `ADMIN`).
+   * Người thực hiện: `CASHIER` - Nhân viên Cửa hàng (hoặc `STORE_MANAGER`, `ADMIN`).
    * Nhân viên kiểm đếm số lượng hàng hỏng thực tế, mang vào **Khu vực Cách ly Tiêu hủy** của cửa hàng, mở [`DisposalFormModal.jsx`](file:///c:/thuyet%20minh/Frontend/src/components/DisposalFormModal.jsx) chọn đúng lô hàng, nhập số lượng đề xuất hủy ($QuantityDisposed \le CurrentQuantity$) và chọn lý do chuẩn hóa.
    * Bản ghi được chèn vào bảng `spoilage_records` với trường `approved_by = NULL` (Trạng thái `PENDING`).
    * **Ràng buộc an toàn:** Tồn kho trong bảng `batches` **tuyệt đối chưa bị khấu trừ** ở pha này để tránh trường hợp nhân viên tự ý xóa sổ hàng hóa mà không có sự kiểm tra thực tế của quản lý.
@@ -1147,15 +1131,15 @@ Mọi nghiệp vụ tiêu hủy sau khi được phê duyệt đều phải sinh
 
 ## 14.6 Ma trận Phân quyền SoD & Nhật ký Kiểm toán Bất biến (Rule 11)
 
-### 14.6.1 Ma trận phân quyền 4 vai trò (RBAC / SoD Matrix)
+### 14.6.1 Ma trận phân quyền 3 vai trò (RBAC / SoD Matrix)
 
-| Tác Vụ Nghiệp Vụ Tiêu Hủy | Quản Trị Viên (`ADMIN`) | Cửa Hàng Trưởng (`STORE_MANAGER`) | Nhân Viên Thu Ngân (`CASHIER`) | Nhân Viên Kho & Kệ (`WAREHOUSE_STAFF`) |
-| :--- | :---: | :---: | :---: | :---: |
-| **Lập đề xuất tiêu hủy hàng hỏng (Tạo phiếu PENDING)** | Toàn quyền (Duyệt ngay) | Toàn quyền (Duyệt ngay) | **Được phép** (Chờ quản lý duyệt) | **Được phép** (Chờ quản lý duyệt) |
-| **Trực tiếp kiểm tra hàng cách ly & Phê duyệt chốt sổ** | Toàn quyền phê duyệt | **Thẩm quyền chính** | ❌ Cấm tuyệt đối (`403 Forbidden`) | ❌ Cấm tuyệt đối (`403 Forbidden`) |
-| **Từ chối / Hủy bỏ phiếu đề xuất không hợp lệ** | Toàn quyền hủy | **Thẩm quyền chính** | ❌ Cấm tuyệt đối | ❌ Cấm tuyệt đối |
-| **Xem Sổ hao hụt tài chính & Thiệt hại vốn ($CostLoss$)** | Toàn quyền xem | Toàn quyền xem | ❌ Bị che dữ liệu tài chính | ❌ Bị che dữ liệu tài chính |
-| **In Biên bản Tiêu hủy K80 / A4** | Được phép | Được phép | In phiếu do mình lập | In phiếu do mình lập |
+| Tác Vụ Nghiệp Vụ Tiêu Hủy | Quản Trị Viên (`ADMIN`) | Cửa Hàng Trưởng (`STORE_MANAGER`) | Nhân Viên Cửa Hàng (`CASHIER`) |
+| :--- | :---: | :---: | :---: |
+| **Lập đề xuất tiêu hủy hàng hỏng (Tạo phiếu PENDING)** | Toàn quyền (Duyệt ngay) | Toàn quyền (Duyệt ngay) | **Được phép** (Chờ quản lý duyệt) |
+| **Trực tiếp kiểm tra hàng cách ly & Phê duyệt chốt sổ** | Toàn quyền phê duyệt | **Thẩm quyền chính** | ❌ Cấm tuyệt đối (`403 Forbidden`) |
+| **Từ chối / Hủy bỏ phiếu đề xuất không hợp lệ** | Toàn quyền hủy | **Thẩm quyền chính** | ❌ Cấm tuyệt đối (`403 Forbidden`) |
+| **Xem Sổ hao hụt tài chính & Thiệt hại vốn ($CostLoss$)** | Toàn quyền xem | Toàn quyền xem | Chỉ xem ca trực thực hiện |
+| **In Biên bản Tiêu hủy K80 / A4** | Được phép | Được phép | In phiếu do mình lập |
 
 ### 14.6.2 Nhật ký kiểm toán bất biến (Rule 11 SSOT)
 Bảng `system_audit_logs` lưu giữ 2 mốc vết giao dịch không thể tẩy xóa:
@@ -1184,10 +1168,10 @@ Hệ thống tự động nhận diện ca trực thời gian thực dựa trên
 $$	ext{ShiftType} = egin{cases} 	ext{MORNING} & 	ext{khi } 6 \le 	ext{CurrentHour} < 14 \ 	ext{AFTERNOON} & 	ext{khi } 14 \le 	ext{CurrentHour} < 22 	ext{ (hoặc ngoài giờ)} \end{cases}$$
 
 ### 15.1.2 Định biên nhân sự tối thiểu mỗi ca trực
-Nhằm đảm bảo tuân thủ nguyên tắc Tách biệt Trách nhiệm (Separation of Duties - SoD), mỗi ca trực bắt buộc phải có mặt tối thiểu 3 nhân sự thuộc các vai trò nghiệp vụ:
-1. **01 Cửa hàng trưởng / Quản lý ca trực (`STORE_MANAGER` hoặc `ADMIN`):** Giám sát chung, giải quyết sự cố, thẩm quyền phê duyệt nhận hàng DC, duyệt tiêu hủy và ký chốt Sổ hao hụt tài chính.
-2. **01 Nhân viên Thu ngân chính (`CASHIER`):** Trực quầy bán lẻ POS, áp dụng chính sách giảm giá Quick Markdown, kiểm đếm tiền mặt két thu ngân khi hết ca.
-3. **01 Nhân viên Kho & Quầy kệ (`WAREHOUSE_STAFF`):** Tiếp nhận bốc dỡ xe tải DC, rà soát hạn dùng, thực hiện SOP 5 bước đảo lô cận date ra sát mép mặt tiền kệ và chuyển hàng hư hỏng vào khu cách ly.
+Nhằm đảm bảo tuân thủ nguyên tắc Tách biệt Trách nhiệm (Separation of Duties - SoD), mỗi ca trực vận hành theo 3 nhóm Actor:
+1. **Chủ chuỗi / Quản trị viên (`ADMIN`):** Giám sát từ xa toàn chuỗi 3 chi nhánh, cấu hình tham số và phê duyệt chiến lược.
+2. **01 Cửa hàng trưởng / Quản lý ca trực (`STORE_MANAGER`):** Giám sát chung tại cửa hàng, giải quyết sự cố, phê duyệt giá Quick Markdown, duyệt tiêu hủy và ký chốt Sổ hao hụt tài chính.
+3. **Nhân viên Cửa hàng - POS & Kho kệ (`CASHIER`):** Trực quầy bán lẻ POS theo chuẩn FEFO, tiếp nhận xe tải DC Biên Hòa ($RSL \ge 70\%$), thực hiện SOP 5 bước đảo lô cận date ra mặt tiền kệ, chuyển hàng hư hỏng vào khu cách ly và kiểm đếm tiền mặt két khi hết ca.
 
 ---
 
@@ -1270,16 +1254,15 @@ Mọi phiên bàn giao ca sau khi hoàn tất Bước 4 đều tự động sinh
 
 ## 15.5 Ma trận Phân quyền SoD & Nhật ký Kiểm toán Bất biến (Rule 11)
 
-### 15.5.1 Ma trận phân quyền 4 vai trò đối với nghiệp vụ Bàn giao Ca
+### 15.5.1 Ma trận phân quyền 3 vai trò đối với nghiệp vụ Bàn giao Ca
 
-| Tác Vụ Nghiệp Vụ Bàn Giao Ca | Quản Trị Viên (`ADMIN`) | Cửa Hàng Trưởng (`STORE_MANAGER`) | Nhân Viên Thu Ngân (`CASHIER`) | Nhân Viên Kho & Kệ (`WAREHOUSE_STAFF`) |
-| :--- | :---: | :---: | :---: | :---: |
-| **Kiểm đếm tiền két & Ký giao ca POS** | Toàn quyền | Giám sát & Ký duyệt | **Thực hiện chính** (Ký giao) | ❌ Không tham gia đếm tiền |
-| **Rà soát lô Đỏ/Vàng & Thùng cách ly** | Toàn quyền | Giám sát & Đối chiếu | Cùng kiểm tra | **Thực hiện chính** (Đối chiếu kệ) |
-| **Ký xác nhận Biên bản Bàn giao ca** | Toàn quyền | Ký duyệt ca | **Ký nhận/giao ca** | **Ký nhận/giao ca** |
-| **Xử lý giải trình chênh lệch két ($\Delta Cash 
-e 0$)** | Toàn quyền | **Thẩm quyền chính** | Giải trình lý do | Không có thẩm quyền |
-| **Tra cứu Lịch sử Biên bản Bàn giao ca** | Toàn quyền xem | Toàn quyền xem | Xem biên bản ca mình | Xem biên bản ca mình |
+| Tác Vụ Nghiệp Vụ Bàn Giao Ca | Quản Trị Viên (`ADMIN`) | Cửa Hàng Trưởng (`STORE_MANAGER`) | Nhân Viên Cửa Hàng (`CASHIER`) |
+| :--- | :---: | :---: | :---: |
+| **Kiểm đếm tiền két & Ký giao ca POS** | Toàn quyền | Giám sát & Ký duyệt | **Thực hiện chính** (Ký giao) |
+| **Rà soát lô Đỏ/Vàng & Thùng cách ly** | Toàn quyền | Giám sát & Đối chiếu | **Thực hiện chính** (Đối chiếu kệ) |
+| **Ký xác nhận Biên bản Bàn giao ca** | Toàn quyền | Ký duyệt ca | **Ký nhận/giao ca** |
+| **Xử lý giải trình chênh lệch két ($\Delta Cash \ne 0$)** | Toàn quyền | **Thẩm quyền chính** | Giải trình lý do |
+| **Tra cứu Lịch sử Biên bản Bàn giao ca** | Toàn quyền xem | Toàn quyền xem | Xem biên bản ca mình |
 
 ### 15.5.2 Nhật ký kiểm toán bất biến (Rule 11 SSOT)
 Hành vi bàn giao ca trực được ghi nhận vĩnh viễn vào bảng `system_audit_logs`:
@@ -1301,45 +1284,45 @@ Hệ thống quản trị bán lẻ chống lãng phí LHU Mart vận hành theo
 Trong vận hành chuỗi bán lẻ hàng tiêu dùng nhanh (FMCG) cận date, rủi ro thất thoát hàng hóa và trục lợi tài chính thường xuất phát từ việc một cá nhân kiêm nhiệm các khâu đối trọng. Hệ thống thiết lập 4 nguyên tắc SoD cốt lõi:
 
 1. **Nguyên tắc Chống Tự Duyệt Giá (Anti-Collusion Markdown):**
-   - Thu ngân (`CASHIER`) phụ trách thanh toán tiền mặt tại quầy POS **tuyệt đối không có thẩm quyền áp dụng Quick Markdown (15%–50%)**. Nếu cho phép thu ngân tự giảm giá, nhân viên có thể thông đồng với người mua để xả giá sàn rồi chiếm đoạt phần tiền chênh lệch.
+   - Nhân viên Cửa hàng (`CASHIER`) phụ trách thanh toán tiền mặt tại quầy POS và đảo kệ **tuyệt đối không có thẩm quyền áp dụng Quick Markdown (15%–50%)**. Nếu cho phép nhân viên tự giảm giá, có thể xảy ra thông đồng với người mua để xả giá sàn rồi chiếm đoạt phần tiền chênh lệch.
    - Thẩm quyền kích hoạt Quick Markdown thuộc độc quyền của Cửa hàng trưởng (`STORE_MANAGER`) hoặc Quản trị viên (`ADMIN`), áp dụng đồng bộ toàn hệ thống.
 
 2. **Nguyên tắc Phê duyệt Tiêu hủy Hai pha (Two-Phase Disposal Separation - Rule 6):**
-   - Nhân viên kho (`WAREHOUSE_STAFF`) hoặc Thu ngân (`CASHIER`) khi phát hiện hàng hỏng chỉ có quyền lập biên bản đề xuất ở trạng thái chờ duyệt (`PENDING`) kèm hình ảnh và lý do kiểm định. Thao tác này **không được trừ tồn kho vật lý**.
+   - Nhân viên Cửa hàng (`CASHIER`) khi phát hiện hàng hỏng trên kệ hoặc kho chỉ có quyền lập biên bản đề xuất ở trạng thái chờ duyệt (`PENDING`) kèm lý do kiểm định. Thao tác này **không được trừ tồn kho vật lý**.
    - Chỉ có Cửa hàng trưởng (`STORE_MANAGER`) hoặc Quản trị viên (`ADMIN`) sau khi đối soát trực tiếp mới được bấm nút phê duyệt (`APPROVED`), kích hoạt Transaction khóa dòng (`UPDLOCK, ROWLOCK`), trừ kho và chốt số liệu vào Sổ hao hụt tài chính (`SpoilageRecords`). Người lập đề xuất không thể tự phê duyệt đề xuất của chính mình.
 
 3. **Nguyên tắc Tách biệt Nhận hàng DC và Mua hàng (Inbound vs Purchasing):**
-   - Nhân viên kho (`WAREHOUSE_STAFF`) trực tiếp kiểm đếm xe tải giao hàng từ DC và kiểm soát tiêu chuẩn `RSL >= 70%`, nhưng **không có quyền tạo hoặc duyệt đơn đặt hàng bổ sung (`PO`)**.
+   - Nhân viên Cửa hàng (`CASHIER`) trực tiếp kiểm đếm xe tải giao hàng từ DC và kiểm soát tiêu chuẩn `RSL >= 70%`, nhưng **không có quyền tạo hoặc duyệt đơn đặt hàng bổ sung (`PO`)**.
    - Việc tính toán ROP và phát hành đơn PO gửi DC do Cửa hàng trưởng (`STORE_MANAGER`) phê duyệt dựa trên dự báo thuật toán bán hàng 14 ngày.
 
-4. **Nguyên tắc Bảo mật & Che giấu Số liệu Tài chính Tác nghiệp (Financial Masking):**
-   - Thu ngân và Nhân viên kho chỉ tiếp cận các trường dữ liệu phục vụ tác nghiệp (Tên SP, SKU, Hạn dùng, Màu cảnh báo, Vị trí kệ, Số lượng tồn).
-   - Toàn bộ chỉ số tài chính nhạy cảm (Giá vốn nhập hàng `import_price`, Giá trị tổng hao hụt `cost_loss`, Biên độ lợi nhuận gộp `gross_margin`, Báo cáo P&L ca trực) được ẩn (masked) hoàn toàn trên giao diện của hai vai trò này.
+4. **Nguyên tắc Bảo mật & Phân tách Điều hành Chiến lược (Executive KPI Separation):**
+   - Nhân viên Cửa hàng (`CASHIER`) chỉ tiếp cận các màn hình phục vụ tác nghiệp trực tiếp (Quầy POS, Giám sát Date & FEFO, Tiếp nhận hàng DC, Danh mục SP, Đề xuất tiêu hủy, Bàn giao ca).
+   - Toàn bộ bảng Dashboard 6 KPI tài chính điều hành, Cấu hình cửa hàng & DC, Nhật ký kiểm toán và Quản trị nhân sự được giới hạn nghiêm ngặt cho cấp Quản lý (`STORE_MANAGER`) và Chủ chuỗi (`ADMIN`).
 
 ---
 
-## 16.2 Bảng Ma trận Phân quyền Toàn diện 4 Vai trò (RBAC Matrix)
+## 16.2 Bảng Ma trận Phân quyền Toàn diện 3 Vai trò (RBAC Matrix - 3 Actor)
 
-Hệ thống chuẩn hóa 4 nhóm vai trò (`ADMIN`, `STORE_MANAGER`, `CASHIER`, `WAREHOUSE_STAFF`) kiểm soát trên toàn bộ 16 chức năng nghiệp vụ của cửa hàng LHU Mart:
+Hệ thống chuẩn hóa 3 nhóm vai trò (`ADMIN`, `STORE_MANAGER`, `CASHIER`) kiểm soát trên toàn bộ 16 chức năng nghiệp vụ của chuỗi cửa hàng LHU Mart:
 
-| STT | Chức năng nghiệp vụ & Phân hệ | Admin | Cửa hàng trưởng (STORE_MANAGER) | Thu ngân (CASHIER) | Nhân viên kho (WAREHOUSE_STAFF) | Endpoint API Backend & Bảo vệ |
-| :---: | :--- | :---: | :---: | :---: | :---: | :--- |
-| **1** | Đăng nhập hệ thống (/login) | Toàn quyền | Toàn quyền | Toàn quyền | Toàn quyền | `POST /api/auth/login` (Public) |
-| **2** | Quản trị tài khoản, Khóa/Mở khóa nhân sự | Toàn quyền | Không | Không | Không | `PATCH /api/auth/users/:id/status` (ADMIN) |
-| **3** | Cấu hình cửa hàng & DC (`StoreProfile`) | Toàn quyền | Được cập nhật | Không | Không | `PUT /api/store-profile` (ADMIN, STORE_MANAGER) |
-| **4** | Quản lý danh mục & sản phẩm FMCG (Rule 9) | Toàn quyền | Toàn quyền | Chỉ xem | Chỉ xem | `POST/PUT/DELETE /api/products` (ADMIN, STORE_MANAGER) |
-| **5** | Xem danh sách lô hàng & cảnh báo 3 màu | Toàn quyền | Toàn quyền | Toàn quyền | Toàn quyền | `GET /api/batches/alerts` (Tất cả vai trò đã login) |
-| **6** | Bán lẻ POS tự động trừ kho FEFO (Rule 2) | Toàn quyền | Toàn quyền | Toàn quyền | **Chặn (403)** | `POST /api/sales` (ADMIN, STORE_MANAGER, CASHIER) |
-| **7** | Áp dụng giảm giá Quick Markdown (15%–50%) | Toàn quyền | Toàn quyền | **Chặn (403)** | **Chặn (403)** | `PATCH /api/batches/:id/discount` (ADMIN, STORE_MANAGER) |
-| **8** | Tiếp nhận hàng từ Kho tổng DC (RSL >= 70%) | Toàn quyền | Toàn quyền | **Chặn (403)** | Toàn quyền | `POST /api/batches/receive-inbound` (ADMIN, MGR, WAREHOUSE) |
-| **9** | Xác nhận SOP 5 bước đảo lô mặt tiền kệ | Toàn quyền | Toàn quyền | **Chặn (403)** | Toàn quyền | `PATCH /api/batches/:id/rotate` (ADMIN, MGR, WAREHOUSE) |
-| **10** | Lập đề xuất tiêu hủy hàng hỏng (PENDING) | Toàn quyền | Toàn quyền | Toàn quyền | Toàn quyền | `POST /api/spoilage` (Tất cả nhân sự) |
-| **11** | Phê duyệt tiêu hủy & chốt Sổ hao hụt (Rule 6) | Toàn quyền | Toàn quyền | **Chặn (403)** | **Chặn (403)** | `PATCH /api/spoilage/:id/approve` (ADMIN, STORE_MANAGER) |
-| **12** | Xem dự báo nhu cầu bán hàng & ROP (Rule 8) | Toàn quyền | Toàn quyền | Không | Được xem ROP | `GET /api/forecast/demand` (ADMIN, MGR, WAREHOUSE) |
-| **13** | Tạo & duyệt đơn đặt hàng PO gửi DC | Toàn quyền | Toàn quyền | **Chặn (403)** | Không | `POST /api/purchase-orders` (ADMIN, STORE_MANAGER) |
-| **14** | Xem Dashboard 6 KPI tổng điều hành | Toàn quyền | Toàn quyền | Không | Không | `GET /api/batches/live-stats` (ADMIN, STORE_MANAGER) |
-| **15** | Ký biên bản bàn giao ca trực điện tử 4 bước | Toàn quyền | Toàn quyền | Toàn quyền | Toàn quyền | `POST /api/shift-handover` (Tất cả nhân sự ca trực) |
-| **16** | Tra cứu Nhật ký kiểm toán (Audit Log) | Toàn quyền | Được tra cứu | Không | Không | `GET /api/audit-logs` (ADMIN, STORE_MANAGER) |
+| STT | Chức năng nghiệp vụ & Phân hệ | Chủ chuỗi / Admin (`ADMIN`) | Quản lý Cửa hàng (`STORE_MANAGER`) | Nhân viên Cửa hàng (`CASHIER`) | Endpoint API Backend & Bảo vệ |
+| :---: | :--- | :---: | :---: | :---: | :--- |
+| **1** | Đăng nhập hệ thống (`/login`) | Toàn quyền | Toàn quyền | Toàn quyền | `POST /api/auth/login` (Public) |
+| **2** | Quản trị tài khoản, Khóa/Mở khóa nhân sự | Toàn quyền | **Chặn (403)** | **Chặn (403)** | `PATCH /api/auth/users/:id/status` (ADMIN) |
+| **3** | Cấu hình cửa hàng & DC (`StoreProfile`) | Toàn quyền | Được cập nhật | **Chặn (403)** | `PUT /api/store-profile` (ADMIN, STORE_MANAGER) |
+| **4** | Quản lý danh mục & 80 sản phẩm FMCG (Rule 9) | Toàn quyền | Toàn quyền | Chỉ xem | `POST/PUT/DELETE /api/products` (ADMIN, STORE_MANAGER) |
+| **5** | Xem danh sách lô hàng & cảnh báo 3 màu | Toàn quyền | Toàn quyền | Toàn quyền | `GET /api/batches/alerts` (Tất cả vai trò đã login) |
+| **6** | Bán lẻ POS tự động trừ kho FEFO (Rule 2) | Toàn quyền | Toàn quyền | Toàn quyền | `POST /api/sales` (ADMIN, STORE_MANAGER, CASHIER) |
+| **7** | Áp dụng giảm giá Quick Markdown (15%–50%) | Toàn quyền | Toàn quyền | **Chặn (403)** | `PATCH /api/batches/:id/discount` (ADMIN, STORE_MANAGER) |
+| **8** | Tiếp nhận hàng từ Kho tổng DC (`RSL >= 70%`) | Toàn quyền | Toàn quyền | Toàn quyền | `POST /api/batches/receive-inbound` (ADMIN, MGR, CASHIER) |
+| **9** | Xác nhận SOP 5 bước đảo lô mặt tiền kệ | Toàn quyền | Toàn quyền | Toàn quyền | `PATCH /api/batches/:id/rotate` (ADMIN, MGR, CASHIER) |
+| **10** | Lập đề xuất tiêu hủy hàng hỏng (`PENDING`) | Toàn quyền | Toàn quyền | Toàn quyền | `POST /api/spoilage` (Tất cả nhân sự) |
+| **11** | Phê duyệt tiêu hủy & chốt Sổ hao hụt (Rule 6) | Toàn quyền | Toàn quyền | **Chặn (403)** | `PATCH /api/spoilage/:id/approve` (ADMIN, STORE_MANAGER) |
+| **12** | Xem dự báo nhu cầu bán hàng & ROP (Rule 8) | Toàn quyền | Toàn quyền | Được xem ROP | `GET /api/forecast/rop` (ADMIN, MGR, CASHIER) |
+| **13** | Tạo & duyệt đơn đặt hàng PO gửi DC | Toàn quyền | Toàn quyền | **Chặn (403)** | `POST /api/purchase-orders` (ADMIN, STORE_MANAGER) |
+| **14** | Xem Dashboard 6 KPI tổng điều hành | Toàn quyền | Toàn quyền | Không hiển thị | `GET /api/dashboard/overview` (ADMIN, STORE_MANAGER) |
+| **15** | Ký biên bản bàn giao ca trực điện tử 4 bước | Toàn quyền | Toàn quyền | Toàn quyền | `POST /api/shift-handover` (Tất cả nhân sự ca trực) |
+| **16** | Tra cứu Nhật ký kiểm toán (`Audit Log`) | Toàn quyền | Được tra cứu | **Chặn (403)** | `GET /api/audit-logs` (ADMIN, STORE_MANAGER) |
 
 ---
 
@@ -1366,7 +1349,7 @@ flowchart TD
 ### 16.3.2 Cơ chế Phân quyền Tuyệt đối (`roleMiddleware`)
 - **Cơ chế bọc Route:** Áp dụng `roleMiddleware(['ROLE_A', 'ROLE_B'])` trực tiếp trên từng Route Express.
 - **Quyền tối cao của Quản trị viên:** Tài khoản có `roleCode === 'ADMIN'` được thiết kế bypass tự động toàn bộ mảng kiểm tra vai trò, có toàn quyền xử lý sự cố khẩn cấp.
-- **Tương thích danh pháp:** Tự động chuẩn hóa song song giữa `WAREHOUSE_STAFF` và `INVENTORY_STAFF` để đảm bảo tính liên tục của dữ liệu lịch sử.
+- **Tương thích danh pháp:** Tự động chuẩn hóa đồng nhất vai trò `CASHIER` cho toàn bộ nhân sự vận hành cửa hàng (POS & Kho kệ).
 - **Định dạng lỗi chuẩn hóa khi vi phạm thẩm quyền:**
   ```json
   {
@@ -1380,7 +1363,7 @@ flowchart TD
 ### 16.3.3 Phân quyền Giao diện Người dùng (Client-Side UI Masking)
 - **Lọc thực đơn điều hướng (Sidebar Navigation):** Component `Sidebar.jsx` tự động lọc mảng `allMenuItems` dựa trên `currentUser.roleCode`. Những mục không có thẩm quyền sẽ không hiển thị trên thanh điều hướng.
 - **Ẩn nút tác vụ đặc quyền (Action Buttons Masking):** Nút *Phê duyệt tiêu hủy*, nút *Quick Markdown*, nút *Thêm mới sản phẩm* và bảng *Nhật ký kiểm toán* chỉ render khi vai trò thỏa mãn `['ADMIN', 'STORE_MANAGER']`.
-- **Tự động chuyển hướng ca trực:** Ngay khi đăng nhập, hệ thống tự động đưa `CASHIER` về màn hình Bán lẻ POS (`/pos-checkout`), đưa `WAREHOUSE_STAFF` về màn hình Tiếp nhận DC (`/dc-intake`), và đưa Quản trị viên về Dashboard điều hành (`/dashboard`).
+- **Tự động chuyển hướng ca trực:** Ngay khi đăng nhập, hệ thống tự động đưa Nhân viên Cửa hàng (`CASHIER`) về màn hình Bán lẻ POS (`/pos-checkout`), và đưa Cửa hàng trưởng (`STORE_MANAGER`) / Quản trị viên (`ADMIN`) về Dashboard điều hành (`/dashboard`).
 
 ---
 
@@ -1443,7 +1426,7 @@ CREATE TABLE Roles (
  Description NVARCHAR(255) NULL
 );
 
--- Role mặc định: ADMIN, STORE_MANAGER (hoặc MANAGER), CASHIER, WAREHOUSE_STAFF
+-- 3 Role chuẩn: ADMIN (Chủ chuỗi/Quản trị viên), STORE_MANAGER (Quản lý Cửa hàng), CASHIER (Nhân viên Cửa hàng - POS & Kho kệ)
 
 ## 17.3 Bảng StoreProfile
 
@@ -2125,7 +2108,7 @@ ROLLBACK
 
 Phiên bản đầu tiên (MVP) đã hoàn thiện đầy đủ các chức năng cốt lõi:
 
-1. Đăng nhập và phân quyền 4 vai trò
+1. Đăng nhập và phân quyền 3 vai trò (3 Actor: Chủ chuỗi / Admin, Quản lý Cửa hàng, Nhân viên Cửa hàng)
 2. Cấu hình thông tin cửa hàng bán lẻ duy nhất
 3. Quản lý danh mục và sản phẩm FMCG (chống trùng lặp)
 4. Quản lý lô hàng và vòng đời hạn sử dụng (Shelf-Life)

@@ -41,23 +41,19 @@ echo   🔌 Địa chỉ API:      http://localhost:5000
 echo   🗄️  Cơ sở dữ liệu:    (localdb)\mssqllocaldb -> retail_spoilage_db
 echo.
 echo -------------------------------------------------------------------------------
-echo   🔑 DANH SÁCH TÀI KHOẢN ĐĂNG NHẬP MẪU THEO 4 VAI TRÒ (RBAC SSOT):
+echo   🔑 DANH SÁCH TÀI KHOẢN ĐĂNG NHẬP MẪU THEO 3 VAI TRÒ (3 ACTOR - RBAC SSOT):
 echo -------------------------------------------------------------------------------
-echo   1. Quản trị viên Tối cao (ADMIN):
+echo   1. Chủ chuỗi / Quản trị viên (ADMIN):
 echo      - Tài khoản: admin        Mật khẩu: Password123@
-echo      - Quyền hạn: Toàn quyền hệ thống, quản lý người dùng, cấu hình cửa hàng.
+echo      - Quyền hạn: Toàn quyền chuỗi 3 chi nhánh, quản lý nhân sự, cấu hình hệ thống.
 echo.
-echo   2. Cửa hàng trưởng (STORE_MANAGER):
+echo   2. Quản lý Cửa hàng (STORE_MANAGER - Đỗ Tấn Du):
 echo      - Tài khoản: manager      Mật khẩu: Password123@
-echo      - Quyền hạn: Duyệt tiêu hủy Spoilage, duyệt PO gửi DC, xem Dashboard 14 ngày.
+echo      - Quyền hạn: Điều hành KPI, giảm giá 15-50%, duyệt tiêu hủy & đặt hàng DC.
 echo.
-echo   3. Thu ngân Quầy POS (CASHIER):
+echo   3. Nhân viên Cửa hàng - POS & Kho kệ (CASHIER - Đoàn Minh Quân):
 echo      - Tài khoản: cashier      Mật khẩu: Password123@
-echo      - Quyền hạn: Bán lẻ xuất kho FEFO tự động bẻ lô, in hóa đơn, bàn giao ca.
-echo.
-echo   4. Nhân viên Kho & Kệ (WAREHOUSE_STAFF):
-echo      - Tài khoản: warehouse    Mật khẩu: Password123@
-echo      - Quyền hạn: Nhận hàng DC (RSL >= 70%), lập biên bản từ chối, đảo kệ FEFO.
+echo      - Quyền hạn: Bán lẻ POS tự động bẻ lô FEFO, nhận hàng DC (RSL >= 70%), đảo kệ & bàn giao ca.
 echo -------------------------------------------------------------------------------
 echo.
 echo   ℹ️  Để tắt toàn bộ hệ thống, hãy chạy file: stop_lhu_mart.bat

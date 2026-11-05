@@ -86,7 +86,6 @@ BEGIN
         SET u.role_id = CASE 
             WHEN u.role = ''ADMIN'' OR u.role = ''OWNER'' THEN 1
             WHEN u.role = ''STORE_MANAGER'' OR u.role = ''MANAGER'' THEN 2
-            WHEN u.role = ''WAREHOUSE_STAFF'' THEN 4
             ELSE 3
         END
         FROM [dbo].[users] u

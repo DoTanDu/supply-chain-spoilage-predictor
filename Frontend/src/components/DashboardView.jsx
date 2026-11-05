@@ -45,7 +45,7 @@ export default function DashboardView({
   onRequestAdminLogin
 }) {
   const isManagerOrAdmin = isAdmin || currentRole === 'ADMIN' || currentRole === 'STORE_MANAGER';
-  const isWarehouseStaff = currentRole === 'WAREHOUSE_STAFF' || currentRole === 'INVENTORY_STAFF';
+  const isWarehouseStaff = false;
   const isCashier = currentRole === 'CASHIER';
 
   const [activeActionTab, setActiveActionTab] = useState('MARKDOWN');

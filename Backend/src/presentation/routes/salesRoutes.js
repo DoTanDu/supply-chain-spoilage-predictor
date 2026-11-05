@@ -10,13 +10,13 @@ const router = express.Router();
 router.post(
   '/',
   authMiddleware,
-  roleMiddleware(['ADMIN', 'STORE_MANAGER', 'CASHIER', 'WAREHOUSE_STAFF']),
+  roleMiddleware(['ADMIN', 'STORE_MANAGER', 'CASHIER']),
   (req, res, next) => salesController.processSale(req, res, next)
 );
 router.post(
   '/checkout',
   authMiddleware,
-  roleMiddleware(['ADMIN', 'STORE_MANAGER', 'CASHIER', 'WAREHOUSE_STAFF']),
+  roleMiddleware(['ADMIN', 'STORE_MANAGER', 'CASHIER']),
   (req, res, next) => salesController.processSale(req, res, next)
 );
 

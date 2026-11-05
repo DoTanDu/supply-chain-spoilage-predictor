@@ -28,10 +28,10 @@ flowchart TD
 | :-: | :--- | :--- | :--- | :--- | :-: |
 | **Phần 1** | Quản lý thông tin cửa hàng bán lẻ duy nhất (`StoreProfile`) | Mục 5, Mục 17.3, Mục 22.3 | **Rule 1**, **Rule 11** | `ADMIN` (Cấu hình lõi), `STORE_MANAGER` (Đóng/Mở ca) | ✅ Hoàn thành |
 | **Phần 2** | Quản lý danh mục ngành hàng FMCG & Sản phẩm | Mục 6, Mục 17.5, Mục 17.6, Mục 22.4 | **Rule 9**, **Rule 11** | `ADMIN`, `STORE_MANAGER` (CRUD), `STAFF` (Tra cứu) | ✅ Hoàn thành |
-| **Phần 3** | Quản lý lô hàng & Tiếp nhận xe tải DC Biên Hòa | Mục 7, Mục 12, Mục 17.7, Mục 17.12 | **Rule 7**, **Rule 11** | `WAREHOUSE_STAFF`, `STORE_MANAGER`, `ADMIN` | ✅ Hoàn thành |
+| **Phần 3** | Quản lý lô hàng & Tiếp nhận xe tải DC Biên Hòa | Mục 7, Mục 12, Mục 17.7, Mục 17.12 | **Rule 7**, **Rule 11** | `CASHIER`, `STORE_MANAGER`, `ADMIN` | ✅ Hoàn thành |
 | **Phần 4** | Bán lẻ POS theo nguyên tắc FEFO & Bẻ lô tự động | Mục 8, Mục 10, Mục 17.8, Mục 21.1 | **Rule 2**, **Rule 3**, **Rule 5** | `CASHIER`, `STORE_MANAGER`, `ADMIN` | ✅ Hoàn thành |
-| **Phần 5** | Cảnh báo 3 cấp màu, Quick Markdown, Đảo kệ & Sổ hao hụt | Mục 9, Mục 13, Mục 14, Mục 17.9 | **Rule 4**, **Rule 6**, **Rule 10** | `STORE_MANAGER`, `WAREHOUSE_STAFF`, `CASHIER` | ✅ Hoàn thành |
-| **Phần 6** | Dự báo nhu cầu ROP, Đơn đặt hàng DC, Dashboard & Bàn giao ca | Mục 11, Mục 15, Mục 17.10, Mục 21.6 | **Rule 8**, **Rule 11** | Toàn bộ 4 vai trò theo phân quyền | ✅ Hoàn thành |
+| **Phần 5** | Cảnh báo 3 cấp màu, Quick Markdown, Đảo kệ & Sổ hao hụt | Mục 9, Mục 13, Mục 14, Mục 17.9 | **Rule 4**, **Rule 6**, **Rule 10** | `STORE_MANAGER`, `CASHIER`, `CASHIER` | ✅ Hoàn thành |
+| **Phần 6** | Dự báo nhu cầu ROP, Đơn đặt hàng DC, Dashboard & Bàn giao ca | Mục 11, Mục 15, Mục 17.10, Mục 21.6 | **Rule 8**, **Rule 11** | Toàn bộ 3 vai trò theo phân quyền | ✅ Hoàn thành |
 
 ---
 
@@ -90,13 +90,13 @@ flowchart TD
   - Chuẩn hóa chuỗi tiếng Việt, chặn tạo mới hoặc cập nhật nếu trùng mã `SKU` hoặc độ tương đồng tên sản phẩm `>= 85%`.
 - **Phân quyền 3 Actor / 4 Role:**
   - `ADMIN` & `STORE_MANAGER`: Thêm mới, cập nhật thông tin/giá/ngưỡng tồn kho, ngừng kinh doanh (`DISCONTINUED`).
-  - `CASHIER` & `WAREHOUSE_STAFF` (Actor `STAFF` - Nghiệp vụ 1 "Xem sản phẩm"): Được mở màn hình Danh mục sản phẩm ở chế độ **Tra cứu (Read-only)** để xem mã SKU, giá bán, đơn vị tính, điều kiện bảo quản và tồn kho.
+  - `CASHIER` & `CASHIER` (Actor `STAFF` - Nghiệp vụ 1 "Xem sản phẩm"): Được mở màn hình Danh mục sản phẩm ở chế độ **Tra cứu (Read-only)** để xem mã SKU, giá bán, đơn vị tính, điều kiện bảo quản và tồn kho.
 
 #### 2.2 Hiện trạng mã nguồn & Điểm còn thiếu
 - **Đã có:** [ProductDeduplicationService.js](file:///c:/thuyet%20minh/Backend/src/domain/services/ProductDeduplicationService.js), [CreateProductUseCase.js](file:///c:/thuyet%20minh/Backend/src/application/use-cases/catalog/CreateProductUseCase.js), [ProductCatalogView.jsx](file:///c:/thuyet%20minh/Frontend/src/components/ProductCatalogView.jsx).
 - **Còn thiếu / Chưa khớp:**
   1. Giao diện [ProductCatalogView.jsx](file:///c:/thuyet%20minh/Frontend/src/components/ProductCatalogView.jsx) hiện chỉ nhận prop `isAdmin` (`roleCode === 'ADMIN'`), dẫn đến **Cửa hàng trưởng (`STORE_MANAGER`) bị ẩn mất nút Thêm/Sửa sản phẩm** dù Backend `catalogRoutes.js` và Đặc tả Mục 16 cho phép `STORE_MANAGER` quản lý sản phẩm.
-  2. Nhân viên `CASHIER` và `WAREHOUSE_STAFF` chưa có mục "Tra cứu Sản phẩm FMCG" trên [Sidebar.jsx](file:///c:/thuyet%20minh/Frontend/src/components/Sidebar.jsx) (theo Nghiệp vụ 1 của `STAFF` trong tài liệu 3 Actor).
+  2. Nhân viên `CASHIER` và `CASHIER` chưa có mục "Tra cứu Sản phẩm FMCG" trên [Sidebar.jsx](file:///c:/thuyet%20minh/Frontend/src/components/Sidebar.jsx) (theo Nghiệp vụ 1 của `STAFF` trong tài liệu 3 Actor).
   3. Hàm `CatalogController.updateProduct` khi sửa tên/SKU sản phẩm chưa gọi `ProductDeduplicationService` để chặn đổi tên trùng `>= 85%` với sản phẩm khác.
 
 #### 2.3 Công việc thực hiện ở Phần 2
@@ -104,7 +104,7 @@ flowchart TD
    - Cập nhật [CatalogController.js](file:///c:/thuyet%20minh/Backend/src/presentation/controllers/CatalogController.js): tích hợp kiểm tra `ProductDeduplicationService.checkDuplicate` (loại trừ chính `id` đang sửa) khi cập nhật sản phẩm (`PUT /api/products/:id`).
 2. **Frontend:**
    - Cập nhật [ProductCatalogView.jsx](file:///c:/thuyet%20minh/Frontend/src/components/ProductCatalogView.jsx) và [App.jsx](file:///c:/thuyet%20minh/Frontend/src/App.jsx): mở quyền Thêm/Sửa/Ngừng kinh doanh cho cả `ADMIN` và `STORE_MANAGER`; hiển thị thẻ thông tin 5 ngành hàng FMCG kèm nhiệt độ bảo quản và ngưỡng cảnh báo mặc định.
-   - Cập nhật [Sidebar.jsx](file:///c:/thuyet%20minh/Frontend/src/components/Sidebar.jsx): cho phép `CASHIER` và `WAREHOUSE_STAFF` truy cập tab `Danh mục Sản phẩm` ở chế độ Chỉ đọc (Tra cứu).
+   - Cập nhật [Sidebar.jsx](file:///c:/thuyet%20minh/Frontend/src/components/Sidebar.jsx): cho phép `CASHIER` và `CASHIER` truy cập tab `Danh mục Sản phẩm` ở chế độ Chỉ đọc (Tra cứu).
 
 ---
 

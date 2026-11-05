@@ -19,13 +19,12 @@ BEGIN
 END
 GO
 
--- Seed 4 Roles
+-- Seed 3 Roles (3 Actor: OWNER, MANAGER, STAFF)
 MERGE [dbo].[roles] AS target
 USING (VALUES 
-    ('ADMIN', N'Quản trị viên hệ thống', N'Toàn quyền quản trị tài khoản và cấu hình hệ thống'),
-    ('STORE_MANAGER', N'Cửa hàng trưởng', N'Quản lý doanh thu, giá xả hàng, phê duyệt tiêu hủy và đặt hàng DC'),
-    ('CASHIER', N'Nhân viên thu ngân', N'Bán lẻ tại quầy POS theo chuẩn FEFO, xuất hóa đơn'),
-    ('WAREHOUSE_STAFF', N'Nhân viên kho & quầy kệ', N'Tiếp nhận hàng DC, đảo kệ mặt tiền, kiểm date')
+    ('ADMIN', N'Chủ chuỗi / Quản trị viên', N'Toàn quyền quản trị chuỗi chi nhánh, danh mục FMCG, tài khoản và cấu hình hệ thống'),
+    ('STORE_MANAGER', N'Quản lý Cửa hàng', N'Điều hành cửa hàng, giảm giá Quick Markdown 15-50%, phê duyệt tiêu hủy và đặt hàng DC'),
+    ('CASHIER', N'Nhân viên Cửa hàng (POS & Kho kệ)', N'Bán lẻ tại quầy POS theo chuẩn FEFO, tiếp nhận hàng DC, đảo kệ mặt tiền và kiểm date')
 ) AS source ([code], [name], [description])
 ON (target.[code] = source.[code])
 WHEN MATCHED THEN
@@ -52,33 +51,30 @@ BEGIN
 END
 GO
 
--- Seed / Update 4 tài khoản người dùng chuẩn
+-- Seed / Update 3 tài khoản người dùng chuẩn (3 Actor)
 -- Password chuẩn: Password123@ -> Bcrypt Hash: $2b$10$utBHyz0fZU7KTV1BSIEF5exBMNUbmlDzOIc9OUDfbSQtQtKxs96qS
 DECLARE @AdminRoleId INT = (SELECT id FROM [dbo].[roles] WHERE [code] = 'ADMIN');
 DECLARE @ManagerRoleId INT = (SELECT id FROM [dbo].[roles] WHERE [code] = 'STORE_MANAGER');
 DECLARE @CashierRoleId INT = (SELECT id FROM [dbo].[roles] WHERE [code] = 'CASHIER');
-DECLARE @WarehouseRoleId INT = (SELECT id FROM [dbo].[roles] WHERE [code] = 'WAREHOUSE_STAFF');
 DECLARE @PassHash NVARCHAR(255) = N'$2b$10$utBHyz0fZU7KTV1BSIEF5exBMNUbmlDzOIc9OUDfbSQtQtKxs96qS';
 
 MERGE [dbo].[users] AS target
 USING (VALUES
-    ('admin', @PassHash, N'Nguyễn Quản Trị', 'admin@lhumart.edu.vn', '0901112233', 'ADMIN', @AdminRoleId, 1),
-    ('manager', @PassHash, N'Đỗ Tấn Du (Cửa Hàng Trưởng)', 'manager@lhumart.edu.vn', '0902223344', 'STORE_MANAGER', @ManagerRoleId, 1),
-    ('cashier', @PassHash, N'Đoàn Minh Quân (Thu Ngân)', 'cashier@lhumart.edu.vn', '0903334455', 'CASHIER', @CashierRoleId, 1),
-    ('warehouse', @PassHash, N'Lê Nhân Kho (Kho & Kệ)', 'warehouse@lhumart.edu.vn', '0904445566', 'WAREHOUSE_STAFF', @WarehouseRoleId, 1)
-) AS source ([username], [password_hash], [full_name], [email], [phone], [role], [role_id], [is_active])
+    ('admin', @PassHash, N'Quản trị viên (Admin)', 'admin@lhumart.edu.vn', '0901112233', @AdminRoleId, 1),
+    ('manager', @PassHash, N'Đỗ Tấn Du (Cửa Hàng Trưởng)', 'manager@lhumart.edu.vn', '0902223344', @ManagerRoleId, 1),
+    ('cashier', @PassHash, N'Đoàn Minh Quân (Nhân Viên Cửa Hàng)', 'cashier@lhumart.edu.vn', '0903334455', @CashierRoleId, 1)
+) AS source ([username], [password_hash], [full_name], [email], [phone], [role_id], [is_active])
 ON (target.[username] = source.[username])
 WHEN MATCHED THEN
     UPDATE SET 
         [password_hash] = source.[password_hash],
         [full_name] = source.[full_name],
-        [role] = source.[role],
         [role_id] = source.[role_id],
         [is_active] = 1,
         [updated_at] = GETDATE()
 WHEN NOT MATCHED THEN
-    INSERT ([username], [password_hash], [full_name], [email], [phone], [role], [role_id], [is_active], [created_at], [updated_at])
-    VALUES (source.[username], source.[password_hash], source.[full_name], source.[email], source.[phone], source.[role], source.[role_id], source.[is_active], GETDATE(), GETDATE());
+    INSERT ([username], [password_hash], [full_name], [email], [phone], [role_id], [is_active], [created_at], [updated_at])
+    VALUES (source.[username], source.[password_hash], source.[full_name], source.[email], source.[phone], source.[role_id], source.[is_active], GETDATE(), GETDATE());
 GO
 
 -- 3. TẠO BẢNG STORE_PROFILE (CHỈ 1 BẢN GHI DUY NHẤT)

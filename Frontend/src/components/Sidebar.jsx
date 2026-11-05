@@ -59,51 +59,51 @@ export default function Sidebar({
       id: 'pos-checkout',
       label: 'Quầy Bán lẻ POS',
       icon: ShoppingCart,
-      allowedRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER', 'WAREHOUSE_STAFF'],
-      highlight: roleCode === 'CASHIER' || roleCode === 'WAREHOUSE_STAFF'
+      allowedRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER'],
+      highlight: roleCode === 'CASHIER' || roleCode === 'STAFF'
     },
     {
       id: 'fefo-monitor',
       label: 'Giám sát Date & FEFO',
       icon: Clock,
       badge: criticalCount > 0 ? `${criticalCount} khẩn` : null,
-      allowedRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER', 'WAREHOUSE_STAFF']
+      allowedRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER']
     },
     {
       id: 'dc-intake',
       label: 'Tiếp nhận hàng DC',
       icon: PackagePlus,
-      allowedRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER', 'WAREHOUSE_STAFF']
+      allowedRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER']
     },
     {
       id: 'product-catalog',
       label: 'Danh mục Sản phẩm',
       icon: Package,
-      allowedRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER', 'WAREHOUSE_STAFF']
+      allowedRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER']
     },
     {
       id: 'spoilage-disposal',
       label: 'Tiêu hủy & Sổ hao hụt',
       icon: Trash2,
-      allowedRoles: ['ADMIN', 'STORE_MANAGER', 'WAREHOUSE_STAFF', 'CASHIER']
+      allowedRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER']
     },
     {
       id: 'shift-handover',
       label: 'Bàn giao Ca trực',
       icon: ClipboardCheck,
-      allowedRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER', 'WAREHOUSE_STAFF']
+      allowedRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER']
     },
     {
       id: 'reorder-predictor',
       label: 'Dự báo ROP & Đơn DC',
       icon: TrendingUp,
-      allowedRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER', 'WAREHOUSE_STAFF']
+      allowedRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER']
     },
     {
       id: 'stock-transfer',
       label: 'Điều phối Liên cửa hàng',
       icon: ArrowLeftRight,
-      allowedRoles: ['ADMIN', 'STORE_MANAGER', 'WAREHOUSE_STAFF', 'CASHIER']
+      allowedRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER']
     },
     {
       id: 'audit-log',
@@ -138,7 +138,6 @@ export default function Sidebar({
       case 'STORE_MANAGER':
         return { label: 'QUẢN LÝ CỬA HÀNG', color: '#4f46e5', bg: '#eef2ff', border: '#c7d2fe', icon: Store };
       case 'CASHIER':
-      case 'WAREHOUSE_STAFF':
       case 'STAFF':
         return { label: 'NHÂN VIÊN CỬA HÀNG', color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe', icon: ShoppingCart };
       default:

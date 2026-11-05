@@ -57,15 +57,75 @@ const newProducts = [
 ];
 
 async function run() {
-  console.log('1. Chuẩn hóa 3 Actor trong bảng roles & users...');
+  console.log('1. Chuẩn hóa triệt để 3 Actor - 3 Vai trò trong bảng roles & users...');
   await SqlConnection.executeSql(`
-    UPDATE roles SET name = N'Chủ chuỗi / Quản trị viên', description = N'Quản trị hệ thống, cấu hình chuỗi chi nhánh và phê duyệt chiến lược' WHERE id = 1;
-    UPDATE roles SET name = N'Quản lý Cửa hàng', description = N'Điều hành cửa hàng, giảm giá Quick Markdown, duyệt tiêu hủy & đặt hàng DC' WHERE id = 2;
-    UPDATE roles SET name = N'Nhân viên Cửa hàng (POS & Kho kệ)', description = N'Bán lẻ POS chuẩn FEFO, tiếp nhận hàng DC, đảo kệ & kiểm date' WHERE id IN (3, 4);
+    BEGIN TRANSACTION;
 
-    UPDATE users SET full_name = N'Quản trị viên (Admin)' WHERE username = 'admin';
-    UPDATE users SET full_name = N'Đỗ Tấn Du (Cửa Hàng Trưởng)' WHERE username = 'manager';
-    UPDATE users SET full_name = N'Đoàn Minh Quân (Nhân Viên Cửa Hàng)' WHERE username = 'cashier';
+    UPDATE store_profile SET manager_id = 2 WHERE manager_id IN (2, 4, 13);
+    UPDATE stock_transfers SET requested_by = 2 WHERE requested_by IN (2, 4, 13);
+    UPDATE stock_transfers SET requested_by = 3 WHERE requested_by IN (3, 5, 6, 9, 12);
+    UPDATE stock_transfers SET approved_by = 2 WHERE approved_by IN (2, 4, 13);
+    UPDATE sales_history SET cashier_id = 3 WHERE cashier_id IN (3, 5, 6, 9, 12);
+    UPDATE spoilage_records SET performed_by = 2 WHERE performed_by IN (2, 4, 13);
+    UPDATE spoilage_records SET performed_by = 3 WHERE performed_by IN (3, 5, 6, 9, 12);
+    UPDATE spoilage_records SET approved_by = 2 WHERE approved_by IN (2, 4, 13);
+    UPDATE goods_receipts SET received_by = 2 WHERE received_by IN (2, 4, 13);
+    UPDATE goods_receipts SET received_by = 3 WHERE received_by IN (3, 5, 6, 9, 12);
+    UPDATE purchase_orders SET created_by = 2 WHERE created_by IN (2, 4, 13);
+    UPDATE purchase_orders SET created_by = 3 WHERE created_by IN (3, 5, 6, 9, 12);
+    UPDATE purchase_orders SET approved_by = 2 WHERE approved_by IN (2, 4, 13);
+
+    DELETE FROM system_audit_logs WHERE user_id >= 14;
+    UPDATE system_audit_logs SET user_id = 2 WHERE user_id IN (2, 4, 13);
+    UPDATE system_audit_logs SET user_id = 3 WHERE user_id IN (3, 5, 6, 9, 12);
+
+    DELETE FROM users WHERE id > 3;
+
+    DECLARE @PassHash NVARCHAR(255) = N'$2b$10$utBHyz0fZU7KTV1BSIEF5exBMNUbmlDzOIc9OUDfbSQtQtKxs96qS';
+
+    UPDATE users SET 
+      username = 'admin',
+      password_hash = @PassHash,
+      full_name = N'Quản trị viên (Admin)',
+      email = 'admin@lhumart.edu.vn',
+      phone = '0901112233',
+      role_id = 1,
+      store_id = NULL,
+      is_active = 1,
+      updated_at = GETDATE()
+    WHERE id = 1;
+
+    UPDATE users SET 
+      username = 'manager',
+      password_hash = @PassHash,
+      full_name = N'Đỗ Tấn Du (Cửa Hàng Trưởng)',
+      email = 'manager@lhumart.edu.vn',
+      phone = '0902223344',
+      role_id = 2,
+      store_id = 1,
+      is_active = 1,
+      updated_at = GETDATE()
+    WHERE id = 2;
+
+    UPDATE users SET 
+      username = 'cashier',
+      password_hash = @PassHash,
+      full_name = N'Đoàn Minh Quân (Nhân Viên Cửa Hàng)',
+      email = 'cashier@lhumart.edu.vn',
+      phone = '0903334455',
+      role_id = 3,
+      store_id = 1,
+      is_active = 1,
+      updated_at = GETDATE()
+    WHERE id = 3;
+
+    DELETE FROM roles WHERE id > 3 OR code = 'WAREHOUSE_STAFF';
+
+    UPDATE roles SET code = 'ADMIN', name = N'Chủ chuỗi / Quản trị viên', description = N'Toàn quyền quản trị chuỗi chi nhánh, danh mục FMCG, tài khoản và cấu hình hệ thống' WHERE id = 1;
+    UPDATE roles SET code = 'STORE_MANAGER', name = N'Quản lý Cửa hàng', description = N'Điều hành cửa hàng, giảm giá Quick Markdown 15-50%, phê duyệt tiêu hủy và đặt hàng DC' WHERE id = 2;
+    UPDATE roles SET code = 'CASHIER', name = N'Nhân viên Cửa hàng (POS & Kho kệ)', description = N'Bán lẻ tại quầy POS theo chuẩn FEFO, tiếp nhận hàng DC, đảo kệ mặt tiền và kiểm date' WHERE id = 3;
+
+    COMMIT TRANSACTION;
   `);
 
   console.log('2. Xóa các sản phẩm rác sinh ra từ test...');
@@ -183,10 +243,8 @@ async function run() {
 
   const finalCheck = await SqlConnection.queryJson(`
     SELECT 
-      COUNT(*) as totalProducts,
-      SUM(CASE WHEN (SELECT ISNULL(SUM(b.current_quantity), 0) FROM batches b WHERE b.product_id = p.id AND b.expiry_date > CAST(GETDATE() AS DATE) AND b.status != 'EXPIRED') > 0 THEN 1 ELSE 0 END) as sellableProducts
-    FROM products p
-    WHERE p.is_active = 1
+      (SELECT COUNT(*) FROM products WHERE is_active = 1) as totalProducts,
+      (SELECT COUNT(DISTINCT b.product_id) FROM batches b INNER JOIN products p ON p.id = b.product_id WHERE p.is_active = 1 AND b.current_quantity > 0 AND b.expiry_date > CAST(GETDATE() AS DATE) AND b.status != 'EXPIRED') as sellableProducts
   `);
 
   console.log('================================================================');

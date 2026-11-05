@@ -15,7 +15,7 @@
 flowchart TD
     WEB_DONE["ĐÃ HOÀN THÀNH 100% TRÊN WEB & FILE WORD ĐẶC TẢ CHÍNH<br/>• Hệ thống Web (Mục 4 -> Mục 15: Phần 1 -> Phần 6)<br/>• File Word: Dac_Ta_Website_Quan_Ly_Ban_Le_Chong_Lang_Phi.docx (27 Mục)"]
     G1["PHẦN 1: Đồng bộ Thuyết minh & Sơ đồ CSDL ERD + Clean Architecture<br/>(Chuẩn 13 bảng 3NF, cột đảo kệ/duyệt hủy/brute-force & cấu trúc file .js thực tế)"]
-    G2["PHẦN 2: Đồng bộ 3 Thuyết minh Sơ đồ UML (Use Case, Activity, Sequence)<br/>(Chuẩn hóa Ma trận RBAC 4 vai trò, Endpoint API thực tế & 5 bước đảo kệ / 4 bước giao ca)"]
+    G2["PHẦN 2: Đồng bộ 3 Thuyết minh Sơ đồ UML (Use Case, Activity, Sequence)<br/>(Chuẩn hóa Ma trận RBAC 3 vai trò, Endpoint API thực tế & 5 bước đảo kệ / 4 bước giao ca)"]
     G3["PHẦN 3: Chuẩn hóa Kịch bản Demo 15 Phút & Biên bản Nghiệm thu Kỹ thuật<br/>(Cập nhật kịch bản bấm Live Demo từ trang /login qua 6 phân hệ mới)"]
     G4["PHẦN 4: Bộ Script Kiểm thử Nghiệm thu Tổng thể (Master E2E Test) & Reset Dữ liệu Demo<br/>(Chạy 1 lệnh kiểm chứng 11 Core Rules + Chuẩn bị dữ liệu sạch sẵn sàng bảo vệ)"]
 
@@ -87,7 +87,7 @@ flowchart TD
 
 #### 3.1 Điểm lệch hiện tại cần cập nhật
 1. **Trong [KICH_BAN_DEMO_THUYET_TRINH_15_PHUT.md](file:///c:/thuyet%20minh/Docs/KICH_BAN_DEMO_THUYET_TRINH_15_PHUT.md):**
-   - Bổ sung thao tác mở đầu tại **Trang Đăng nhập riêng (`/login`)** với 4 nút chọn nhanh vai trò (`ADMIN`, `STORE_MANAGER`, `CASHIER`, `WAREHOUSE_STAFF`).
+   - Bổ sung thao tác mở đầu tại **Trang Đăng nhập riêng (`/login`)** với 4 nút chọn nhanh vai trò (`ADMIN`, `STORE_MANAGER`, `CASHIER`).
    - Cập nhật lời thoại và thao tác khớp 100% với các tính năng mới:
      - **Phần 1 & 2:** Đổi trạng thái cửa hàng `OPEN` ↔ `INVENTORY` khóa POS tức thì; thử tạo sản phẩm trùng tên $\ge 85\%$ bị chặn bởi Rule 9.
      - **Phần 3:** Chọn đơn PO đã duyệt để nhập hàng DC; thử nhập lô có `RSL < 70%` bị khóa nút Lưu và bấm **Lập Biên Bản Từ Chối Nhận Hàng DC**.

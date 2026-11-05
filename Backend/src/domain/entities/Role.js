@@ -2,7 +2,7 @@
 class Role {
   constructor({ id, code, name, description, createdAt }) {
     this.id = id;
-    this.code = code; // ADMIN, STORE_MANAGER, CASHIER, WAREHOUSE_STAFF
+    this.code = code; // ADMIN, STORE_MANAGER, CASHIER
     this.name = name;
     this.description = description;
     this.createdAt = createdAt || new Date();
@@ -11,8 +11,7 @@ class Role {
   static CODES = {
     ADMIN: 'ADMIN',
     STORE_MANAGER: 'STORE_MANAGER',
-    CASHIER: 'CASHIER',
-    WAREHOUSE_STAFF: 'WAREHOUSE_STAFF'
+    CASHIER: 'CASHIER'
   };
 
   isAdmin() {

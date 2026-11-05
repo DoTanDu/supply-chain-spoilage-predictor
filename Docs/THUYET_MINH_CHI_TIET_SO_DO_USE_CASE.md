@@ -11,7 +11,7 @@
 
 Tiếp thu chỉ đạo sâu sát của **ThS. Lê Minh Nhật** về việc sơ đồ Use Case không được mô tả sơ sài hay dừng lại ở các bong bóng độc lập, nhóm sinh viên đã chuẩn hóa toàn bộ chuỗi tác nghiệp khép kín của Cửa hàng bán lẻ tinh gọn LHU Mart liên kết với Kho tổng DC Biên Hòa:
 
-1. **Phân định rõ ràng 4 vai trò người dùng (Separation of Duties):**
+1. **Phân định rõ ràng 3 vai trò người dùng (Separation of Duties):**
    * Tuyệt đối không gộp chung người dùng. 
    * Hệ thống chia tách rõ 4 Roles:
      * `Admin` (Quản trị viên hệ thống)
@@ -112,7 +112,7 @@ Tiếp thu chỉ đạo sâu sát của **ThS. Lê Minh Nhật** về việc sơ
 | Mã UC | Tên Use Case | Tác nhân thực hiện | Phân loại & Quan hệ |
 | :--- | :--- | :--- | :--- |
 | **UC-00** | Đăng nhập hệ thống (JWT) | Admin, Manager, Cashier, Warehouse | Xác thực danh tính theo Role |
-| **UC-01** | Quản trị người dùng & Phân quyền | Admin | Quản trị 4 vai trò hệ thống |
+| **UC-01** | Quản trị người dùng & Phân quyền | Admin | Quản trị 3 vai trò hệ thống |
 | **UC-02** | Cấu hình Cửa hàng duy nhất | Admin, Manager | `StoreProfile` LHU Mart (Rule 1) |
 | **UC-03** | Quản lý SP FMCG & Chống trùng lặp | Admin, Manager | Chặn trùng $\ge 85\%$ (Rule 9) |
 | **UC-04** | Tra cứu Nhật ký kiểm toán AuditLog | Admin, Manager | AuditLog bất biến (Rule 11) |

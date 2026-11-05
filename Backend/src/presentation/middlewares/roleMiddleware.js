@@ -21,9 +21,10 @@ function roleMiddleware(allowedRoles = []) {
       return next();
     }
 
-    // Chuẩn hóa hỗ trợ tương thích WAREHOUSE_STAFF và INVENTORY_STAFF
-    const normalizedUserRole = req.user.roleCode === 'INVENTORY_STAFF' ? 'WAREHOUSE_STAFF' : req.user.roleCode;
-    const normalizedAllowedRoles = allowedRoles.map(r => r === 'INVENTORY_STAFF' ? 'WAREHOUSE_STAFF' : r);
+    // Chuẩn hóa mô hình 3 Vai trò (ADMIN, STORE_MANAGER, CASHIER)
+    const normalizeRole = (r) => (r === 'INVENTORY_STAFF' || r === 'WAREHOUSE_STAFF' || r === 'STAFF') ? 'CASHIER' : r;
+    const normalizedUserRole = normalizeRole(req.user.roleCode);
+    const normalizedAllowedRoles = allowedRoles.map(normalizeRole);
 
     if (!normalizedAllowedRoles.includes(normalizedUserRole)) {
       return res.status(403).json({

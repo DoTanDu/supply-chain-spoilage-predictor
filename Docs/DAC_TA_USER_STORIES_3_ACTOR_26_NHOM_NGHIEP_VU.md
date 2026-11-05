@@ -28,7 +28,7 @@ Tiếp thu góp ý của ThS. Lê Minh Nhật, hệ thống chuẩn hóa các va
 | :---: | :--- | :---: | :--- | :---: | :--- |
 | **Actor 1** | **OWNER**<br>*(Chủ chuỗi / Admin)* | `ADMIN` / `OWNER` | Toàn chuỗi (`ALL STORES`: Chi nhánh 1..N) | **10 nhóm** (`US-OWN-01` $\rightarrow$ `10`) | Quản trị nhân sự & phân quyền RBAC, quản lý danh mục chi nhánh & sản phẩm gốc, giám sát tồn kho/tài chính toàn chuỗi, xem dự báo AI vĩ mô, phê duyệt đơn nhập DC lớn & phê duyệt điều chuyển liên chi nhánh. |
 | **Actor 2** | **MANAGER**<br>*(Quản lý cửa hàng)* | `MANAGER` | Chi nhánh được giao (`store_id` cố định) | **9 nhóm** (`US-MGR-01` $\rightarrow$ `09`) | Điều hành trực tiếp 1 chi nhánh: theo dõi KPI cửa hàng, kiểm soát lô hàng cận date, kích hoạt Quick Markdown, duyệt tiêu hủy hàng hỏng (SoD), lập/duyệt đơn nhập hàng và đề xuất điều chuyển hàng dư sang chi nhánh khác. |
-| **Actor 3** | **STAFF**<br>*(Nhân viên cửa hàng)* | `STAFF` *(tương thích `CASHIER`, `WAREHOUSE_STAFF`)* | Tác nghiệp tại quầy & kho của chi nhánh (`store_id`) | **7 nhóm** (`US-STF-01` $\rightarrow$ `07`) | Trực tiếp thu thập dữ liệu đầu vào: bán hàng POS trừ kho FEFO, kiểm nhận xe tải DC (`RSL >= 70%`), đảo kệ mặt tiền 5 bước, lập phiếu báo hỏng/cận date và đóng gói/giao nhận hàng điều chuyển giữa các chi nhánh. |
+| **Actor 3** | **STAFF**<br>*(Nhân viên cửa hàng)* | `STAFF` *(tương thích `CASHIER`, `CASHIER`)* | Tác nghiệp tại quầy & kho của chi nhánh (`store_id`) | **7 nhóm** (`US-STF-01` $\rightarrow$ `07`) | Trực tiếp thu thập dữ liệu đầu vào: bán hàng POS trừ kho FEFO, kiểm nhận xe tải DC (`RSL >= 70%`), đảo kệ mặt tiền 5 bước, lập phiếu báo hỏng/cận date và đóng gói/giao nhận hàng điều chuyển giữa các chi nhánh. |
 
 ---
 

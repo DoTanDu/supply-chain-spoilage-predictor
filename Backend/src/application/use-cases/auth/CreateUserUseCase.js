@@ -35,11 +35,12 @@ class CreateUserUseCase {
       throw new Error('Mật khẩu khởi tạo phải có độ dài tối thiểu 6 ký tự để đảm bảo an toàn.');
     }
 
-    // 4. Kiểm tra vai trò RBAC hợp lệ
-    const validRoles = ['ADMIN', 'STORE_MANAGER', 'CASHIER', 'WAREHOUSE_STAFF'];
-    const targetRoleCode = (roleCode || 'CASHIER').toUpperCase();
+    // 4. Kiểm tra vai trò RBAC hợp lệ (3 Vai trò chuẩn: ADMIN, STORE_MANAGER, CASHIER)
+    const validRoles = ['ADMIN', 'STORE_MANAGER', 'CASHIER'];
+    const rawRoleCode = (roleCode || 'CASHIER').toUpperCase();
+    const targetRoleCode = (rawRoleCode === 'WAREHOUSE_STAFF' || rawRoleCode === 'STAFF') ? 'CASHIER' : rawRoleCode;
     if (!validRoles.includes(targetRoleCode)) {
-      throw new Error('Vai trò người dùng không hợp lệ. Chỉ chấp nhận ADMIN, STORE_MANAGER, CASHIER hoặc WAREHOUSE_STAFF.');
+      throw new Error('Vai trò người dùng không hợp lệ. Chỉ chấp nhận ADMIN, STORE_MANAGER hoặc CASHIER.');
     }
 
     // 5. Băm mật khẩu bằng bcrypt

@@ -31,11 +31,11 @@ router.post(
   (req, res, next) => forecastController.sendPOToDC(req, res, next)
 );
 
-// PATCH /api/forecast/purchase-orders/:id/status (Phê duyệt/Cập nhật trạng thái PO, cho phép WAREHOUSE_STAFF xác nhận DELIVERED khi nhận hàng)
+// PATCH /api/forecast/purchase-orders/:id/status (Phê duyệt/Cập nhật trạng thái PO, cho phép Nhân viên cửa hàng xác nhận DELIVERED khi nhận hàng)
 router.patch(
   '/purchase-orders/:id/status',
   authMiddleware,
-  roleMiddleware(['ADMIN', 'STORE_MANAGER', 'WAREHOUSE_STAFF', 'CASHIER']),
+  roleMiddleware(['ADMIN', 'STORE_MANAGER', 'CASHIER']),
   (req, res, next) => forecastController.updatePOStatus(req, res, next)
 );
 

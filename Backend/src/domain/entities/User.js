@@ -7,7 +7,7 @@ class User {
     this.email = email;
     this.phone = phone;
     this.roleId = roleId;
-    this.roleCode = roleCode; // 'ADMIN', 'STORE_MANAGER', 'CASHIER', 'WAREHOUSE_STAFF'
+    this.roleCode = roleCode; // 'ADMIN', 'STORE_MANAGER', 'CASHIER'
     this.storeId = storeId;
     this.isActive = Boolean(isActive);
     this.lastLogin = lastLogin;

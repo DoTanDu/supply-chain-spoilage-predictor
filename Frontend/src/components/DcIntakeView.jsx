@@ -90,7 +90,7 @@ export default function DcIntakeView({
   onAddNewProduct, 
   recentIntakes = [],
   isAdmin = false,
-  currentRole = 'WAREHOUSE_STAFF',
+  currentRole = 'CASHIER',
   currentUser = null,
   storeProfile = null,
   onRefreshData = null,

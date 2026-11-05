@@ -134,7 +134,7 @@ class LoginUseCase {
 
           throw new Error('Tài khoản Quản trị viên đã tạm thời bị khóa 15 phút do nhập sai mật khẩu quá 5 lần liên tiếp. Vui lòng thử lại sau.');
         } else {
-          // NHÂN VIÊN (CASHIER, WAREHOUSE_STAFF, STORE_MANAGER): Khóa cứng trong CSDL (is_active = 0)
+          // NHÂN VIÊN (CASHIER, STORE_MANAGER): Khóa cứng trong CSDL (is_active = 0)
           await this.userRepository.updateStatus(user.id, false);
 
           if (this.auditLogRepository) {

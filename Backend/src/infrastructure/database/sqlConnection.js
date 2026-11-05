@@ -44,7 +44,7 @@ class SqlConnection {
         tempDir,
         `qry_${process.pid}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}.sql`
       );
-      fs.writeFileSync(tempFile, 'SET NOCOUNT ON;\n' + normalizedSql, 'utf8');
+      fs.writeFileSync(tempFile, '\uFEFFSET NOCOUNT ON;\n' + normalizedSql, 'utf8');
 
       const args = [
         '-b',

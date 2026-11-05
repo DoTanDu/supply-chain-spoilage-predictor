@@ -20,7 +20,7 @@ router.get('/history', (req, res, next) => shiftHandoverController.getHistory(re
 router.post(
   '/',
   authMiddleware,
-  roleMiddleware(['ADMIN', 'STORE_MANAGER', 'CASHIER', 'WAREHOUSE_STAFF']),
+  roleMiddleware(['ADMIN', 'STORE_MANAGER', 'CASHIER']),
   (req, res, next) => shiftHandoverController.submitHandover(req, res, next)
 );
 

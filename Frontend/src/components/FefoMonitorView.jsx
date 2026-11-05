@@ -187,7 +187,7 @@ export default function FefoMonitorView({
   };
 
   const canApplyMarkdown = isAdmin || currentRole === 'STORE_MANAGER' || currentUser?.roleCode === 'STORE_MANAGER';
-  const canRotateShelf = isAdmin || currentRole === 'STORE_MANAGER' || currentRole === 'WAREHOUSE_STAFF' || currentRole === 'CASHIER' || currentUser?.roleCode === 'STORE_MANAGER' || currentUser?.roleCode === 'WAREHOUSE_STAFF' || currentUser?.roleCode === 'CASHIER';
+  const canRotateShelf = isAdmin || currentRole === 'STORE_MANAGER' || currentRole === 'CASHIER' || currentUser?.roleCode === 'STORE_MANAGER' || currentUser?.roleCode === 'CASHIER';
 
   // Áp dụng mức giảm giá Quick Markdown (15%, 30%, 40%, 50% hoặc 0% về nguyên giá)
   const handleApplyMarkdown = async (batchId, percent) => {

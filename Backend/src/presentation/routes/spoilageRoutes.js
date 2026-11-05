@@ -6,17 +6,17 @@ const roleMiddleware = require('../middlewares/roleMiddleware');
 
 const router = express.Router();
 
-// POST /api/spoilage - Ghi nhận / Đề xuất tiêu hủy hàng hết hạn/hư hỏng (Mục 4 & 16 SSOT: Cả 4 vai trò đều được lập đề xuất)
+// POST /api/spoilage - Ghi nhận / Đề xuất tiêu hủy hàng hết hạn/hư hỏng (Mục 4 & 16 SSOT: Cả 3 vai trò đều được lập đề xuất)
 router.post(
   '/',
   authMiddleware,
-  roleMiddleware(['ADMIN', 'STORE_MANAGER', 'WAREHOUSE_STAFF', 'CASHIER']),
+  roleMiddleware(['ADMIN', 'STORE_MANAGER', 'CASHIER']),
   (req, res, next) => spoilageController.recordDisposal(req, res, next)
 );
 router.post(
   '/dispose',
   authMiddleware,
-  roleMiddleware(['ADMIN', 'STORE_MANAGER', 'WAREHOUSE_STAFF', 'CASHIER']),
+  roleMiddleware(['ADMIN', 'STORE_MANAGER', 'CASHIER']),
   (req, res, next) => spoilageController.recordDisposal(req, res, next)
 );
 

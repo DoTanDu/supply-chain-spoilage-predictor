@@ -370,7 +370,7 @@ export default function LoginView({ onLoginSuccess }) {
                       type="text"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
-                      placeholder="Nhập username (vd: admin, manager, cashier, warehouse)"
+                      placeholder="Nhập username (vd: admin, manager, cashier)"
                       autoComplete="username"
                       style={{
                         width: '100%',
@@ -491,7 +491,7 @@ export default function LoginView({ onLoginSuccess }) {
                       padding: 0
                     }}
                   >
-                    <span>{showRoleGuide ? 'Ẩn bảng 4 vai trò' : 'Xem 4 vai trò RBAC'}</span>
+                    <span>{showRoleGuide ? 'Ẩn bảng 3 vai trò' : 'Xem 3 vai trò RBAC'}</span>
                     {showRoleGuide ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                   </button>
                 </div>
@@ -550,7 +550,7 @@ export default function LoginView({ onLoginSuccess }) {
             </div>
           </div>
 
-          {/* Secondary Column: 4 RBAC Roles & 3 Actors Quick Selector */}
+          {/* Secondary Column: 3 RBAC Roles (3 Actors) Quick Selector */}
           {showRoleGuide && (
             <div style={{
               padding: '32px',
@@ -572,7 +572,7 @@ export default function LoginView({ onLoginSuccess }) {
                     color: isLight ? '#0f172a' : '#f1f5f9',
                     margin: 0
                   }}>
-                    4 Nhóm người dùng trong hệ thống (RBAC)
+                    3 Nhóm người dùng trong hệ thống (RBAC)
                   </h2>
                   <span style={{
                     fontSize: '0.68rem',
@@ -582,7 +582,7 @@ export default function LoginView({ onLoginSuccess }) {
                     background: 'rgba(59, 130, 246, 0.15)',
                     color: '#3b82f6'
                   }}>
-                    3 Actor → 4 Role
+                    3 Actor = 3 Role
                   </span>
                 </div>
                 <p style={{

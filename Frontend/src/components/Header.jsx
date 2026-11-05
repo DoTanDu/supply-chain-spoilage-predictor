@@ -131,8 +131,8 @@ export default function Header({
     switch (code) {
       case 'ADMIN': return { bg: '#f5f3ff', text: '#7c3aed', border: '#ddd6fe', icon: Shield };
       case 'STORE_MANAGER': return { bg: '#eef2ff', text: '#4f46e5', border: '#c7d2fe', icon: Store };
-      case 'CASHIER': return { bg: '#eff6ff', text: '#2563eb', border: '#bfdbfe', icon: ShoppingCart };
-      case 'WAREHOUSE_STAFF': return { bg: '#fffbeb', text: '#d97706', border: '#fde68a', icon: Truck };
+      case 'CASHIER':
+      case 'STAFF': return { bg: '#eff6ff', text: '#2563eb', border: '#bfdbfe', icon: ShoppingCart };
       default: return { bg: '#f1f5f9', text: '#475569', border: '#e2e8f0', icon: User };
     }
   };

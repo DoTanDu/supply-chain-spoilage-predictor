@@ -123,7 +123,7 @@ Tiếp thu sự chỉ đạo sâu sát của **ThS. Lê Minh Nhật**, hệ th�
     * `errorHandler.js`: Chuẩn hóa bắt lỗi và trả định dạng JSON `{ success: false, message }`.
 * **Frontend SPA (`Frontend/src/` - React 19 + Vite):**
   * Giao diện SPA hiện đại, thẩm mỹ cao với 10 màn hình tác nghiệp độc lập:
-    1. **Trang Đăng Nhập Riêng (`LoginView.jsx`):** Đăng nhập bảo mật JWT, chống Brute-Force lockout, 4 thẻ Quick Demo 1-Click cho 4 vai trò.
+    1. **Trang Đăng Nhập Riêng (`LoginView.jsx`):** Đăng nhập bảo mật JWT, chống Brute-Force lockout, 4 thẻ Quick Demo 1-Click cho 3 vai trò.
     2. **Dashboard Điều Hành (`DashboardView.jsx`):** 6 Thẻ KPI tài chính, Tỷ lệ tuân thủ FEFO %, Top 5 Bán chạy, Top 5 Hao hụt, Action Board ca trực 4 Tab.
     3. **Quầy Thu Ngân POS FEFO (`PosCheckoutView.jsx`):** Quét Barcode, xem trước phân bổ FEFO bẻ lô, áp dụng Quick Markdown, chọn cờ thời tiết/lễ.
     4. **Tiếp Nhận Hàng DC (`DcIntakeView.jsx`):** Thước đo $RSL \ge 70\%$, khóa lưu tự động, lập Biên bản từ chối nhận hàng DC & liên kết PO.

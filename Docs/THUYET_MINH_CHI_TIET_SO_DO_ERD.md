@@ -179,7 +179,7 @@ Sơ đồ được tổ chức thành 4 phân hệ chức năng theo kiến trú
 ### 4. Phân hệ 4: Chuỗi Cửa hàng, Phân quyền RBAC & Kiểm toán Hệ thống (4 Bảng)
 
 #### 4.1 Bảng `roles` (Danh mục Vai trò Phân quyền RBAC)
-* **Ý nghĩa:** Định nghĩa nhóm quyền truy cập trong hệ thống (`ADMIN`/`OWNER` - Chủ chuỗi, `MANAGER` - Quản lý cửa hàng, `STAFF`/`CASHIER`/`WAREHOUSE_STAFF` - Nhân viên vận hành).
+* **Ý nghĩa:** Định nghĩa nhóm quyền truy cập trong hệ thống (`ADMIN`/`OWNER` - Chủ chuỗi, `MANAGER` - Quản lý cửa hàng, `STAFF`/`CASHIER`/`CASHIER` - Nhân viên vận hành).
 * **Cấu trúc cột:** `id` (`INT IDENTITY`, PK), `code` (`NVARCHAR(50)`, UQ), `name` (`NVARCHAR(100)`), `description` (`NVARCHAR(255)`), `created_at`.
 
 #### 4.2 Bảng `users` (Hồ sơ Nhân sự & Tài khoản Đăng nhập - Chuẩn 3NF)

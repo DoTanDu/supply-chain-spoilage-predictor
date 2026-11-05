@@ -20,7 +20,7 @@
 
 | Thành phần                | Hiện trạng đang có                                                                                                       | Chuẩn mực trong Đặc tả SSOT                                                                                           | Mức độ sai lệch / Cần làm                                                |
 | :-------------------------- | :--------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------- |
-| **Sơ đồ Use Case** | 2 nhóm Actor gộp chung; thiếu nhiều UC cốt lõi (RSL 70%, bẻ lô FEFO, 4 mức markdown, ca trực, audit).              | 4 Actor riêng biệt (`ADMIN`, `STORE_MANAGER`, `CASHIER`, `WAREHOUSE_STAFF`); 6 phân hệ nghiệp vụ đầy đủ. | **Cao (90%)** - Cần vẽ lại và viết lại thuyết minh ngay.          |
+| **Sơ đồ Use Case** | 2 nhóm Actor gộp chung; thiếu nhiều UC cốt lõi (RSL 70%, bẻ lô FEFO, 4 mức markdown, ca trực, audit).              | 4 Actor riêng biệt (`ADMIN`, `STORE_MANAGER`, `CASHIER`); 6 phân hệ nghiệp vụ đầy đủ. | **Cao (90%)** - Cần vẽ lại và viết lại thuyết minh ngay.          |
 | **Database**          | Đã có các bảng nền tảng (`users`, `roles`, `store_profile`, `products`), khóa chính dạng `INT IDENTITY`. | 13 bảng 3NF, đầy đủ index và ràng buộc CHECK chống âm kho, khóa ngoại toàn vẹn.                              | **Trung bình (40%)** - Bổ sung các bảng PO, Hủy hàng, và Index.   |
 | **Backend**           | Đã làm 3 Foundation Modules: Auth, StoreProfile, Catalog (Chống trùng sản phẩm).                                      | Đầy đủ 4 tầng Clean Architecture, các Domain Service (FEFO, ROP, Markdown) và Use Cases lõi.                       | **Trung bình (60%)** - Viết tiếp các Use Case nghiệp vụ chưa có. |
 | **Frontend**          | Đã có khung giao diện SPA với 11 components, nhưng đang dùng dữ liệu mẫu`mockData.js`.                          | Kết nối API thật, chia menu theo 4 Roles, có máy tính RSL$\ge 70\%$ và cờ thời tiết/lễ POS.                   | **Trung bình (50%)** - Ghép API thật và phân quyền màn hình.     |
@@ -49,7 +49,7 @@
 #### Phân hệ 1: Quản trị hệ thống & Cấu hình (Admin & Manager)
 
 - [X] Đăng nhập & Xác thực JWT (`UC-01`)
-- [ ] Quản lý tài khoản nhân viên & Phân quyền 4 vai trò (`UC-02`)
+- [ ] Quản lý tài khoản nhân viên & Phân quyền 3 vai trò (`UC-02`)
 - [ ] Cấu hình thông tin Cửa hàng bán lẻ duy nhất `StoreProfile` (`UC-03`)
 - [ ] Quản lý danh mục FMCG & Sản phẩm (Tích hợp thuật toán chặn trùng $\ge 85\%$) (`UC-04`)
 - [ ] Xem Nhật ký kiểm toán bất biến `AuditLogs` (`UC-05`)
@@ -189,7 +189,7 @@ Tạo các Use Case theo từng thư mục nghiệp vụ:
 ### 5.1 Phân quyền hiển thị Menu & Màn hình (RBAC)
 
 * `CASHIER`: Chỉ hiển thị Quầy thu ngân POS, Lịch sử bán hàng của ca, Bàn giao ca thu ngân.
-* `WAREHOUSE_STAFF`: Chỉ hiển thị Tiếp nhận hàng DC, Giám sát lô & Đảo kệ, Đề xuất tiêu hủy hàng, Bàn giao ca kho.
+* `CASHIER`: Chỉ hiển thị Tiếp nhận hàng DC, Giám sát lô & Đảo kệ, Đề xuất tiêu hủy hàng, Bàn giao ca kho.
 * `STORE_MANAGER`: Toàn quyền xem Dashboard KPI, Phê duyệt Quick Markdown, Phê duyệt tiêu hủy Sổ hao hụt, Dự báo ROP & Duyệt đơn PO gửi DC.
 * `ADMIN`: Quản lý tài khoản, Cấu hình `StoreProfile`, Xem Audit Log hệ thống.
 

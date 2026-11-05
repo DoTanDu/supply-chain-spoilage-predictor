@@ -115,7 +115,7 @@ export default function UserManagementView({
       case 'STORE_MANAGER':
         return { label: 'Quản Lý Cửa Hàng', color: '#4f46e5', bg: '#eef2ff', border: '#c7d2fe', icon: Store };
       case 'CASHIER':
-      case 'WAREHOUSE_STAFF':
+      case 'STAFF':
         return { label: 'Nhân Viên Cửa Hàng', color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe', icon: ShoppingCart };
       default:
         return { label: roleCode || 'Nhân Viên', color: '#475569', bg: '#f1f5f9', border: '#e2e8f0', icon: User };

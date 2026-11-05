@@ -83,14 +83,13 @@ node test_stage2_11_core_rules.js
 
 ---
 
-## 👤 DANH SÁCH TÀI KHOẢN ĐĂNG NHẬP MẪU
+## 👤 DANH SÁCH TÀI KHOẢN ĐĂNG NHẬP MẪU (3 ACTOR = 3 VAI TRÒ RBAC)
 
-| Tên người dùng | Vai trò (Role) | Chức vụ | Quyền hạn chính |
-| :--- | :--- | :--- | :--- |
-| **admin** | `ADMIN` | Quản trị viên hệ thống | Toàn quyền cấu hình hệ thống, danh mục, người dùng |
-| **tandudo** | `STORE_MANAGER` | Cửa hàng trưởng (LHU Mart) | Phê duyệt đơn đặt hàng PO gửi DC, duyệt tiêu hủy, xem báo cáo KPI |
-| **nguyenvana** | `CASHIER` | Thu ngân quầy POS | Quẹt mã sản phẩm, chọn thời tiết/ngày lễ, xuất kho FEFO |
-| **lenhankho** | `WAREHOUSE_STAFF` | Nhân viên Kho & Kệ | Tiếp nhận hàng DC (kiểm tra RSL), đảo kệ mặt tiền 5 bước, lập phiếu hủy |
+| Tên đăng nhập | Mật khẩu | Vai trò (`roleCode`) | Chức vụ & Họ tên | Quyền hạn chính |
+| :--- | :--- | :--- | :--- | :--- |
+| **admin** | `Password123@` | `ADMIN` | Chủ chuỗi / Quản trị viên | Toàn quyền quản trị chuỗi 3 chi nhánh, cấu hình tham số, danh mục 80 SP FMCG & nhân sự |
+| **manager** | `Password123@` | `STORE_MANAGER` | Đỗ Tấn Du (Cửa Hàng Trưởng) | Điều hành 6 KPI tài chính, giảm giá Quick Markdown 15-50%, phê duyệt tiêu hủy & đặt hàng DC |
+| **cashier** | `Password123@` | `CASHIER` | Đoàn Minh Quân (Nhân Viên Cửa Hàng) | Bán lẻ tại quầy POS tự động bẻ lô FEFO, tiếp nhận xe hàng DC ($RSL \ge 70\%$), đảo kệ 5 bước & bàn giao ca |
 
 ---
 
@@ -107,7 +106,7 @@ Backend/src/
 │   ├── use-cases/sales/         # ProcessFefoSaleUseCase (Bẻ lô FEFO, trừ kho)
 │   ├── use-cases/batch/         # ReceiveDCBatchUseCase (RSL >= 70%), ApplyQuickMarkdown, RotateShelf
 │   ├── use-cases/forecast/      # CalculateROPForecastUseCase, CreatePurchaseOrderUseCase
-│   └── use-cases/spoilage/     # RecordSpoilageUseCase (Tính CostLoss)
+│   └── use-cases/spoilage/      # RecordSpoilageUseCase (Tính CostLoss)
 ├── infrastructure/              # Tầng giao tiếp CSDL & Công nghệ ngoài
 │   └── database/repositories/   # SqlBatchRepository, SqlProductRepository, SqlSaleRepository...
 └── presentation/                # Tầng điều khiển & Định tuyến API
@@ -116,13 +115,12 @@ Backend/src/
     └── middlewares/             # authMiddleware, roleMiddleware, errorHandler
 ```
 
-### 2. Mô hình Dữ liệu Chuẩn 3NF (14 Bảng SQL Server)
-- **Quản trị chung:** `system_users`, `user_roles`, `store_profile`, `system_audit_logs`.
-- **Danh mục hàng hóa:** `suppliers`, `categories`, `products`.
-- **Vòng đời lô hàng:** `batches`, `shelf_rotation_logs`.
-- **Giao dịch bán lẻ & Xuất kho:** `sales_orders`, `sales_order_items`.
-- **Sổ hao hụt tài chính:** `spoilage_records`.
-- **Đơn đặt hàng & Nhận hàng DC:** `purchase_orders`, `purchase_order_items`, `goods_receipts`.
+### 2. Mô hình Dữ liệu Chuẩn 3NF (15 Bảng SQL Server LocalDB `retail_spoilage_db`)
+- **Quản trị & Phân quyền (3 Actor):** `roles`, `users`, `store_profile`, `system_audit_logs`, `shift_handovers`.
+- **Danh mục hàng hóa (80 SP FMCG - 7 ngành hàng):** `suppliers`, `categories`, `products`.
+- **Vòng đời lô hàng & Luân chuyển:** `batches`, `stock_transfers`.
+- **Giao dịch bán lẻ POS & Sổ hao hụt tài chính:** `sales_history`, `spoilage_records`.
+- **Dự báo AI-ROP, Đơn đặt hàng & Nhận hàng DC:** `ai_forecasts`, `purchase_orders`, `purchase_order_items`, `goods_receipts`.
 
 ---
 

@@ -37,21 +37,21 @@ const VALID_TABS = [
 
 const TAB_ALLOWED_ROLES = {
   'dashboard': ['ADMIN', 'STORE_MANAGER'],
-  'pos-checkout': ['ADMIN', 'STORE_MANAGER', 'CASHIER', 'WAREHOUSE_STAFF'],
-  'fefo-monitor': ['ADMIN', 'STORE_MANAGER', 'CASHIER', 'WAREHOUSE_STAFF'],
-  'dc-intake': ['ADMIN', 'STORE_MANAGER', 'CASHIER', 'WAREHOUSE_STAFF'],
-  'product-catalog': ['ADMIN', 'STORE_MANAGER', 'CASHIER', 'WAREHOUSE_STAFF'],
-  'spoilage-disposal': ['ADMIN', 'STORE_MANAGER', 'CASHIER', 'WAREHOUSE_STAFF'],
-  'shift-handover': ['ADMIN', 'STORE_MANAGER', 'CASHIER', 'WAREHOUSE_STAFF'],
-  'reorder-predictor': ['ADMIN', 'STORE_MANAGER', 'CASHIER', 'WAREHOUSE_STAFF'],
-  'stock-transfer': ['ADMIN', 'STORE_MANAGER', 'CASHIER', 'WAREHOUSE_STAFF'],
+  'pos-checkout': ['ADMIN', 'STORE_MANAGER', 'CASHIER'],
+  'fefo-monitor': ['ADMIN', 'STORE_MANAGER', 'CASHIER'],
+  'dc-intake': ['ADMIN', 'STORE_MANAGER', 'CASHIER'],
+  'product-catalog': ['ADMIN', 'STORE_MANAGER', 'CASHIER'],
+  'spoilage-disposal': ['ADMIN', 'STORE_MANAGER', 'CASHIER'],
+  'shift-handover': ['ADMIN', 'STORE_MANAGER', 'CASHIER'],
+  'reorder-predictor': ['ADMIN', 'STORE_MANAGER', 'CASHIER'],
+  'stock-transfer': ['ADMIN', 'STORE_MANAGER', 'CASHIER'],
   'audit-log': ['ADMIN', 'STORE_MANAGER'],
   'store-settings': ['ADMIN', 'STORE_MANAGER'],
   'user-management': ['ADMIN']
 };
 
 function getDefaultTabForRole(roleCode) {
-  if (roleCode === 'CASHIER' || roleCode === 'WAREHOUSE_STAFF') return 'pos-checkout';
+  if (roleCode === 'CASHIER' || roleCode === 'STAFF') return 'pos-checkout';
   return 'dashboard';
 }
 

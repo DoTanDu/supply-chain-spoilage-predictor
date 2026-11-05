@@ -24,28 +24,26 @@ Hệ thống quản trị bán lẻ thực phẩm và hàng FMCG tươi sống �
 
 ---
 
-## 2. CHI TIẾT 4 NHÓM NGƯỜI DÙNG TRONG HỆ THỐNG
+## 2. CHI TIẾT 3 NHÓM NGƯỜI DÙNG (3 ACTOR = 3 VAI TRÒ RBAC) TRONG HỆ THỐNG
 
 ```
                     ┌────────────────────────────────────────┐
-                    │       QUẢN TRỊ VIÊN HỆ THỐNG           │
+                    │       CHỦ CHUỖI / QUẢN TRỊ VIÊN        │
                     │               (ADMIN)                  │
                     └───────────────────┬────────────────────┘
-                                        │ Cấu hình tham số & RBAC
+                                        │ Cấu hình chuỗi 3 chi nhánh & RBAC
                                         ▼
                     ┌────────────────────────────────────────┐
-                    │         CỬA HÀNG TRƯỞNG                │
+                    │         QUẢN LÝ CỬA HÀNG               │
                     │         (STORE_MANAGER)                │
-                    └─────────┬────────────────────┬─────────┘
-                              │                    │
-              Phê duyệt xả hàng/hủy hàng          Điều phối ca trực & Đơn DC
-                              ▼                    ▼
-     ┌──────────────────────────────────┐ ┌──────────────────────────────────┐
-     │        NHÂN VIÊN THU NGÂN        │ │       NHÂN VIÊN KHO & KỆ         │
-     │            (CASHIER)             │ │       (WAREHOUSE_STAFF)          │
-     └──────────────────────────────────┘ └──────────────────────────────────┘
-            CỬA RA CỦA HÀNG HÓA                     CỬA VÀO CỦA HÀNG HÓA
-            (Bán lẻ FEFO tự động)                 (Kiểm soát RSL >= 70% từ DC)
+                    └───────────────────┬────────────────────┘
+                                        │ Phê duyệt xả hàng/hủy hàng & Đơn DC
+                                        ▼
+                    ┌────────────────────────────────────────┐
+                    │   NHÂN VIÊN CỬA HÀNG (POS & KHO KỆ)    │
+                    │              (CASHIER)                 │
+                    └────────────────────────────────────────┘
+                      CỬA RA (POS FEFO) & CỬA VÀO (RSL >= 70% DC)
 ```
 
 ---
@@ -108,111 +106,93 @@ Hệ thống quản trị bán lẻ thực phẩm và hàng FMCG tươi sống �
 
 ---
 
-### 2.3. Nhân viên thu ngân (Cashier) — RoleCode: `CASHIER`
+### 2.3. Nhân viên Cửa hàng - POS & Kho kệ (Store Staff) — RoleCode: `CASHIER`
 
 * **Mã vai trò CSDL:** `CASHIER`
-* **Tài khoản mặc định:** `cashier` | **Họ tên:** Đoàn Minh Quân (Thu Ngân POS)
-* **Phạm vi thẩm quyền:** Vận hành phân hệ Quầy Bán lẻ POS, thực hiện thanh toán hóa đơn, in bill và bàn giao tiền mặt ca trực.
+* **Tài khoản mặc định:** `cashier` | **Họ tên:** Đoàn Minh Quân (Nhân Viên Cửa Hàng)
+* **Phạm vi thẩm quyền:** Vận hành tác nghiệp toàn diện tại cửa hàng tiện lợi LHU Mart, hợp nhất nhiệm vụ Quầy Bán lẻ POS (cửa ra) và Tiếp nhận hàng DC – Đảo kệ mặt tiền FEFO (cửa vào & quầy kệ).
 
-#### A. Mục đích và Tác dụng thực tế:
+#### A. Mục đích và Tác dụng thực tế tại Quầy POS (Cửa ra):
 
 1. **Thực thi Bán hàng = Xuất kho trực tiếp tự động theo FEFO (Rule 2 SSOT):**
-   * *Tác dụng:* Thu ngân chỉ cần dùng máy quét mã vạch Barcode/SKU sản phẩm. Hệ thống tự động tìm các lô hàng có hạn sử dụng gần nhất (`expiry_date ASC`) để trừ tồn kho trước.
-   * *Ý nghĩa chống lãng phí:* Thu ngân **không cần và không được quyền tự chọn lô hàng bằng tay**. Quy trình này loại bỏ hoàn toàn tình trạng nhân viên bán các lô mới nhập trước và bỏ quên lô cũ dưới đáy kệ.
+   * *Tác dụng:* Nhân viên chỉ cần dùng máy quét mã vạch Barcode/SKU sản phẩm. Hệ thống tự động tìm các lô hàng có hạn sử dụng gần nhất (`expiry_date ASC`) để trừ tồn kho trước.
+   * *Ý nghĩa chống lãng phí:* Nhân viên **không cần và không được quyền tự chọn lô hàng bằng tay**. Quy trình này loại bỏ hoàn toàn tình trạng bán các lô mới nhập trước và bỏ quên lô cũ dưới đáy kệ.
 2. **Hàng rào khóa cứng lô hàng hết hạn (Rule 5 SSOT):**
    * *Tác dụng:* Nếu khách hàng vô tình mang một sản phẩm đã quá date (`DaysLeft <= 0`) ra quầy tính tiền, hệ thống POS **khóa cứng nút thanh toán**, phát âm thanh cảnh báo và hiển thị thông báo đỏ từ chối xuất bán.
    * *Ý nghĩa:* Bảo vệ 100% an toàn vệ sinh thực phẩm cho khách hàng và uy tín thương hiệu LHU Mart.
 3. **Áp dụng giá xả hàng tự động:**
-   * *Tác dụng:* Nếu lô hàng đang được Cửa hàng trưởng áp dụng Quick Markdown (ví dụ giảm 30%), POS tự động tính giá ưu đãi cho khách mà thu ngân không cần bấm mã giảm giá thủ công.
+   * *Tác dụng:* Nếu lô hàng đang được Cửa hàng trưởng áp dụng Quick Markdown (ví dụ giảm 30%), POS tự động tính giá ưu đãi cho khách mà nhân viên không cần bấm mã giảm giá thủ công.
 4. **Ghi nhận ngữ cảnh ngoại cảnh bán lẻ:**
-   * *Tác dụng:* Khi bắt đầu ca hoặc trong từng giao dịch, thu ngân xác nhận trạng thái thời tiết (Nắng/Mưa/Bình thường) và ngày lễ trên màn hình POS, cung cấp dữ liệu huấn luyện thực tế cho thuật toán dự báo ROP.
-5. **Chốt ca thu ngân & Bàn giao doanh số tiền mặt:**
-   * *Tác dụng:* Kiểm đếm số tiền mặt thực tế trong két, lập biên bản chốt ca gửi Cửa hàng trưởng, chịu trách nhiệm pháp lý với số tiền bán hàng trong ca trực của mình.
+   * *Tác dụng:* Khi bắt đầu ca hoặc trong từng giao dịch, nhân viên xác nhận trạng thái thời tiết (Nắng/Mưa/Bình thường) và ngày lễ trên màn hình POS, cung cấp dữ liệu huấn luyện thực tế cho thuật toán dự báo ROP.
 
----
-
-### 2.4. Nhân viên kho & quầy kệ (Warehouse Staff) — RoleCode: `WAREHOUSE_STAFF`
-
-* **Mã vai trò CSDL:** `WAREHOUSE_STAFF`
-* **Tài khoản mặc định:** `warehouse` | **Họ tên:** Lê Nhân Kho (Kho & Kệ)
-* **Phạm vi thẩm quyền:** Cửa ngõ tiếp nhận hàng hóa từ DC, quản lý sắp xếp quầy kệ trưng bày, kiểm soát date thực tế và cách ly hàng hóa hư hỏng.
-
-#### A. Mục đích và Tác dụng thực tế:
+#### B. Mục đích và Tác dụng thực tế tại Kho & Quầy kệ (Cửa vào & Kệ):
 
 1. **Người gác cổng chất lượng từ DC Biên Hòa (Inbound Gatekeeper - Rule 7 SSOT):**
-   * *Tác dụng:* Khi xe tải của Kho tổng DC giao hàng đến cửa hàng, nhân viên kho trực tiếp kiểm tra hạn sử dụng và tính toán tỷ lệ độ tươi còn lại:
+   * *Tác dụng:* Khi xe tải của Kho tổng DC giao hàng đến cửa hàng, nhân viên cửa hàng trực tiếp kiểm tra hạn sử dụng và tính toán tỷ lệ độ tươi còn lại:
      $$
      RSL_{\text{inbound}} = \frac{\text{Expiry Date} - \text{Hôm nay}}{\text{Standard Shelf-Life}} \times 100\%
      $$
-   * *Quyền từ chối nhận hàng:* Nếu $RSL < 70\%$, nhân viên kho **từ chối nhận hàng và hệ thống khóa không cho lập phiếu**. Tác dụng là chặn đứng nguy cơ Tổng kho DC đẩy hàng tồn cận date về cửa hàng bán lẻ.
+   * *Quyền từ chối nhận hàng:* Nếu $RSL < 70\%$, nhân viên **từ chối nhận hàng và hệ thống khóa không cho lập phiếu**. Tác dụng là chặn đứng nguy cơ Tổng kho DC đẩy hàng tồn cận date về cửa hàng bán lẻ.
 2. **Nhập phiếu tiếp nhận hàng (Goods Receipts) và tự động tạo Lô mới:**
-   * *Tác dụng:* Khi nghiệm thu lô hàng đạt chuẩn ($RSL \ge 70\%$), nhân viên kho nhập số lượng thực tế nhận được. Hệ thống tự động tạo mã lô mới (`BatchCode`) gắn hạn sử dụng chính xác vào CSDL SQL Server.
+   * *Tác dụng:* Khi nghiệm thu lô hàng đạt chuẩn ($RSL \ge 70\%$), nhân viên nhập số lượng thực tế nhận được. Hệ thống tự động tạo mã lô mới (`BatchCode`) gắn hạn sử dụng chính xác vào CSDL SQL Server.
 3. **Thực thi Quy trình SOP 5 bước đảo kệ mặt tiền (Rule 10 SSOT):**
-   * *Tác dụng:* Khi Action Board báo lô hàng rơi vào Vùng Vàng/Đỏ:
-     * *Bước 1:* Tra cứu vị trí kệ trưng bày của mặt hàng cận date.
-     * *Bước 2:* Rút toàn bộ các sản phẩm thuộc lô mới (date xa) ra tạm thời.
-     * *Bước 3:* Chuyển toàn bộ các sản phẩm thuộc lô cận date ra sát mép ngoài cùng (mặt tiền kệ) để người mua tiện tay nhặt trước.
-     * *Bước 4:* Xếp các sản phẩm date xa vào phía sâu bên trong kệ.
-     * *Bước 5:* Bấm nút **"Xác nhận đã đảo kệ"** trên phần mềm để lưu vết vào `system_audit_logs`.
-4. **Dán tem giảm giá Quick Markdown lên bao bì:**
-   * *Tác dụng:* Sau khi Cửa hàng trưởng phê duyệt chiết khấu, nhân viên kho in và dán tem giảm giá (15%, 30%, 50%) nổi bật lên từng bao bì sản phẩm trên quầy kệ để thu hút khách hàng mua ngay.
-5. **Cách ly hàng hỏng & Lập đề xuất tiêu hủy:**
-   * *Tác dụng:* Thu gom những sản phẩm bị phồng rộp, rách bao bì hoặc quá hạn vào phòng cách ly riêng (tránh để lẫn với hàng đang bán), sau đó lập phiếu đề xuất tiêu hủy gửi Cửa hàng trưởng phê duyệt.
+   * *Tác dụng:* Khi Action Board báo lô hàng rơi vào Vùng Vàng/Đỏ, nhân viên thực hiện 5 bước đảo lô cận date ra sát mép ngoài cùng (mặt tiền kệ) và bấm nút **"Xác nhận đã đảo kệ"** trên phần mềm để lưu vết vào `system_audit_logs`.
+4. **Cách ly hàng hỏng, Lập đề xuất tiêu hủy & Bàn giao ca trực:**
+   * *Tác dụng:* Thu gom sản phẩm bị rách bao bì hoặc quá hạn vào khu cách ly riêng, lập phiếu đề xuất tiêu hủy (`PENDING`) gửi Cửa hàng trưởng phê duyệt, và thực hiện kiểm đếm tiền mặt két 6 mệnh giá khi bàn giao ca trực.
 
 ---
 
-## 3. BẢNG MA TRẬN PHÂN QUYỀN CHỨC NĂNG (RBAC MATRIX)
+## 3. BẢNG MA TRẬN PHÂN QUYỀN CHỨC NĂNG 3 VAI TRÒ (RBAC MATRIX)
 
-Bảng ma trận đối soát quyền hạn chi tiết giữa 4 vai trò trên 15 nhóm phân hệ nghiệp vụ của hệ thống:
+Bảng ma trận đối soát quyền hạn chi tiết giữa 3 vai trò (3 Actor) trên 15 nhóm phân hệ nghiệp vụ của hệ thống:
 
-|     STT     | Phân hệ / Chức năng nghiệp vụ          | Admin (`ADMIN`) | Cửa hàng trưởng (`STORE_MANAGER`) | Thu ngân (`CASHIER`) | Kho & Kệ (`WAREHOUSE_STAFF`) | Ghi chú kỹ thuật & Nghiệp vụ            |
-| :----------: | :------------------------------------------- | :---------------: | :-------------------------------------: | :---------------------: | :-----------------------------: | :------------------------------------------- |
-| **1** | Đăng nhập hệ thống & Đổi mật khẩu   |   **Có**   |              **Có**              |      **Có**      |          **Có**          | Xác thực qua JWT Token 30 ngày            |
-| **2** | Quản trị tài khoản & Khóa người dùng |   **Có**   |                 Không                 |         Không         |             Không             | Ngăn chặn gian lận phân quyền           |
-| **3** | Cấu hình tham số cửa hàng & DC          |   **Có**   |               Tùy quyền               |         Không         |             Không             | Thiết lập StoreProfile, Lead Time          |
-| **4** | Quản lý danh mục sản phẩm FMCG          |   **Có**   |              **Có**              |         Không         |             Không             | Thêm mới, sửa giá, ngừng bán           |
-| **5** | Giám sát Lô hàng & Cảnh báo 3 màu     |   **Có**   |              **Có**              |      **Có**      |          **Có**          | Màu Xanh / Vàng / Đỏ trực quan          |
-| **6** | Bán lẻ POS tự động trừ kho FEFO        |   **Có**   |              **Có**              |      **Có**      |             Không             | Tự động bẻ lô, chặn âm kho            |
-| **7** | Kích hoạt Quick Markdown xả hàng         |   **Có**   |              **Có**              |         Không         |             Không             | Duyệt chiết khấu 15% - 50%                |
-| **8** | Tiếp nhận hàng DC (Kiểm date RSL)        |   **Có**   |              **Có**              |         Không         |          **Có**          | Nghiệm thu và từ chối nếu$RSL < 70\%$ |
-| **9** | Xác nhận SOP 5 bước đảo kệ FEFO       |   **Có**   |              **Có**              |         Không         |          **Có**          | Ký nhận điện tử đảo date mặt tiền   |
-| **10** | Lập phiếu đề xuất tiêu hủy hàng      |   **Có**   |              **Có**              |      **Có**      |          **Có**          | Thu gom hàng hỏng, gửi yêu cầu          |
-| **11** | Phê duyệt Tiêu hủy & Sổ hao hụt        |   **Có**   |              **Có**              |         Không         |             Không             | Chốt số tiền tổn thất vào Sổ hao hụt |
-| **12** | Xem dự báo ROP & Tạo đơn đặt DC       |   **Có**   |              **Có**              |         Không         |           Tùy quyền           | Tính toán ROP đa yếu tố ngoại cảnh    |
-| **13** | Xem Dashboard 6 KPI điều hành             |   **Có**   |              **Có**              |         Không         |             Không             | Giám sát Spoilage Rate % & Doanh thu       |
-| **14** | Ký duyệt Biên bản Bàn giao ca trực     |   **Có**   |              **Có**              |      **Có**      |          **Có**          | Quy trình bàn giao 4 bước điện tử     |
-| **15** | Tra cứu Nhật ký kiểm toán AuditLog      |   **Có**   |               Tùy quyền               |         Không         |             Không             | Lưu vết bất biến IP, user, action        |
+| STT | Phân hệ / Chức năng nghiệp vụ | Chủ chuỗi / Admin (`ADMIN`) | Quản lý Cửa hàng (`STORE_MANAGER`) | Nhân viên Cửa hàng (`CASHIER`) | Ghi chú kỹ thuật & Nghiệp vụ |
+| :---: | :--- | :---: | :---: | :---: | :--- |
+| **1** | Đăng nhập hệ thống & Đổi mật khẩu | **Có** | **Có** | **Có** | Xác thực qua JWT Token |
+| **2** | Quản trị tài khoản & Khóa người dùng | **Có** | Không (Chặn 403) | Không (Chặn 403) | Ngăn chặn gian lận phân quyền |
+| **3** | Cấu hình tham số cửa hàng & DC | **Có** | **Có** | Không (Chặn 403) | Thiết lập StoreProfile, Lead Time |
+| **4** | Quản lý danh mục 80 sản phẩm FMCG | **Có** | **Có** | Chỉ xem | Thêm mới, sửa giá, ngừng bán |
+| **5** | Giám sát Lô hàng & Cảnh báo 3 màu | **Có** | **Có** | **Có** | Màu Xanh / Vàng / Đỏ trực quan |
+| **6** | Bán lẻ POS tự động trừ kho FEFO | **Có** | **Có** | **Có** | Tự động bẻ lô, chặn âm kho |
+| **7** | Kích hoạt Quick Markdown xả hàng | **Có** | **Có** | Không (Chặn 403) | Duyệt chiết khấu 15% - 50% |
+| **8** | Tiếp nhận hàng DC (Kiểm date RSL) | **Có** | **Có** | **Có** | Nghiệm thu và từ chối nếu $RSL < 70\%$ |
+| **9** | Xác nhận SOP 5 bước đảo kệ FEFO | **Có** | **Có** | **Có** | Ký nhận điện tử đảo date mặt tiền |
+| **10** | Lập phiếu đề xuất tiêu hủy hàng | **Có** | **Có** | **Có (`PENDING`)** | Thu gom hàng hỏng, gửi yêu cầu |
+| **11** | Phê duyệt Tiêu hủy & Sổ hao hụt | **Có** | **Có** | Không (Chặn 403) | Chốt số tiền tổn thất vào Sổ hao hụt |
+| **12** | Xem dự báo ROP & Tạo đơn đặt DC | **Có** | **Có** | Chỉ xem ROP | Tạo/duyệt PO chỉ dành cho Quản lý & Admin |
+| **13** | Xem Dashboard 6 KPI điều hành | **Có** | **Có** | Không hiển thị | Giám sát Spoilage Rate % & Doanh thu |
+| **14** | Ký duyệt Biên bản Bàn giao ca trực | **Có** | **Có** | **Có** | Quy trình bàn giao 4 bước điện tử |
+| **15** | Tra cứu Nhật ký kiểm toán AuditLog | **Có** | **Có** | Không (Chặn 403) | Lưu vết bất biến IP, user, action |
 
 ---
 
-## 4. QUY TRÌNH PHỐI HỢP LIÊN TỤC GIỮA 4 VAI TRÒ (VALUE CHAIN WORKFLOW)
+## 4. QUY TRÌNH PHỐI HỢP LIÊN TỤC GIỮA 3 VAI TRÒ (VALUE CHAIN WORKFLOW)
 
-Quy trình vòng đời của một sản phẩm từ khi nhập kho đến khi tiêu thụ/tiêu hủy minh họa sự phối hợp nhịp nhàng giữa 4 vai trò:
+Quy trình vòng đời của một sản phẩm từ khi nhập kho đến khi tiêu thụ/tiêu hủy minh họa sự phối hợp nhịp nhàng giữa 3 vai trò:
 
 ```
 [XE TẢI DC BIÊN HÒA ĐẾN]
        │
        ▼
-1. NHÂN VIÊN KHO: Kiểm tra RSL >= 70%. Đạt chuẩn -> Lập phiếu Goods Receipt -> Tạo lô hàng mới.
+1. NHÂN VIÊN CỬA HÀNG (CASHIER): Kiểm tra RSL >= 70%. Đạt chuẩn -> Lập phiếu Goods Receipt -> Tạo lô mới.
        │
        ▼
 2. HỆ THỐNG: Quản lý vòng đời Shelf-life theo thời gian thực (Đồng hồ đếm ngược DaysLeft).
        │
        ├─────────────────────────────────┬─────────────────────────────────┐
        ▼ (Nếu bình thường)               ▼ (Khi DaysLeft <= WarningDays)   ▼ (Khi phát hiện hỏng)
-3. THU NGÂN:                      4. CỬA HÀNG TRƯỞNG:              7. THU NGÂN / KHO:
-   Khách mua tại POS.                Duyệt Quick Markdown (30%).      Lập đề xuất tiêu hủy.
+3. NHÂN VIÊN CỬA HÀNG:            4. CỬA HÀNG TRƯỞNG:              7. NHÂN VIÊN CỬA HÀNG:
+   Khách mua tại POS.                Duyệt Quick Markdown (30%).      Lập đề xuất tiêu hủy (PENDING).
    Hệ thống tự động xuất FEFO.       │                                │
    Trừ kho không âm.                 ▼                                ▼
-                                  5. NHÂN VIÊN KHO:                8. CỬA HÀNG TRƯỞNG:
+                                  5. NHÂN VIÊN CỬA HÀNG:           8. CỬA HÀNG TRƯỞNG:
                                      Đảo kệ 5 bước ra mặt tiền.       Trực tiếp thẩm định.
-                                     Dán tem giảm giá 30%.            Ký duyệt tiêu hủy.
+                                     Dán tem giảm giá 30%.            Ký duyệt tiêu hủy (APPROVED).
                                      │                                Hệ thống chốt Sổ hao hụt.
                                      ▼                                │
-                                  6. THU NGÂN:                        ▼
-                                     Bán xả hàng tại POS (FEFO).   9. ADMIN:
-                                     Thu hồi vốn thành công.          Giám sát Audit Logs.
-                                                                      Đảm bảo không gian lận.
+                                  6. NHÂN VIÊN CỬA HÀNG:              ▼
+                                     Bán xả hàng tại POS (FEFO).   9. CHỦ CHUỖI / ADMIN:
+                                     Thu hồi vốn thành công.          Giám sát Audit Logs toàn chuỗi.
 ```
 
 ---
@@ -221,34 +201,32 @@ Quy trình vòng đời của một sản phẩm từ khi nhập kho đến khi 
 
 ### 5.1. Cơ sở dữ liệu SQL Server LocalDB
 
-* **Bảng `roles`:** Lưu trữ 4 bản ghi vai trò chuẩn (`ADMIN`, `STORE_MANAGER`, `CASHIER`, `WAREHOUSE_STAFF`).
+* **Bảng `roles`:** Lưu trữ đúng 3 bản ghi vai trò chuẩn (`1: ADMIN`, `2: STORE_MANAGER`, `3: CASHIER`).
 * **Bảng `users`:** Lưu thông tin tài khoản, mật khẩu băm bcrypt, email, số điện thoại và khóa ngoại `role_id` liên kết với bảng `roles`.
-* **Ràng buộc toàn vẹn:** Khóa ngoại `FK_Users_Roles` và ràng buộc `CHECK` chống tạo vai trò không hợp lệ.
+* **Ràng buộc toàn vẹn:** Khóa ngoại `FK_Users_Role` bảo đảm toàn vẹn tham chiếu 3NF.
 
 ### 5.2. Tầng Backend API (Clean Architecture)
 
-* **Xác thực phiên (Authentication):** Sử dụng JSON Web Token (JWT) với mã hóa khóa bí mật `JWT_SECRET`, thời hạn 30 ngày và cơ chế tự động phục hồi phiên theo `userId` hợp lệ.
+* **Xác thực phiên (Authentication):** Sử dụng JSON Web Token (JWT) với mã hóa khóa bí mật `JWT_SECRET` và cơ chế kiểm tra trạng thái tài khoản thời gian thực.
 * **Ủy quyền truy cập (Authorization):** Middleware `roleMiddleware(['ADMIN', 'STORE_MANAGER'])` chặn trực tiếp các yêu cầu không đủ thẩm quyền tại cổng vào API trước khi chạm đến cơ sở dữ liệu.
 * **Ghi vết kiểm toán (Audit Trail):** Mọi hành động thêm, sửa, đổi giá, xóa mềm, tiêu hủy đều tự động kích hoạt `SqlAuditLogRepository.log()` ghi vào bảng `system_audit_logs`.
 
 ### 5.3. Tầng Giao diện Frontend (React SPA)
 
 * **Điều hướng thông minh:**
-  * `CASHIER` ➔ Tự động chuyển hướng vào quầy POS (`pos-checkout`).
-  * `WAREHOUSE_STAFF` ➔ Tự động chuyển hướng vào màn hình Tiếp nhận DC (`dc-intake`).
-  * `ADMIN` / `STORE_MANAGER` ➔ Tự động mở Dashboard Tổng quan điều hành (`dashboard`).
-* **Menu Sidebar phân quyền động:** Ẩn hoàn toàn các phân hệ mà người dùng không có quyền truy cập, giảm tải sự phức tạp giao diện và ngăn chặn thao tác nhầm lẫn.
-* **Chuyển đổi ca trực trên Header (Quick Switch User):** Cung cấp hộp thoại chuyển đổi tài khoản giữa các nhân viên trong ca làm việc, yêu cầu nhập mật khẩu xác thực bảo mật.
+  * `CASHIER` ➔ Tự động chuyển hướng vào quầy POS (`/pos-checkout`).
+  * `ADMIN` / `STORE_MANAGER` ➔ Tự động mở Dashboard Tổng quan điều hành (`/dashboard`).
+* **Menu Sidebar & Route Guard phân quyền động:** Ẩn hoàn toàn các phân hệ mà người dùng không có quyền truy cập và chặn truy cập trực tiếp qua URL.
+* **Chuyển đổi ca trực trên Header (Quick Switch User):** Cung cấp hộp thoại chuyển đổi nhanh giữa 3 tài khoản ca làm việc (`admin`, `manager`, `cashier`), yêu cầu nhập mật khẩu xác thực bảo mật.
 
 ---
 
 ## 6. KẾT LUẬN
 
-Việc thiết kế và chuẩn hóa **4 nhóm người dùng** trong hệ thống không đơn thuần là quản lý quyền truy cập máy tính, mà chính là **công cụ số hóa kỷ luật vận hành chuỗi cung ứng bán lẻ**. Mỗi vai trò tạo thành một mắt xích khép kín:
+Việc thiết kế và chuẩn hóa **3 nhóm người dùng (3 Actor = 3 Vai trò RBAC)** trong hệ thống chính là **công cụ số hóa kỷ luật vận hành chuỗi cung ứng bán lẻ tinh gọn**. Mỗi vai trò tạo thành một mắt xích khép kín:
 
-* **Admin** tạo ra hành lang pháp lý và tham số kỹ thuật an toàn.
-* **Cửa hàng trưởng** bảo vệ dòng tiền và ra quyết định tài chính.
-* **Nhân viên kho** bảo vệ chất lượng hàng hóa đầu vào và vị trí trưng bày mặt tiền.
-* **Nhân viên thu ngân** bảo vệ sức khỏe người tiêu dùng và thực thi triệt để nguyên tắc xuất kho FEFO.
+* **Chủ chuỗi / Admin (`ADMIN`)** tạo ra hành lang pháp lý, cấu hình chuỗi 3 chi nhánh và tham số kỹ thuật an toàn.
+* **Cửa hàng trưởng (`STORE_MANAGER`)** bảo vệ dòng tiền, phê duyệt giá xả hàng, duyệt tiêu hủy và ra quyết định đặt hàng DC.
+* **Nhân viên Cửa hàng (`CASHIER`)** trực tiếp thực thi chuẩn mực xuất bán POS theo FEFO, kiểm định $RSL \ge 70\%$ khi nhận hàng DC và đảo kệ mặt tiền.
 
-Sự phân định rành mạch này đảm bảo hệ thống đạt được mục tiêu tối thượng của đề tài: **Giảm thiểu tối đa tỷ lệ hư hỏng lãng phí thực phẩm (Zero Spoilage Waste) tại Cửa hàng Bán lẻ Tiện lợi LHU Mart.**
+Sự phân định rành mạch này đảm bảo hệ thống đạt được mục tiêu tối thượng của đề tài: **Giảm thiểu tối đa tỷ lệ hư hỏng lãng phí thực phẩm (Zero Spoilage Waste) tại Chuỗi Cửa hàng Bán lẻ Tiện lợi LHU Mart.**

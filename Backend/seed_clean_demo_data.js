@@ -13,15 +13,15 @@ async function cleanDemoData() {
     // 1. Xóa người dùng test brute-force
     console.log('1. Xóa các tài khoản tạm phát sinh khi chạy test...');
     await SqlConnection.executeSql(`
-      DELETE FROM users WHERE username LIKE 'test_bf_%';
-      UPDATE users SET is_active = 1 WHERE username IN ('admin', 'manager', 'cashier', 'warehouse');
+      DELETE FROM users WHERE username LIKE 'test_%' OR id > 3;
+      DELETE FROM roles WHERE id > 3 OR code = 'WAREHOUSE_STAFF';
+      UPDATE users SET is_active = 1 WHERE username IN ('admin', 'manager', 'cashier');
     `);
     // Reset cache brute-force
     LoginUseCase.resetFailedAttempts('admin');
     LoginUseCase.resetFailedAttempts('manager');
     LoginUseCase.resetFailedAttempts('cashier');
-    LoginUseCase.resetFailedAttempts('warehouse');
-    console.log('   ✅ Đã kích hoạt 4 tài khoản chuẩn (admin, manager, cashier, warehouse) và xóa user test.');
+    console.log('   ✅ Đã kích hoạt 3 tài khoản chuẩn (admin, manager, cashier) và xóa user test.');
 
     // 2. Chuẩn hóa Store Profile
     console.log('\n2. Đồng bộ chuẩn thông tin cửa hàng RETAIL-STORE-01 (Rule 1 SSOT)...');
@@ -83,7 +83,7 @@ async function cleanDemoData() {
           INSERT INTO spoilage_records (
             record_code, batch_id, quantity_disposed, cost_loss, reason, notes, performed_by, approved_by, disposed_date, created_at
           ) VALUES (
-            '${recCode}', ${b.id}, 3, ${costLoss}, 'DAMAGED', N'Bao bì móp méo rách seal trong quá trình xếp dỡ lên kệ (Chờ quản lý duyệt)', 4, NULL, GETDATE(), GETDATE()
+            '${recCode}', ${b.id}, 3, ${costLoss}, 'DAMAGED', N'Bao bì móp méo rách seal trong quá trình xếp dỡ lên kệ (Chờ quản lý duyệt)', 3, NULL, GETDATE(), GETDATE()
           );
         `);
         console.log(`   ✅ Đã tạo biên bản [${recCode}] trạng thái PENDING chờ demo phê duyệt!`);

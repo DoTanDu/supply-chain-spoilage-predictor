@@ -31,9 +31,10 @@ class UpdateUserUseCase {
       throw new Error('Quản trị viên không thể tự thay đổi vai trò của chính mình để tránh mất quyền quản trị hệ thống.');
     }
 
-    const validRoles = ['ADMIN', 'STORE_MANAGER', 'CASHIER', 'WAREHOUSE_STAFF'];
-    if (roleCode && !validRoles.includes(roleCode.toUpperCase())) {
-      throw new Error(`Vai trò không hợp lệ. Hệ thống chỉ hỗ trợ: ${validRoles.join(', ')}.`);
+    const validRoles = ['ADMIN', 'STORE_MANAGER', 'CASHIER'];
+    const normalizedRoleCode = roleCode ? ((roleCode.toUpperCase() === 'WAREHOUSE_STAFF' || roleCode.toUpperCase() === 'STAFF') ? 'CASHIER' : roleCode.toUpperCase()) : undefined;
+    if (normalizedRoleCode && !validRoles.includes(normalizedRoleCode)) {
+      throw new Error(`Vai trò không hợp lệ. Hệ thống chỉ hỗ trợ 3 vai trò: ${validRoles.join(', ')}.`);
     }
 
     const oldRole = targetUser.roleCode;
