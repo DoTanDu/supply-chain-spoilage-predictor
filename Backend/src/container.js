@@ -34,17 +34,12 @@ const GetDashboardOverviewUseCase = require('./application/use-cases/dashboard/G
 const ChangePasswordUseCase = require('./application/use-cases/auth/ChangePasswordUseCase');
 const CreateUserUseCase = require('./application/use-cases/auth/CreateUserUseCase');
 
-const SubmitShiftHandoverUseCase = require('./application/use-cases/shift/SubmitShiftHandoverUseCase');
-const GetShiftSummaryUseCase = require('./application/use-cases/shift/GetShiftSummaryUseCase');
-const GetShiftHandoverHistoryUseCase = require('./application/use-cases/shift/GetShiftHandoverHistoryUseCase');
-
 // 3. Controllers
 const BatchController = require('./presentation/controllers/BatchController');
 const SalesController = require('./presentation/controllers/SalesController');
 const SpoilageController = require('./presentation/controllers/SpoilageController');
 const ForecastController = require('./presentation/controllers/ForecastController');
 const DashboardController = require('./presentation/controllers/DashboardController');
-const ShiftHandoverController = require('./presentation/controllers/ShiftHandoverController');
 
 // Initialize Repositories (Singletons)
 const userRepository = new SqlUserRepository();
@@ -152,7 +147,9 @@ const batchController = new BatchController({
 const salesController = new SalesController({
   processFefoSaleUseCase,
   getSalesHistoryUseCase,
-  getSaleReceiptUseCase
+  getSaleReceiptUseCase,
+  saleRepository,
+  auditLogRepository
 });
 
 const spoilageController = new SpoilageController({
@@ -171,27 +168,6 @@ const forecastController = new ForecastController({
 
 const dashboardController = new DashboardController({
   getDashboardOverviewUseCase
-});
-
-const submitShiftHandoverUseCase = new SubmitShiftHandoverUseCase({
-  auditLogRepository
-});
-
-const getShiftSummaryUseCase = new GetShiftSummaryUseCase({
-  saleRepository,
-  batchRepository,
-  spoilageRepository,
-  userRepository
-});
-
-const getShiftHandoverHistoryUseCase = new GetShiftHandoverHistoryUseCase({
-  auditLogRepository
-});
-
-const shiftHandoverController = new ShiftHandoverController({
-  submitShiftHandoverUseCase,
-  getShiftSummaryUseCase,
-  getShiftHandoverHistoryUseCase
 });
 
 module.exports = {
@@ -223,15 +199,11 @@ module.exports = {
   getDashboardOverviewUseCase,
   changePasswordUseCase,
   createUserUseCase,
-  submitShiftHandoverUseCase,
-  getShiftSummaryUseCase,
-  getShiftHandoverHistoryUseCase,
 
   // Controllers
   batchController,
   salesController,
   spoilageController,
   forecastController,
-  dashboardController,
-  shiftHandoverController
+  dashboardController
 };

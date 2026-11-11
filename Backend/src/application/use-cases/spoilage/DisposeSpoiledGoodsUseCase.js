@@ -62,11 +62,11 @@ class DisposeSpoiledGoodsUseCase {
       throw err;
     }
 
-    // Chuẩn hóa lý do tiêu hủy theo 3 nhóm chuẩn Mục 14 Đặc tả (EXPIRED, DAMAGED, SPOILED)
-    const rawReason = String(reason || 'EXPIRED').toUpperCase().trim();
+    // Chuẩn hóa lý do tiêu hủy theo 5 nhóm chuẩn ReFED/GS1 hoặc 3 nhóm tương thích ngược (Mục 14 Đặc tả)
+    const rawReason = String(reason || 'EXP_SPOILAGE').toUpperCase().trim();
     const mappedReason = rawReason === 'DAMAGED_SHELF'
-      ? 'DAMAGED'
-      : (rawReason === 'COLD_CHAIN_FAIL' || rawReason === 'TRANSIT_DEFECT' ? 'SPOILED' : rawReason);
+      ? 'PKG_DAMAGE'
+      : (rawReason === 'COLD_CHAIN_FAIL' || rawReason === 'TRANSIT_DEFECT' ? 'TEMP_ABUSE' : rawReason);
 
     // 2. Khởi tạo Entity SpoilageRecord (tự động tính CostLoss = Qty * ImportPrice)
     const isAutoApproved = approvedBy !== null && approvedBy !== undefined;

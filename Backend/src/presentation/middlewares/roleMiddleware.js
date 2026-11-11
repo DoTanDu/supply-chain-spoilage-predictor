@@ -1,4 +1,12 @@
 // src/presentation/middlewares/roleMiddleware.js
+function normalizeRoleCode(role) {
+  const r = String(role || '').toUpperCase();
+  if (r === 'OWNER' || r === 'ADMIN') return 'ADMIN';
+  if (r === 'MANAGER' || r === 'STORE_MANAGER') return 'STORE_MANAGER';
+  if (r === 'STAFF' || r === 'CASHIER' || r === 'INVENTORY_STAFF' || r === 'WAREHOUSE_STAFF') return 'CASHIER';
+  return r;
+}
+
 function roleMiddleware(allowedRoles = []) {
   if (typeof allowedRoles === 'string') {
     allowedRoles = [allowedRoles];
@@ -12,19 +20,37 @@ function roleMiddleware(allowedRoles = []) {
       });
     }
 
+    const normalizedUserRole = normalizeRoleCode(req.user.roleCode);
+
+    // Kiểm tra cô lập dữ liệu Chi nhánh (Data Scoping - Phụ lục A3 SmartSupply AI)
+    // Nếu người dùng là MANAGER hoặc STAFF (có storeId cố định) mà cố tình truyền storeId của chi nhánh khác
+    if (normalizedUserRole !== 'ADMIN' && req.user.storeId) {
+      const requestedStore = req.query?.storeId || req.body?.storeId;
+      if (
+        requestedStore &&
+        String(requestedStore).toUpperCase() !== 'ALL' &&
+        Number(requestedStore) !== Number(req.user.storeId)
+      ) {
+        return res.status(403).json({
+          success: false,
+          statusCode: 403,
+          code: 'ERR_STORE_SCOPE_FORBIDDEN',
+          message: `Từ chối truy cập dữ liệu liên chi nhánh (403 Forbidden). Tài khoản của bạn thuộc Chi nhánh #${req.user.storeId}, không có quyền truy cập dữ liệu nội bộ của Chi nhánh #${requestedStore}.`
+        });
+      }
+      req.scopedStoreId = Number(req.user.storeId);
+    }
+
     if (allowedRoles.length === 0) {
       return next();
     }
 
-    // ADMIN luôn có toàn quyền tối cao
-    if (req.user.roleCode === 'ADMIN') {
+    // OWNER / ADMIN luôn có toàn quyền tối cao
+    if (normalizedUserRole === 'ADMIN') {
       return next();
     }
 
-    // Chuẩn hóa mô hình 3 Vai trò (ADMIN, STORE_MANAGER, CASHIER)
-    const normalizeRole = (r) => (r === 'INVENTORY_STAFF' || r === 'WAREHOUSE_STAFF' || r === 'STAFF') ? 'CASHIER' : r;
-    const normalizedUserRole = normalizeRole(req.user.roleCode);
-    const normalizedAllowedRoles = allowedRoles.map(normalizeRole);
+    const normalizedAllowedRoles = allowedRoles.map(normalizeRoleCode);
 
     if (!normalizedAllowedRoles.includes(normalizedUserRole)) {
       return res.status(403).json({
@@ -39,4 +65,5 @@ function roleMiddleware(allowedRoles = []) {
   };
 }
 
+roleMiddleware.normalizeRoleCode = normalizeRoleCode;
 module.exports = roleMiddleware;

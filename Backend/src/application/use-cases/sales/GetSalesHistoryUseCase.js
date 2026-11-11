@@ -7,8 +7,8 @@ class GetSalesHistoryUseCase {
     this.saleRepository = saleRepository;
   }
 
-  async execute({ limit = 50 }) {
-    const transactions = await this.saleRepository.getRecentTransactions(limit);
+  async execute({ limit = 50, storeId = null }) {
+    const transactions = await this.saleRepository.getRecentTransactions(limit, storeId);
     const todaySummary = await this.saleRepository.getTodaySalesSummary();
 
     return {

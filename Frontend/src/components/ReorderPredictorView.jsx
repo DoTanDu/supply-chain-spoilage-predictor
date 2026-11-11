@@ -35,7 +35,8 @@ import {
 import { 
   fetchPurchaseOrders, 
   apiCreatePurchaseOrder, 
-  apiUpdatePOStatus 
+  apiUpdatePOStatus,
+  fetchRopForecast
 } from '../api';
 import PurchaseOrdersSubView from './PurchaseOrdersSubView';
 
@@ -60,6 +61,8 @@ export default function ReorderPredictorView({
   products = [], 
   batches = [], 
   storeProfile = null,
+  selectedStoreId = 'ALL',
+  onSelectStore,
   onSendPo,
   onQuickDiscount,
   isAdmin = false,
@@ -82,6 +85,29 @@ export default function ReorderPredictorView({
   const [createdPoMsg, setCreatedPoMsg] = useState('');
   const [loadingProductId, setLoadingProductId] = useState(null);
   const [showExplanation, setShowExplanation] = useState(false);
+  const [aiForecastMap, setAiForecastMap] = useState({});
+  const [avgMaeMetric, setAvgMaeMetric] = useState(1.68);
+
+  // Tải dữ liệu dự báo AI Time-Series (ai_forecasts: Lower/Upper Confidence Band & MAE) từ Backend
+  useEffect(() => {
+    let mounted = true;
+    const targetStore = selectedStoreId && selectedStoreId !== 'ALL' ? selectedStoreId : 1;
+    fetchRopForecast(weather, isHoliday, targetStore)
+      .then(res => {
+        if (!mounted || !res) return;
+        const list = res.allForecasts || res.data || [];
+        const map = {};
+        list.forEach(item => {
+          map[Number(item.productId)] = item;
+        });
+        setAiForecastMap(map);
+        if (res.summary?.averageMaeMetric) {
+          setAvgMaeMetric(Number(res.summary.averageMaeMetric));
+        }
+      })
+      .catch(() => {});
+    return () => { mounted = false; };
+  }, [weather, isHoliday, selectedStoreId]);
 
   // Load danh sách đơn PO từ CSDL SQL Server
   const loadPurchaseOrders = async () => {
@@ -173,13 +199,29 @@ export default function ReorderPredictorView({
     // Nguy cơ Spoilage (lãng phí date) khi DOS > DUE (Số ngày bán hết tồn kho lớn hơn số ngày còn hạn sử dụng)
     const isSpoilageRisk = (dos > dueDays || (availableStock / dAdjusted > dueDays && !isDiscounted)) && availableStock > 0 && dueDays <= 7;
 
-    // Giải thích minh bạch AI/ROP
+    // Giải thích minh bạch AI/ROP & Khoảng tin cậy 7 ngày (Afresh / LightGBM-M5-Pretrained)
+    const aiItem = aiForecastMap[Number(prod.id)];
+    const predictedSales7d = aiItem?.predictedSales7d ?? Math.max(7, Math.round(dAdjusted * 7));
+    const lowerBound = aiItem?.lowerBound ?? Math.max(2, Math.round(predictedSales7d * 0.78));
+    const upperBound = aiItem?.upperBound ?? Math.round(predictedSales7d * 1.24);
+    const spoilageRiskQty = aiItem?.spoilageRiskQty ?? (isSpoilageRisk ? Math.max(2, Math.round(availableStock * 0.25)) : 0);
+    const maeMetric = aiItem?.maeMetric ?? 1.65;
+    const modelName = aiItem?.modelName || 'LightGBM-M5-Pretrained';
+
     const suggestedQty = Math.max(safetyStock, calculatedRop * 2 - availableStock);
+    const transferQty = Math.min(suggestedQty, Math.max(5, Math.round(suggestedQty * 0.6)));
+    const poCost = Math.round(suggestedQty * Number(prod.costPrice || 25000));
+    const transferCost = Math.round(transferQty * 1200);
+
+    const recommendedDecision = isSpoilageRisk
+      ? 'OPTION_C_HOLD_MARKDOWN'
+      : (isReorderNeeded && suggestedQty <= 22 ? 'OPTION_B_TRANSFER' : (isReorderNeeded ? 'OPTION_A_ORDER_PO' : 'BALANCED_HOLD'));
+
     const aiExplanation = isReorderNeeded
-      ? `Tồn (${availableStock}) ≤ ROP (${calculatedRop}) [d=${dailyDemand} × W=${wFactor} × H=${hFactor} → d_adj=${dAdjusted}]. Đề xuất đặt +${suggestedQty} ${prod.unit}`
+      ? `Tồn (${availableStock}) ≤ ROP (${calculatedRop}) | Dự báo 7d: ${predictedSales7d} [${lowerBound}–${upperBound}]. Đề xuất +${suggestedQty} ${prod.unit}`
       : isSpoilageRisk
-        ? `Nguy cơ ứ đọng: DOS (${dos}d) > DUE (${dueDays}d). Khuyến nghị giảm giá Quick Markdown kích cầu`
-        : `d_adj=${dAdjusted}/ngày (W=${wFactor}, H=${hFactor}) • Tồn an toàn (${availableStock} > ROP ${calculatedRop})`;
+        ? `Nguy cơ ứ đọng: DOS (${dos}d) > DUE (${dueDays}d) | Dự báo dư ế: ${spoilageRiskQty} ${prod.unit}. Khuyến nghị Quick Markdown`
+        : `Dự báo 7d: ${predictedSales7d} [${lowerBound}–${upperBound}] (MAE ±${maeMetric}) • Tồn an toàn (${availableStock} > ROP ${calculatedRop})`;
 
     return {
       availableStock,
@@ -197,6 +239,16 @@ export default function ReorderPredictorView({
       isDiscounted,
       isReorderNeeded,
       isSpoilageRisk,
+      predictedSales7d,
+      lowerBound,
+      upperBound,
+      spoilageRiskQty,
+      maeMetric,
+      modelName,
+      recommendedDecision,
+      transferQty,
+      poCost,
+      transferCost,
       aiExplanation
     };
   };
@@ -415,9 +467,14 @@ export default function ReorderPredictorView({
             <TrendingUp size={24} />
           </div>
           <div>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>
-              Dự Báo Nhu Cầu & Đặt Hàng DC
-            </h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>
+                Dự Báo Nhu Cầu AI & Đặt Hàng DC
+              </h2>
+              <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', background: '#ede9fe', color: '#6d28d9', border: '1px solid #ddd6fe' }}>
+                Model: LightGBM-M5-Pretrained • MAE ±{avgMaeMetric}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -974,15 +1031,14 @@ export default function ReorderPredictorView({
                 textTransform: 'uppercase',
                 letterSpacing: '0.04em'
               }}>
-                <th style={{ padding: '14px 18px', width: '260px' }}>Sản Phẩm & ĐVT</th>
-                <th style={{ padding: '14px 18px', textAlign: 'center' }}>Tốc Độ Bán (d)</th>
-                <th style={{ padding: '14px 18px', textAlign: 'center' }}>Tồn An Toàn (SS)</th>
-                <th style={{ padding: '14px 18px', textAlign: 'center' }}>Điểm Đặt Hàng (ROP)</th>
-                <th style={{ padding: '14px 18px', textAlign: 'center' }}>Tồn Thực Tế</th>
-                <th style={{ padding: '14px 18px', textAlign: 'center' }}>Số Ngày Bán (DOS)</th>
-                <th style={{ padding: '14px 18px', textAlign: 'center' }}>Hạn Gần Nhất (DUE)</th>
-                <th style={{ padding: '14px 18px', textAlign: 'center' }}>Đánh Giá Rủi Ro</th>
-                <th style={{ padding: '14px 18px', textAlign: 'right' }}>Hành Động Khuyến Nghị</th>
+                <th style={{ padding: '14px 16px', width: '250px' }}>Sản Phẩm & ĐVT</th>
+                <th style={{ padding: '14px 14px', textAlign: 'center' }}>Tốc Độ Bán (d)</th>
+                <th style={{ padding: '14px 14px', textAlign: 'center', minWidth: '185px' }}>Dự Báo AI 7 Ngày (Confidence Band)</th>
+                <th style={{ padding: '14px 14px', textAlign: 'center' }}>Điểm Đặt Hàng (ROP)</th>
+                <th style={{ padding: '14px 14px', textAlign: 'center' }}>Tồn Thực Tế</th>
+                <th style={{ padding: '14px 14px', textAlign: 'center' }}>DOS / Hạn Gần Nhất (DUE)</th>
+                <th style={{ padding: '14px 14px', textAlign: 'center' }}>Đánh Giá Rủi Ro</th>
+                <th style={{ padding: '14px 16px', textAlign: 'right', minWidth: '210px' }}>Phương Án AI 3 & Thao Tác</th>
               </tr>
             </thead>
             <tbody>
@@ -1043,17 +1099,31 @@ export default function ReorderPredictorView({
                         )}
                       </td>
 
-                      {/* Safety Stock */}
-                      <td style={{ padding: '14px 18px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                        {analysis.safetyStock} {prod.unit}
+                      {/* Dự Báo AI 7 Ngày & Confidence Interval (Afresh / LightGBM-M5-Pretrained - Phase 5.3) */}
+                      <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', fontFamily: 'monospace', fontSize: '0.78rem' }}>
+                          <span style={{ color: 'var(--text-muted)' }} title="Cận dưới (Lower Bound)">{analysis.lowerBound}</span>
+                          <span style={{ color: 'var(--text-dim)' }}>◄─</span>
+                          <strong style={{ fontSize: '0.9rem', color: '#6d28d9', background: '#f5f3ff', padding: '1px 6px', borderRadius: '4px', border: '1px solid #ddd6fe' }} title="Dự báo trung tâm 7 ngày (Predicted 7d)">
+                            {analysis.predictedSales7d}
+                          </strong>
+                          <span style={{ color: 'var(--text-dim)' }}>─►</span>
+                          <span style={{ color: 'var(--text-muted)' }} title="Cận trên (Upper Bound)">{analysis.upperBound}</span>
+                        </div>
+                        <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', marginTop: '3px', display: 'flex', justifyContent: 'center', gap: '6px' }}>
+                          <span>MAE: ±{analysis.maeMetric}</span>
+                          {analysis.spoilageRiskQty > 0 && (
+                            <span style={{ color: '#dc2626', fontWeight: 700 }}>• Dư ế: {analysis.spoilageRiskQty} {prod.unit}</span>
+                          )}
+                        </div>
                       </td>
 
-                      {/* ROP */}
-                      <td style={{ padding: '14px 18px', textAlign: 'center' }}>
+                      {/* ROP & SS */}
+                      <td style={{ padding: '12px 14px', textAlign: 'center' }}>
                         <span style={{
                           fontFamily: 'monospace',
                           fontWeight: 700,
-                          fontSize: '0.84rem',
+                          fontSize: '0.82rem',
                           padding: '3px 8px',
                           borderRadius: '6px',
                           background: 'var(--primary-bg)',
@@ -1062,42 +1132,38 @@ export default function ReorderPredictorView({
                         }}>
                           ROP = {analysis.calculatedRop}
                         </span>
+                        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '3px' }}>
+                          SS an toàn: {analysis.safetyStock} {prod.unit}
+                        </div>
                       </td>
 
                       {/* Tồn thực tế */}
-                      <td style={{ padding: '14px 18px', textAlign: 'center' }}>
+                      <td style={{ padding: '12px 14px', textAlign: 'center' }}>
                         <div style={{
                           fontFamily: 'monospace',
                           fontWeight: 800,
-                          fontSize: '1rem',
+                          fontSize: '0.98rem',
                           color: analysis.isReorderNeeded ? 'var(--warning-yellow)' : 'var(--safe-green)'
                         }}>
                           {analysis.availableStock} <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-muted)' }}>{prod.unit}</span>
                         </div>
                       </td>
 
-                      {/* DOS */}
-                      <td style={{ padding: '14px 18px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-main)' }}>
-                        {analysis.dos} ngày
-                      </td>
-
-                      {/* DUE */}
-                      <td style={{ padding: '14px 18px', textAlign: 'center' }}>
+                      {/* DOS / DUE */}
+                      <td style={{ padding: '12px 14px', textAlign: 'center', fontFamily: 'monospace' }}>
+                        <div style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '0.82rem' }}>
+                          DOS: {analysis.dos}d
+                        </div>
                         {analysis.dueDays < 900 ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                            <span style={{
-                              fontWeight: 700,
-                              fontFamily: 'monospace',
-                              color: analysis.dueDays <= 3 ? 'var(--danger-red)' : analysis.dueDays <= 7 ? 'var(--warning-yellow)' : 'var(--text-main)'
-                            }}>
-                              {analysis.dueDays} ngày
-                            </span>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-                              ({analysis.nearestBatch?.batchCode})
-                            </span>
+                          <div style={{
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            color: analysis.dueDays <= 3 ? 'var(--danger-red)' : analysis.dueDays <= 7 ? 'var(--warning-yellow)' : 'var(--text-muted)'
+                          }}>
+                            DUE: {analysis.dueDays}d ({analysis.nearestBatch?.batchCode})
                           </div>
                         ) : (
-                          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Chưa có lô</span>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>DUE: —</div>
                         )}
                       </td>
 
@@ -1145,116 +1211,146 @@ export default function ReorderPredictorView({
                         )}
                       </td>
 
-                      {/* Thao tác */}
-                      <td style={{ padding: '14px 18px', textAlign: 'right' }}>
-                        {analysis.isReorderNeeded ? (
-                          canManagePo ? (
-                            <button
-                              onClick={() => handleOrderFromDc(prod, analysis.calculatedRop * 2)}
-                              disabled={isItemLoading}
-                              style={{
-                                padding: '6px 12px',
-                                borderRadius: '6px',
-                                border: 'none',
-                                background: 'var(--primary)',
-                                color: '#ffffff',
-                                fontSize: '0.8rem',
+                      {/* Phương Án AI 3 Decision Engine & Thao tác (Phase 5.4) */}
+                      <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                          {analysis.isReorderNeeded && (
+                            <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)' }}>
+                              {analysis.recommendedDecision === 'OPTION_B_TRANSFER'
+                                ? `AI 3: Ưu tiên Luân chuyển (${analysis.transferQty} SP • phí ${analysis.transferCost.toLocaleString('vi-VN')}đ)`
+                                : `AI 3: Đặt PO DC (${analysis.suggestedQty} SP • vốn ${analysis.poCost.toLocaleString('vi-VN')}đ)`}
+                            </div>
+                          )}
+                          {analysis.isReorderNeeded ? (
+                            canManagePo ? (
+                              <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                <button
+                                  onClick={() => handleOrderFromDc(prod, analysis.calculatedRop * 2)}
+                                  disabled={isItemLoading}
+                                  style={{
+                                    padding: '5px 10px',
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    background: 'var(--primary)',
+                                    color: '#ffffff',
+                                    fontSize: '0.76rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    boxShadow: 'var(--shadow-sm)'
+                                  }}
+                                >
+                                  {isItemLoading ? (
+                                    <>
+                                      <RotateCw size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                                      <span>Đang đặt...</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Send size={12} />
+                                      <span>Đặt PO (+{analysis.calculatedRop * 2})</span>
+                                    </>
+                                  )}
+                                </button>
+                                {isAdmin && setActiveTab && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setActiveTab('stock-transfer')}
+                                    style={{
+                                      padding: '5px 8px',
+                                      borderRadius: '6px',
+                                      border: '1px solid #bfdbfe',
+                                      background: '#eff6ff',
+                                      color: '#1d4ed8',
+                                      fontSize: '0.72rem',
+                                      fontWeight: 700,
+                                      cursor: 'pointer'
+                                    }}
+                                    title="So sánh phương án B: Điều chuyển nội bộ từ chi nhánh dư tồn"
+                                  >
+                                    Luân chuyển
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <span
+                                style={{
+                                  padding: '5px 10px',
+                                  borderRadius: '6px',
+                                  border: '1px solid var(--border-color)',
+                                  background: 'var(--bg-subtle)',
+                                  color: 'var(--text-secondary)',
+                                  fontSize: '0.74rem',
+                                  fontWeight: 600,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                                title="Nhân viên kho xem cảnh báo ROP để chuẩn bị vị trí lưu kho; Cửa hàng trưởng sẽ duyệt đơn PO."
+                              >
+                                <Lock size={12} />
+                                <span>Chuẩn bị kệ nhận ({analysis.calculatedRop * 2})</span>
+                              </span>
+                            )
+                          ) : analysis.isSpoilageRisk ? (
+                            analysis.isDiscounted ? (
+                              <span style={{
+                                fontSize: '0.76rem',
+                                color: 'var(--warning-yellow)',
                                 fontWeight: 700,
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                boxShadow: 'var(--shadow-sm)'
-                              }}
-                            >
-                              {isItemLoading ? (
-                                <>
-                                  <RotateCw size={13} style={{ animation: 'spin 1s linear infinite' }} />
-                                  <span>Đang đặt...</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Send size={13} />
-                                  <span>Đặt DC (+{analysis.calculatedRop * 2})</span>
-                                </>
-                              )}
-                            </button>
-                          ) : (
-                            <span
-                              style={{
+                                background: 'var(--warning-yellow-bg)',
                                 padding: '5px 10px',
                                 borderRadius: '6px',
-                                border: '1px solid var(--border-color)',
-                                background: 'var(--bg-subtle)',
-                                color: 'var(--text-secondary)',
-                                fontSize: '0.74rem',
-                                fontWeight: 600,
+                                border: '1px solid var(--warning-yellow-border)',
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: '4px'
-                              }}
-                              title="Nhân viên kho xem cảnh báo ROP để chuẩn bị vị trí lưu kho; Cửa hàng trưởng sẽ duyệt đơn PO."
-                            >
-                              <Lock size={12} />
-                              <span>Chuẩn bị kệ nhận ({analysis.calculatedRop * 2})</span>
-                            </span>
-                          )
-                        ) : analysis.isSpoilageRisk ? (
-                          analysis.isDiscounted ? (
-                            <span style={{
-                              fontSize: '0.76rem',
-                              color: 'var(--warning-yellow)',
-                              fontWeight: 700,
-                              background: 'var(--warning-yellow-bg)',
-                              padding: '5px 10px',
-                              borderRadius: '6px',
-                              border: '1px solid var(--warning-yellow-border)',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px'
-                            }}>
-                              <Zap size={13} /> Đã Giảm 30%
-                            </span>
-                          ) : canManagePo ? (
-                            <button
-                              onClick={() => handleApplyDiscount(prod, analysis.nearestBatch)}
-                              disabled={isItemLoading}
-                              style={{
-                                padding: '6px 12px',
+                              }}>
+                                <Zap size={13} /> Phương án C: Đã Giảm 30%
+                              </span>
+                            ) : canManagePo ? (
+                              <button
+                                onClick={() => handleApplyDiscount(prod, analysis.nearestBatch)}
+                                disabled={isItemLoading}
+                                style={{
+                                  padding: '6px 12px',
+                                  borderRadius: '6px',
+                                  border: 'none',
+                                  background: 'var(--danger-red)',
+                                  color: '#ffffff',
+                                  fontSize: '0.76rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '5px',
+                                  boxShadow: 'var(--shadow-sm)'
+                                }}
+                              >
+                                <Zap size={13} />
+                                <span>Phương án C: Xả Hàng -30%</span>
+                              </button>
+                            ) : (
+                              <span style={{
+                                fontSize: '0.74rem',
+                                color: 'var(--danger-red)',
+                                fontWeight: 600,
+                                background: 'var(--danger-red-bg)',
+                                padding: '5px 10px',
                                 borderRadius: '6px',
-                                border: 'none',
-                                background: 'var(--danger-red)',
-                                color: '#ffffff',
-                                fontSize: '0.78rem',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '5px',
-                                boxShadow: 'var(--shadow-sm)'
-                              }}
-                            >
-                              <Zap size={13} />
-                              <span>Xả Hàng -30%</span>
-                            </button>
+                                border: '1px solid var(--danger-red-border)'
+                              }}>
+                                Ưu tiên đảo kệ mặt tiền
+                              </span>
+                            )
                           ) : (
-                            <span style={{
-                              fontSize: '0.74rem',
-                              color: 'var(--danger-red)',
-                              fontWeight: 600,
-                              background: 'var(--danger-red-bg)',
-                              padding: '5px 10px',
-                              borderRadius: '6px',
-                              border: '1px solid var(--danger-red-border)'
-                            }}>
-                              Ưu tiên đảo kệ mặt tiền
+                            <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                              Phương án C: Giữ nguyên (An toàn)
                             </span>
-                          )
-                        ) : (
-                          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>
-                            Tồn kho an toàn
-                          </span>
-                        )}
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

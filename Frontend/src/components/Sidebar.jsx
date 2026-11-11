@@ -46,20 +46,23 @@ export default function Sidebar({
     });
   };
 
-  // Danh mục menu chuẩn mực
+  // Danh mục menu chuẩn mực (Tối ưu vị trí Quầy POS theo vai trò: STAFF lên đầu, OWNER/MANAGER xếp sau khối điều hành)
+  const isStaffActor = roleCode === 'CASHIER' || roleCode === 'STAFF';
+  const posMenuItem = {
+    id: 'pos-checkout',
+    label: isStaffActor ? 'Quầy Bán lẻ POS' : 'Quầy Bán lẻ POS (Giám sát)',
+    icon: ShoppingCart,
+    allowedRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER'],
+    highlight: isStaffActor
+  };
+
   const allMenuItems = [
+    ...(isStaffActor ? [posMenuItem] : []),
     {
       id: 'dashboard',
       label: 'Tổng quan điều hành',
       icon: LayoutDashboard,
       allowedRoles: ['ADMIN', 'STORE_MANAGER']
-    },
-    {
-      id: 'pos-checkout',
-      label: 'Quầy Bán lẻ POS',
-      icon: ShoppingCart,
-      allowedRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER'],
-      highlight: roleCode === 'CASHIER' || roleCode === 'STAFF'
     },
     {
       id: 'fefo-monitor',
@@ -88,7 +91,7 @@ export default function Sidebar({
     },
     {
       id: 'reorder-predictor',
-      label: 'Dự báo & Đặt hàng DC',
+      label: 'Dự báo AI & Đặt hàng DC',
       icon: TrendingUp,
       allowedRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER']
     },
@@ -98,6 +101,7 @@ export default function Sidebar({
       icon: ArrowLeftRight,
       allowedRoles: ['ADMIN']
     },
+    ...(!isStaffActor ? [posMenuItem] : []),
     {
       id: 'audit-log',
       label: 'Nhật ký Kiểm toán',
@@ -120,21 +124,23 @@ export default function Sidebar({
 
   // Lọc menu hiển thị nghiêm ngặt theo Ma trận Phân quyền RBAC
   const visibleMenuItems = allMenuItems.filter(item => {
-    if (roleCode === 'ADMIN') return true;
+    if (roleCode === 'ADMIN' || roleCode === 'OWNER') return true;
     return item.allowedRoles.includes(roleCode);
   });
 
   const getRoleBadge = () => {
     switch (roleCode) {
       case 'ADMIN':
-        return { label: 'CHỦ CHUỖI / ADMIN', color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe', icon: Shield };
+      case 'OWNER':
+        return { label: 'OWNER • CHỦ CHUỖI', color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe', icon: Shield };
       case 'STORE_MANAGER':
-        return { label: 'QUẢN LÝ CỬA HÀNG', color: '#4f46e5', bg: '#eef2ff', border: '#c7d2fe', icon: Store };
+      case 'MANAGER':
+        return { label: 'MANAGER • QUẢN LÝ CH', color: '#4f46e5', bg: '#eef2ff', border: '#c7d2fe', icon: Store };
       case 'CASHIER':
       case 'STAFF':
-        return { label: 'NHÂN VIÊN CỬA HÀNG', color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe', icon: ShoppingCart };
+        return { label: 'STAFF • NHÂN VIÊN CH', color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe', icon: ShoppingCart };
       default:
-        return { label: 'NHÂN VIÊN', color: '#475569', bg: '#f1f5f9', border: '#e2e8f0', icon: User };
+        return { label: 'STAFF • NHÂN VIÊN', color: '#475569', bg: '#f1f5f9', border: '#e2e8f0', icon: User };
     }
   };
 

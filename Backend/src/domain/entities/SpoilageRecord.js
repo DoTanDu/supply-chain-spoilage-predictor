@@ -4,7 +4,16 @@
  * CostLoss = QuantityDisposed * ImportPrice
  */
 class SpoilageRecord {
-  static REASONS = ['EXPIRED', 'DAMAGED', 'SPOILED'];
+  static REASONS = [
+    'EXPIRED',
+    'DAMAGED',
+    'SPOILED',
+    'EXP_SPOILAGE',
+    'PKG_DAMAGE',
+    'TEMP_ABUSE',
+    'INTERNAL_SHRINK',
+    'DONATION'
+  ];
 
   constructor({
     id = null,

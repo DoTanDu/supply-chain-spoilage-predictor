@@ -16,7 +16,6 @@ const spoilageRoutes = require('./src/presentation/routes/spoilageRoutes');
 const forecastRoutes = require('./src/presentation/routes/forecastRoutes');
 const purchaseOrderRoutes = require('./src/presentation/routes/purchaseOrderRoutes');
 const dashboardRoutes = require('./src/presentation/routes/dashboardRoutes');
-const shiftHandoverRoutes = require('./src/presentation/routes/shiftHandoverRoutes');
 const supplierRoutes = require('./src/presentation/routes/supplierRoutes');
 const stockTransferRoutes = require('./src/presentation/routes/stockTransferRoutes');
 
@@ -28,13 +27,32 @@ const SqlConnection = require('./src/infrastructure/database/sqlConnection');
 const errorHandler = require('./src/presentation/middlewares/errorHandler');
 const authMiddleware = require('./src/presentation/middlewares/authMiddleware');
 const roleMiddleware = require('./src/presentation/middlewares/roleMiddleware');
+const TokenService = require('./src/infrastructure/security/TokenService');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Global Middlewares
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+
+// Global Optional JWT Context Hydrator (phục vụ Data Scoping theo store_id trên các GET endpoints)
+app.use((req, _res, next) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+    const decoded = TokenService.verifyToken(token);
+    if (decoded && decoded.userId) {
+      req.user = {
+        id: decoded.userId,
+        username: decoded.username,
+        roleCode: decoded.roleCode,
+        storeId: Number(decoded.storeId || 1)
+      };
+    }
+  }
+  next();
+});
 
 // 1. Health Check Endpoint
 app.get('/api/health', (req, res) => {
@@ -63,9 +81,6 @@ app.get('/api/audit-logs', async (req, res, next) => {
     next(err);
   }
 });
-
-// 2.1 Shift Handover Modules (Bàn Giao Ca Trực 4 Bước - Mục 15 SSOT)
-app.use('/api/shift-handover', shiftHandoverRoutes);
 
 // 2.2 Goods Receipts Endpoint (Mục 17.7 SSOT - Lịch sử Tiếp nhận Hàng DC)
 app.get('/api/goods-receipts', async (req, res, next) => {

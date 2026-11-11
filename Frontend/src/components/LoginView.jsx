@@ -107,7 +107,7 @@ export default function LoginView({ onLoginSuccess }) {
       device: 'Máy POS + PDA Kho',
       color: '#3b82f6',
       icon: ShoppingCart,
-      desc: 'Bán lẻ POS chuẩn FEFO, tiếp nhận hàng DC, đảo kệ mặt tiền & bàn giao ca trực'
+      desc: 'Bán lẻ POS chuẩn FEFO, tiếp nhận hàng DC, đảo kệ mặt tiền & lập đề xuất xử lý hàng cận date'
     }
   ];
 

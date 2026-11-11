@@ -59,12 +59,12 @@ export default function DisposalFormModal({
       if (b) {
         const stock = Number(b.currentQuantity ?? b.quantity ?? 1);
         setDisposalQty(stock > 0 ? stock : 1);
-        if (b.status === 'EXPIRED') setReason('EXPIRED');
-        else if (b.status === 'CRITICAL') setReason('SPOILED');
-        else setReason('DAMAGED');
+        if (b.status === 'EXPIRED') setReason('EXP_SPOILAGE');
+        else if (b.status === 'CRITICAL') setReason('TEMP_ABUSE');
+        else setReason('PKG_DAMAGE');
       } else {
         setDisposalQty(1);
-        setReason('EXPIRED');
+        setReason('EXP_SPOILAGE');
       }
       setNotes('');
     }
@@ -101,9 +101,9 @@ export default function DisposalFormModal({
     setSelectedBatchId(b.id);
     const stock = Number(b.currentQuantity ?? b.quantity ?? 1);
     setDisposalQty(stock > 0 ? stock : 1);
-    if (b.status === 'EXPIRED') setReason('EXPIRED');
-    else if (b.status === 'CRITICAL') setReason('SPOILED');
-    else setReason('DAMAGED');
+    if (b.status === 'EXPIRED') setReason('EXP_SPOILAGE');
+    else if (b.status === 'CRITICAL') setReason('TEMP_ABUSE');
+    else setReason('PKG_DAMAGE');
     setErrorMsg('');
   };
 
@@ -128,10 +128,18 @@ export default function DisposalFormModal({
         ? Number(currentBatch.importPrice)
         : Number(currentBatch.costPrice || 25000);
 
-      const normReason = reason === 'EXPIRED' ? 'EXPIRED' : (reason === 'DAMAGED' ? 'DAMAGED' : 'SPOILED');
-      const defaultNoteByReason = normReason === 'EXPIRED'
-        ? 'Rút khỏi kệ do quá hạn sử dụng'
-        : (normReason === 'DAMAGED' ? 'Hàng móp méo/vỡ rách bao bì tại quầy' : 'Hàng biến chất, chua hỏng bảo quản lạnh');
+      const normReason = String(reason || 'EXP_SPOILAGE').toUpperCase();
+      const reasonDefaultNotes = {
+        EXP_SPOILAGE: 'Quá hạn sử dụng tự nhiên (Date / Shelf-life Expiration) — Rút kệ cách ly',
+        EXPIRED: 'Quá hạn sử dụng tự nhiên — Rút khỏi kệ cách ly',
+        PKG_DAMAGE: 'Lỗi bao bì / Rách móp khi vận chuyển & trưng bày (Packaging Damage)',
+        DAMAGED: 'Hàng móp méo/vỡ rách bao bì tại quầy',
+        TEMP_ABUSE: 'Đứt gãy chuỗi lạnh / Sự cố tủ mát bảo quản (Cold-Chain Failure)',
+        SPOILED: 'Hàng biến chất, chua hỏng bảo quản lạnh',
+        INTERNAL_SHRINK: 'Hao hụt kiểm kê nội bộ / Rơi vỡ thao tác nhân viên (Operational Shrink)',
+        DONATION: 'Chuyển quyên góp thực phẩm an toàn trước hạn (Food Bank / Donation)'
+      };
+      const defaultNoteByReason = reasonDefaultNotes[normReason] || 'Rút khỏi kệ xử lý hao hụt';
 
       const finalNotes = notes?.trim() || defaultNoteByReason;
 
@@ -420,10 +428,10 @@ export default function DisposalFormModal({
             />
           </div>
 
-          {/* Lý do tiêu hủy */}
+          {/* Lý do tiêu hủy chuẩn quốc tế ReFED / GS1 (Phase 5.1) */}
           <div>
             <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-main, #0f172a)', marginBottom: '4px', display: 'block' }}>
-              Lý do tiêu hủy:
+              Mã lý do thất thoát / tiêu hủy (Chuẩn ReFED / GS1):
             </label>
             <select
               className="form-select"
@@ -440,9 +448,11 @@ export default function DisposalFormModal({
                 boxSizing: 'border-box'
               }}
             >
-              <option value="EXPIRED">EXPIRED — Hết hạn sử dụng (Rút khỏi kệ cách ly)</option>
-              <option value="DAMAGED">DAMAGED — Móp méo / vỡ rách bao bì</option>
-              <option value="SPOILED">SPOILED — Biến chất / chua hỏng / lỗi bảo quản lạnh</option>
+              <option value="EXP_SPOILAGE">EXP_SPOILAGE — Quá hạn sử dụng tự nhiên (Date / Shelf-life Expiration)</option>
+              <option value="PKG_DAMAGE">PKG_DAMAGE — Lỗi bao bì / Rách móp vận chuyển & trưng bày (Packaging Damage)</option>
+              <option value="TEMP_ABUSE">TEMP_ABUSE — Đứt gãy chuỗi lạnh / Sự cố tủ mát bảo quản (Cold-Chain Failure)</option>
+              <option value="INTERNAL_SHRINK">INTERNAL_SHRINK — Hao hụt kiểm kê nội bộ / Rơi vỡ thao tác (Operational Shrink)</option>
+              <option value="DONATION">DONATION — Chuyển quyên góp thực phẩm / Thu hồi nhân đạo (Food Bank)</option>
             </select>
           </div>
 

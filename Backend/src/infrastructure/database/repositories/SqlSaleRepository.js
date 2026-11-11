@@ -156,13 +156,20 @@ class SqlSaleRepository extends ISaleRepository {
   }
 
   /**
-   * Lấy danh sách giao dịch bán lẻ gần nhất
+   * Lấy danh sách giao dịch bán lẻ gần nhất (hỗ trợ lọc theo storeId)
    */
-  async getRecentTransactions(limit = 50) {
+  async getRecentTransactions(limit = 50, storeId = null) {
+    let storeWhere = '1=1';
+    if (storeId && String(storeId).toUpperCase() !== 'ALL' && !isNaN(Number(storeId))) {
+      storeWhere = `COALESCE(sh.store_id, b.store_id, 1) = ${Number(storeId)}`;
+    }
     const sql = `
       SELECT TOP (${Number(limit)})
         sh.id,
         sh.transaction_code AS transactionCode,
+        COALESCE(sh.store_id, b.store_id, 1) AS storeId,
+        sp.store_code AS storeCode,
+        sp.store_name AS storeName,
         sh.product_id AS productId,
         p.name AS productName,
         p.sku AS productSku,
@@ -183,10 +190,147 @@ class SqlSaleRepository extends ISaleRepository {
       FROM sales_history sh
       INNER JOIN products p ON sh.product_id = p.id
       INNER JOIN batches b ON sh.batch_id = b.id
+      LEFT JOIN store_profile sp ON COALESCE(sh.store_id, b.store_id, 1) = sp.id
       LEFT JOIN users u ON sh.cashier_id = u.id
+      WHERE ${storeWhere}
       ORDER BY sh.id DESC;
     `;
     return await SqlConnection.queryJson(sql);
+  }
+
+  /**
+   * Nhập hàng loạt dữ liệu lịch sử bán hàng POS từ Excel/CSV (Phase 6)
+   */
+  async importPosSalesRows(rows = [], cashierId = 1) {
+    if (!Array.isArray(rows) || rows.length === 0) {
+      const err = new Error('Danh sách dữ liệu nhập POS không được để trống!');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Lấy danh mục products và batches để đối chiếu nhanh
+    const metaSql = `
+      SELECT id, sku, selling_price AS sellingPrice FROM products;
+    `;
+    const batchSql = `
+      SELECT id, product_id AS productId, store_id AS storeId, expiry_date AS expiryDate
+      FROM batches
+      ORDER BY CASE WHEN status IN ('ACTIVE', 'WARNING') AND current_quantity > 0 THEN 0 ELSE 1 END, expiry_date ASC;
+    `;
+    const storeSql = `
+      SELECT id, store_code AS storeCode FROM store_profile;
+    `;
+    const [products, batches, stores] = await Promise.all([
+      SqlConnection.queryJson(metaSql),
+      SqlConnection.queryJson(batchSql),
+      SqlConnection.queryJson(storeSql)
+    ]);
+
+    const skuMap = {};
+    const prodIdMap = {};
+    for (const p of (products || [])) {
+      skuMap[String(p.sku || '').toUpperCase().trim()] = p;
+      prodIdMap[Number(p.id)] = p;
+    }
+
+    const storeCodeMap = {};
+    for (const s of (stores || [])) {
+      storeCodeMap[String(s.storeCode || '').toUpperCase().trim()] = Number(s.id);
+    }
+
+    const validInserts = [];
+    const errors = [];
+    const daysOfWeek = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+    const batchStamp = Date.now().toString().slice(-6);
+
+    rows.forEach((raw, idx) => {
+      const rowNum = idx + 1;
+      const rawSku = String(raw.sku || raw.productSku || '').toUpperCase().trim();
+      const prod = rawSku ? skuMap[rawSku] : prodIdMap[Number(raw.productId)];
+      if (!prod) {
+        errors.push({ row: rowNum, sku: rawSku, message: `Mã SKU [${rawSku || raw.productId}] không tồn tại trong Danh mục Sản phẩm.` });
+        return;
+      }
+
+      const qty = Number(raw.quantitySold ?? raw.quantity ?? 0);
+      if (isNaN(qty) || qty <= 0) {
+        errors.push({ row: rowNum, sku: prod.sku, message: `Số lượng bán (${raw.quantitySold}) phải lớn hơn 0.` });
+        return;
+      }
+
+      const rawStoreCode = String(raw.storeCode || '').toUpperCase().trim();
+      const targetStoreId = Number(raw.storeId) || storeCodeMap[rawStoreCode] || 1;
+
+      const matchedBatch = (batches || []).find(b => Number(b.productId) === Number(prod.id) && Number(b.storeId || 1) === targetStoreId)
+        || (batches || []).find(b => Number(b.productId) === Number(prod.id));
+
+      if (!matchedBatch) {
+        errors.push({ row: rowNum, sku: prod.sku, message: `Sản phẩm [${prod.sku}] chưa có lô hàng nào trong kho để đối chiếu.` });
+        return;
+      }
+
+      const unitPrice = (raw.salePrice !== undefined && raw.salePrice !== null && String(raw.salePrice) !== '')
+        ? Number(raw.salePrice)
+        : Number(prod.sellingPrice || 25000);
+      const totalAmount = Math.round(qty * unitPrice);
+
+      const parsedDate = raw.saleDate ? new Date(raw.saleDate) : new Date();
+      const validDate = isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
+      const dateStr = validDate.toISOString().slice(0, 10);
+      const dow = daysOfWeek[validDate.getDay()] || 'MONDAY';
+      const txnCode = raw.transactionCode
+        ? String(raw.transactionCode).trim()
+        : `IMP-POS-${dateStr.replace(/-/g, '')}-${batchStamp}-${rowNum}`;
+
+      validInserts.push(`
+        INSERT INTO sales_history (
+          transaction_code, store_id, product_id, batch_id, quantity_sold,
+          sale_price, total_amount, sale_date, day_of_week, weather, is_holiday,
+          cashier_id, created_at
+        ) VALUES (
+          ${SqlConnection.escapeSql(txnCode)},
+          ${targetStoreId},
+          ${Number(prod.id)},
+          ${Number(matchedBatch.id)},
+          ${qty},
+          ${unitPrice},
+          ${totalAmount},
+          ${SqlConnection.escapeSql(dateStr)},
+          ${SqlConnection.escapeSql(dow)},
+          N'NORMAL',
+          0,
+          ${Number(cashierId || 1)},
+          GETDATE()
+        );
+      `);
+    });
+
+    if (validInserts.length === 0) {
+      const err = new Error('Không có dòng dữ liệu hợp lệ nào để nạp vào hệ thống!');
+      err.statusCode = 400;
+      err.details = errors;
+      throw err;
+    }
+
+    const txSql = `
+      BEGIN TRANSACTION;
+      BEGIN TRY
+        ${validInserts.join('\n')}
+        COMMIT TRANSACTION;
+        SELECT ${validInserts.length} AS importedCount FOR JSON PATH;
+      END TRY
+      BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+      END CATCH;
+    `;
+    await SqlConnection.queryJson(txSql);
+
+    return {
+      importedCount: validInserts.length,
+      rejectedCount: errors.length,
+      errors
+    };
   }
 
   /**

@@ -125,11 +125,59 @@ export default function SpoilageDisposalView({
     return matchesStatus && (normId.includes(normSearch) || normProd.includes(normSearch) || normBatch.includes(normSearch));
   });
 
-  // Thống kê tài chính
-  const totalFinancialLoss = disposals.reduce((sum, d) => sum + (d.totalLoss || d.costLoss || 0), 0);
-  const totalDisposedItems = disposals.reduce((sum, d) => sum + (d.quantity || d.quantityDisposed || 0), 0);
+  // Thống kê tài chính & Phân rã 5 nguyên nhân gốc rễ chuẩn ReFED/GS1 (Phase 5.2)
+  const totalFinancialLoss = disposals.reduce((sum, d) => sum + Number(d.totalLoss || d.costLoss || 0), 0);
+  const totalDisposedItems = disposals.reduce((sum, d) => sum + Number(d.quantity || d.quantityDisposed || 0), 0);
   const approvedCount = disposals.filter(d => d.status === 'APPROVED').length;
   const pendingCount = disposals.filter(d => d.status === 'PENDING').length;
+
+  const refedBreakdown = [
+    {
+      code: 'EXP_SPOILAGE',
+      matchCodes: ['EXP_SPOILAGE', 'EXPIRED'],
+      label: 'Quá hạn tự nhiên (EXP_SPOILAGE)',
+      color: '#dc2626',
+      bg: '#fee2e2'
+    },
+    {
+      code: 'PKG_DAMAGE',
+      matchCodes: ['PKG_DAMAGE', 'DAMAGED'],
+      label: 'Lỗi bao bì / Rách móp (PKG_DAMAGE)',
+      color: '#d97706',
+      bg: '#fef3c7'
+    },
+    {
+      code: 'TEMP_ABUSE',
+      matchCodes: ['TEMP_ABUSE', 'SPOILED'],
+      label: 'Đứt gãy chuỗi lạnh (TEMP_ABUSE)',
+      color: '#2563eb',
+      bg: '#dbeafe'
+    },
+    {
+      code: 'INTERNAL_SHRINK',
+      matchCodes: ['INTERNAL_SHRINK'],
+      label: 'Hao hụt kiểm kê nội bộ (INTERNAL_SHRINK)',
+      color: '#7c3aed',
+      bg: '#ede9fe'
+    },
+    {
+      code: 'DONATION',
+      matchCodes: ['DONATION'],
+      label: 'Quyên góp thực phẩm (DONATION)',
+      color: '#059669',
+      bg: '#d1fae5'
+    }
+  ].map(group => {
+    const matched = disposals.filter(d => group.matchCodes.includes(String(d.reason || '').toUpperCase()));
+    const costLoss = matched.reduce((s, d) => s + Number(d.totalLoss || d.costLoss || 0), 0);
+    const sharePct = totalFinancialLoss > 0 ? Number(((costLoss / totalFinancialLoss) * 100).toFixed(1)) : 0;
+    return {
+      ...group,
+      count: matched.length,
+      costLoss,
+      sharePct
+    };
+  });
 
   // Xử lý gửi phiếu từ Modal
   const handleModalSubmit = async (recordData) => {
@@ -335,6 +383,55 @@ export default function SpoilageDisposalView({
             </div>
           </div>
           <ShieldCheck size={24} color="#047857" style={{ opacity: 0.8 }} />
+        </div>
+      </div>
+
+      {/* BẢNG PHÂN RÃ 5 NGUYÊN NHÂN GỐC RỄ HAO HỤT CHUẨN REFED / GS1 (PHASE 5.2) */}
+      <div style={{
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-subtle)',
+        borderRadius: '10px',
+        padding: '12px 16px',
+        flexShrink: 0
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+          <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-main)' }}>
+            Phân Tích Nguyên Nhân Gốc Rễ Hao Hụt (ReFED / GS1 Waste Reason Codes)
+          </span>
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+            Tổng cộng {disposals.length} biên bản • {totalFinancialLoss.toLocaleString('vi-VN')} đ
+          </span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))', gap: '8px' }}>
+          {refedBreakdown.map(rc => (
+            <div
+              key={rc.code}
+              style={{
+                padding: '8px 10px',
+                borderRadius: '8px',
+                background: 'var(--bg-subtle)',
+                border: '1px solid var(--border-subtle)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '4px' }}>
+                <span style={{ fontSize: '0.7rem', fontWeight: 700, color: rc.color }}>
+                  {rc.label}
+                </span>
+                <span style={{ fontSize: '0.66rem', fontWeight: 700, padding: '1px 6px', borderRadius: '999px', background: rc.bg, color: rc.color }}>
+                  {rc.count} phiếu ({rc.sharePct}%)
+                </span>
+              </div>
+              <div className="num-tabular" style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--text-main)' }}>
+                {rc.costLoss.toLocaleString('vi-VN')} đ
+              </div>
+              <div style={{ height: '4px', background: '#e2e8f0', borderRadius: '999px', overflow: 'hidden' }}>
+                <div style={{ width: `${Math.min(100, rc.sharePct)}%`, height: '100%', background: rc.color }} />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -654,13 +751,17 @@ export default function SpoilageDisposalView({
                     const qtyDisposed = item.quantityDisposed ?? item.quantity ?? 0;
                     const impPrice = item.importPrice ?? item.costPrice ?? 0;
                     const lossVal = item.costLoss ?? item.totalLoss ?? (qtyDisposed * impPrice);
-                    const reasonLabel = item.reason === 'EXPIRED'
-                      ? 'EXPIRED (Hết hạn)'
-                      : item.reason === 'DAMAGED'
-                        ? 'DAMAGED (Hỏng bao bì)'
-                        : item.reason === 'SPOILED'
-                          ? 'SPOILED (Biến chất)'
-                          : item.reason;
+                    const reasonMap = {
+                      EXP_SPOILAGE: 'EXP_SPOILAGE (Quá hạn tự nhiên)',
+                      EXPIRED: 'EXP_SPOILAGE (Quá hạn tự nhiên)',
+                      PKG_DAMAGE: 'PKG_DAMAGE (Hỏng bao bì)',
+                      DAMAGED: 'PKG_DAMAGE (Hỏng bao bì)',
+                      TEMP_ABUSE: 'TEMP_ABUSE (Đứt chuỗi lạnh)',
+                      SPOILED: 'TEMP_ABUSE (Biến chất / Chuỗi lạnh)',
+                      INTERNAL_SHRINK: 'INTERNAL_SHRINK (Hao hụt kiểm kê)',
+                      DONATION: 'DONATION (Quyên góp thực phẩm)'
+                    };
+                    const reasonLabel = reasonMap[String(item.reason || '').toUpperCase()] || item.reason;
 
                     return (
                       <tr key={item.id || item.recordCode}>

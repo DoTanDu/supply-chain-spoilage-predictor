@@ -99,9 +99,13 @@ export default function App() {
     }
     return 'dashboard';
   });
-  const isAdmin = currentUser?.roleCode === 'ADMIN';
+  const isAdmin = currentUser?.roleCode === 'ADMIN' || currentUser?.actorCode === 'OWNER';
   const currentRole = currentUser?.roleCode || 'GUEST';
   const [showAdminModal, setShowAdminModal] = useState(false);
+  const [selectedStoreId, setSelectedStoreId] = useState(() => {
+    const role = (currentUser?.roleCode || '').toUpperCase();
+    return (role === 'ADMIN' || role === 'OWNER') ? 'ALL' : String(currentUser?.storeId || 1);
+  });
   
   const [products, setProducts] = useState([]);
   const [batches, setBatches] = useState([]);
@@ -200,12 +204,16 @@ export default function App() {
     if (token) localStorage.setItem('token', token);
     localStorage.setItem('user', JSON.stringify(user));
     setCurrentUser(user);
+    const nextStoreScope = (user?.roleCode === 'ADMIN' || user?.actorCode === 'OWNER')
+      ? 'ALL'
+      : String(user?.storeId || 1);
+    setSelectedStoreId(nextStoreScope);
     
     // Tự động chuyển tab & URL theo thẩm quyền vai trò (Mục 4 & Mục 16 Đặc tả SSOT)
     const nextTab = getDefaultTabForRole(user.roleCode);
     setActiveTab(nextTab);
     window.history.pushState(null, '', `/${nextTab}`);
-    loadLiveDatabaseData();
+    loadLiveDatabaseData(false, nextStoreScope);
   };
 
   const handleLogout = async () => {
@@ -283,16 +291,19 @@ export default function App() {
   };
 
   // Load Real Data from Microsoft SQL Server LocalDB via Backend API
-  const loadLiveDatabaseData = async (forceAudit = false) => {
+  const loadLiveDatabaseData = async (forceAudit = false, storeScopeOverride = null) => {
     try {
+      const effectiveStoreScope = storeScopeOverride !== null
+        ? storeScopeOverride
+        : (isAdmin ? selectedStoreId : String(currentUser?.storeId || 1));
       const shouldFetchAudit = forceAudit || activeTab === 'audit-log' || isAdmin || currentRole === 'STORE_MANAGER';
       const [prods, bats, disps, logs, stats, storeProf] = await Promise.all([
         api.fetchProducts(),
-        api.fetchBatches(),
-        api.fetchDisposals(),
+        api.fetchBatches(effectiveStoreScope),
+        api.fetchDisposals(effectiveStoreScope),
         shouldFetchAudit ? api.fetchAuditLogs() : Promise.resolve(null),
-        api.fetchDashboardStats(),
-        api.apiGetStoreProfile()
+        api.fetchDashboardStats(effectiveStoreScope),
+        api.apiGetStoreProfile(effectiveStoreScope === 'ALL' ? null : effectiveStoreScope)
       ]);
 
       if (Array.isArray(prods)) setProducts(prods);
@@ -328,7 +339,7 @@ export default function App() {
       }
     }, 10000);
     return () => clearInterval(interval);
-  }, [currentUser?.id, currentUser?.roleCode]);
+  }, [currentUser?.id, currentUser?.roleCode, selectedStoreId]);
 
   // Calculate critical count
   const criticalCount = batches.filter(b => (b.status === 'CRITICAL' || b.alertColor === 'RED') && (b.currentQuantity ?? b.quantity ?? 0) > 0).length;
@@ -561,6 +572,8 @@ export default function App() {
                   currentUser={currentUser}
                   currentRole={currentRole}
                   isAdmin={isAdmin}
+                  selectedStoreId={selectedStoreId}
+                  onSelectStore={setSelectedStoreId}
                   onRequestAdminLogin={() => setShowAdminModal(true)}
                 />
               )}
@@ -572,6 +585,8 @@ export default function App() {
                   storeProfile={storeProfile}
                   currentUser={currentUser}
                   currentRole={currentRole}
+                  selectedStoreId={selectedStoreId}
+                  onSelectStore={setSelectedStoreId}
                   onQuickDiscount={handleQuickDiscount}
                   onRotateShelf={handleRotateShelf}
                   onOpenDisposalModal={(batch) => {
@@ -617,6 +632,7 @@ export default function App() {
                   onAddNewProduct={handleAddNewProduct}
                   onUpdateProduct={handleUpdateProduct}
                   onDeleteProduct={handleDeleteProduct}
+                  onRefreshData={loadLiveDatabaseData}
                   isAdmin={isAdmin}
                   currentRole={currentRole}
                 />
@@ -631,6 +647,8 @@ export default function App() {
                   currentRole={currentRole}
                   isAdmin={isAdmin}
                   storeProfile={storeProfile}
+                  selectedStoreId={selectedStoreId}
+                  onSelectStore={setSelectedStoreId}
                   onCreateDisposal={handleCreateDisposal}
                   onApproveDisposal={handleApproveDisposal}
                   preselectedBatchId={preselectedDisposalBatchId}
@@ -643,6 +661,8 @@ export default function App() {
                   products={products}
                   batches={batches}
                   storeProfile={storeProfile}
+                  selectedStoreId={selectedStoreId}
+                  onSelectStore={setSelectedStoreId}
                   onSendPo={handleSendPo}
                   onQuickDiscount={handleQuickDiscount}
                   isAdmin={isAdmin}

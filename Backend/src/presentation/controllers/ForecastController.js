@@ -14,10 +14,27 @@ class ForecastController {
 
   async getROPForecast(req, res, next) {
     try {
-      const { weather = 'NORMAL', isHoliday = 'false' } = req.query;
+      const { weather = 'NORMAL', isHoliday = 'false', storeId: requestedStoreId } = req.query;
+      const userRole = String(req.user?.roleCode || '').toUpperCase();
+      const userStoreId = Number(req.user?.storeId || 1);
+
+      if (requestedStoreId && userRole && userRole !== 'ADMIN' && userRole !== 'OWNER') {
+        if (String(requestedStoreId).toUpperCase() === 'ALL' || Number(requestedStoreId) !== userStoreId) {
+          return res.status(403).json({
+            success: false,
+            errorCode: 'ERR_STORE_SCOPE_FORBIDDEN',
+            message: `Phạm vi dữ liệu bị từ chối: Bạn chỉ được phép truy cập dự báo AI của Chi nhánh #${userStoreId}!`
+          });
+        }
+      }
+      const effectiveStoreId = (userRole === 'ADMIN' || userRole === 'OWNER')
+        ? (requestedStoreId || 1)
+        : (requestedStoreId || userStoreId);
+
       const result = await this.calculateROPForecastUseCase.execute({
         weather,
-        isHoliday: isHoliday === 'true' || isHoliday === true
+        isHoliday: isHoliday === 'true' || isHoliday === true,
+        storeId: effectiveStoreId
       });
       res.json(result);
     } catch (err) {

@@ -72,15 +72,22 @@ class SqlSpoilageRepository extends ISpoilageRepository {
   }
 
   /**
-   * Lấy danh sách các biên bản tiêu hủy gần nhất
+   * Lấy danh sách các biên bản tiêu hủy gần nhất (hỗ trợ lọc theo storeId)
    */
-  async findRecentRecords(limit = 50) {
+  async findRecentRecords(limit = 50, storeId = null) {
+    let storeWhere = '1=1';
+    if (storeId && String(storeId).toUpperCase() !== 'ALL' && !isNaN(Number(storeId))) {
+      storeWhere = `b.store_id = ${Number(storeId)}`;
+    }
     const sql = `
       SELECT TOP (${Number(limit)})
         sr.id AS dbId,
         sr.record_code AS id,
         sr.record_code AS recordCode,
         sr.batch_id AS batchId,
+        b.store_id AS storeId,
+        sp.store_code AS storeCode,
+        sp.store_name AS storeName,
         b.batch_code AS batchCode,
         p.name AS productName,
         p.sku AS productSku,
@@ -102,9 +109,11 @@ class SqlSpoilageRepository extends ISpoilageRepository {
         sr.created_at AS createdAt
       FROM spoilage_records sr
       INNER JOIN batches b ON sr.batch_id = b.id
+      LEFT JOIN store_profile sp ON b.store_id = sp.id
       INNER JOIN products p ON b.product_id = p.id
       INNER JOIN users u1 ON sr.performed_by = u1.id
       LEFT JOIN users u2 ON sr.approved_by = u2.id
+      WHERE ${storeWhere}
       ORDER BY sr.id DESC;
     `;
     return await SqlConnection.queryJson(sql);
@@ -191,30 +200,82 @@ class SqlSpoilageRepository extends ISpoilageRepository {
   }
 
   /**
-   * Tính tổng thiệt hại tài chính theo khoảng thời gian
+   * Tính tổng thiệt hại tài chính theo khoảng thời gian và phân rã 5 nhóm nguyên nhân chuẩn ReFED/GS1
    */
-  async getLossSummary(startDate = null, endDate = null) {
+  async getLossSummary(startDate = null, endDate = null, storeId = null) {
     let whereClause = '1=1';
     if (startDate) {
-      whereClause += ` AND disposed_date >= ${SqlConnection.escapeSql(startDate)}`;
+      whereClause += ` AND sr.disposed_date >= ${SqlConnection.escapeSql(startDate)}`;
     }
     if (endDate) {
-      whereClause += ` AND disposed_date <= ${SqlConnection.escapeSql(endDate)}`;
+      whereClause += ` AND sr.disposed_date <= ${SqlConnection.escapeSql(endDate)}`;
+    }
+    if (storeId && String(storeId).toUpperCase() !== 'ALL' && !isNaN(Number(storeId))) {
+      whereClause += ` AND b.store_id = ${Number(storeId)}`;
     }
 
     const sql = `
       SELECT 
-        COUNT(id) AS totalRecords,
-        COALESCE(SUM(quantity_disposed), 0) AS totalQuantityDisposed,
-        COALESCE(SUM(cost_loss), 0) AS totalCostLoss,
-        COALESCE(SUM(CASE WHEN reason = 'EXPIRED' THEN cost_loss ELSE 0 END), 0) AS expiredCostLoss,
-        COALESCE(SUM(CASE WHEN reason = 'DAMAGED' THEN cost_loss ELSE 0 END), 0) AS damagedCostLoss,
-        COALESCE(SUM(CASE WHEN reason = 'SPOILED' THEN cost_loss ELSE 0 END), 0) AS spoiledCostLoss
-      FROM spoilage_records
+        COUNT(sr.id) AS totalRecords,
+        COALESCE(SUM(sr.quantity_disposed), 0) AS totalQuantityDisposed,
+        COALESCE(SUM(sr.cost_loss), 0) AS totalCostLoss,
+        COALESCE(SUM(CASE WHEN sr.reason IN ('EXPIRED', 'EXP_SPOILAGE') THEN sr.cost_loss ELSE 0 END), 0) AS expiredCostLoss,
+        COALESCE(SUM(CASE WHEN sr.reason IN ('DAMAGED', 'PKG_DAMAGE') THEN sr.cost_loss ELSE 0 END), 0) AS damagedCostLoss,
+        COALESCE(SUM(CASE WHEN sr.reason IN ('SPOILED', 'TEMP_ABUSE') THEN sr.cost_loss ELSE 0 END), 0) AS spoiledCostLoss,
+        COALESCE(SUM(CASE WHEN sr.reason = 'INTERNAL_SHRINK' THEN sr.cost_loss ELSE 0 END), 0) AS internalShrinkCostLoss,
+        COALESCE(SUM(CASE WHEN sr.reason = 'DONATION' THEN sr.cost_loss ELSE 0 END), 0) AS donationCostLoss,
+        COALESCE(SUM(CASE WHEN sr.reason IN ('EXPIRED', 'EXP_SPOILAGE') THEN 1 ELSE 0 END), 0) AS expSpoilageCount,
+        COALESCE(SUM(CASE WHEN sr.reason IN ('DAMAGED', 'PKG_DAMAGE') THEN 1 ELSE 0 END), 0) AS pkgDamageCount,
+        COALESCE(SUM(CASE WHEN sr.reason IN ('SPOILED', 'TEMP_ABUSE') THEN 1 ELSE 0 END), 0) AS tempAbuseCount,
+        COALESCE(SUM(CASE WHEN sr.reason = 'INTERNAL_SHRINK' THEN 1 ELSE 0 END), 0) AS internalShrinkCount,
+        COALESCE(SUM(CASE WHEN sr.reason = 'DONATION' THEN 1 ELSE 0 END), 0) AS donationCount
+      FROM spoilage_records sr
+      INNER JOIN batches b ON sr.batch_id = b.id
       WHERE ${whereClause};
     `;
     const rows = await SqlConnection.queryJson(sql);
-    return rows.length > 0 ? rows[0] : { totalRecords: 0, totalQuantityDisposed: 0, totalCostLoss: 0 };
+    const row = rows.length > 0 ? rows[0] : { totalRecords: 0, totalQuantityDisposed: 0, totalCostLoss: 0 };
+    const totalLoss = Number(row.totalCostLoss || 0);
+    const pct = (val) => (totalLoss > 0 ? Number(((Number(val || 0) / totalLoss) * 100).toFixed(1)) : 0);
+
+    row.reasonBreakdown = [
+      {
+        code: 'EXP_SPOILAGE',
+        label: 'Quá hạn sử dụng tự nhiên (Date / Shelf-life Expiration)',
+        count: Number(row.expSpoilageCount || 0),
+        costLoss: Number(row.expiredCostLoss || 0),
+        sharePercent: pct(row.expiredCostLoss)
+      },
+      {
+        code: 'PKG_DAMAGE',
+        label: 'Lỗi bao bì / Rách móp khi vận chuyển & trưng bày (Packaging Damage)',
+        count: Number(row.pkgDamageCount || 0),
+        costLoss: Number(row.damagedCostLoss || 0),
+        sharePercent: pct(row.damagedCostLoss)
+      },
+      {
+        code: 'TEMP_ABUSE',
+        label: 'Đứt gãy chuỗi lạnh / Sự cố tủ mát bảo quản (Cold-Chain Failure)',
+        count: Number(row.tempAbuseCount || 0),
+        costLoss: Number(row.spoiledCostLoss || 0),
+        sharePercent: pct(row.spoiledCostLoss)
+      },
+      {
+        code: 'INTERNAL_SHRINK',
+        label: 'Hao hụt kiểm kê nội bộ / Rơi vỡ thao tác (Internal Operational Shrink)',
+        count: Number(row.internalShrinkCount || 0),
+        costLoss: Number(row.internalShrinkCostLoss || 0),
+        sharePercent: pct(row.internalShrinkCostLoss)
+      },
+      {
+        code: 'DONATION',
+        label: 'Chuyển quyên góp thực phẩm / Thu hồi nhân đạo (Food Bank / Donation)',
+        count: Number(row.donationCount || 0),
+        costLoss: Number(row.donationCostLoss || 0),
+        sharePercent: pct(row.donationCostLoss)
+      }
+    ];
+    return row;
   }
 
   /**

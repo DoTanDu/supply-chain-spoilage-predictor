@@ -33,7 +33,10 @@ import {
   Phone,
   Mail,
   MapPin,
-  Clock
+  Clock,
+  Upload,
+  Download,
+  FileSpreadsheet
 } from 'lucide-react';
 import { 
   apiGetCategories, 
@@ -43,7 +46,8 @@ import {
   apiGetSuppliers,
   apiCreateSupplier,
   apiUpdateSupplier,
-  apiDeleteSupplier
+  apiDeleteSupplier,
+  apiImportPosSales
 } from '../api';
 
 // Danh sách Đơn vị tính chuẩn hóa cho ngành bán lẻ FMCG
@@ -110,10 +114,99 @@ export default function ProductCatalogView({
   onAddNewProduct,
   onUpdateProduct,
   onDeleteProduct,
+  onRefreshData,
   isAdmin = false,
   currentRole = 'ADMIN'
 }) {
   const canManageCatalog = isAdmin || currentRole === 'ADMIN' || currentRole === 'STORE_MANAGER';
+  const [isPosImportModalOpen, setIsPosImportModalOpen] = useState(false);
+  const [posImportRows, setPosImportRows] = useState([]);
+  const [posImportError, setPosImportError] = useState('');
+  const [isImportingPos, setIsImportingPos] = useState(false);
+
+  const handleDownloadPosTemplate = () => {
+    const sampleSku1 = products[0]?.sku || 'SKU-MILK-001';
+    const sampleSku2 = products[1]?.sku || 'SKU-BREAD-001';
+    const today = new Date().toISOString().slice(0, 10);
+    const csvContent = '\uFEFFstore_code,sku,sale_date,quantity_sold,sale_price\n' +
+      `RETAIL-STORE-01,${sampleSku1},${today},12,32000\n` +
+      `RETAIL-STORE-02,${sampleSku2},${today},8,25000\n` +
+      `RETAIL-STORE-03,${sampleSku1},${today},15,32000\n`;
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'Mau_Nhap_Doanh_So_POS_SmartSupply_AI.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleParsePosCsvFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPosImportError('');
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = String(evt.target?.result || '').replace(/^\uFEFF/, '');
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      if (lines.length < 2) {
+        setPosImportError('File CSV không có dữ liệu hợp lệ.');
+        return;
+      }
+      const parsed = lines.slice(1).map((line) => {
+        const cols = line.split(',').map(c => c.trim());
+        return {
+          storeCode: cols[0] || 'RETAIL-STORE-01',
+          sku: cols[1] || '',
+          saleDate: cols[2] || new Date().toISOString().slice(0, 10),
+          quantitySold: Number(cols[3] || 0),
+          salePrice: Number(cols[4] || 25000)
+        };
+      });
+      setPosImportRows(parsed);
+    };
+    reader.readAsText(file, 'utf-8');
+  };
+
+  const handleLoadSamplePosRows = () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const sample = (products.slice(0, 4).length > 0 ? products.slice(0, 4) : [{ sku: 'SKU-MILK-001', sellingPrice: 32000 }]).map((p, idx) => ({
+      storeCode: idx % 3 === 0 ? 'RETAIL-STORE-01' : (idx % 3 === 1 ? 'RETAIL-STORE-02' : 'RETAIL-STORE-03'),
+      sku: p.sku,
+      saleDate: today,
+      quantitySold: 6 + idx * 4,
+      salePrice: Number(p.sellingPrice || p.price || 28000)
+    }));
+    setPosImportRows(sample);
+    setPosImportError('');
+  };
+
+  const handleSubmitPosImport = async () => {
+    if (!posImportRows.length) {
+      setPosImportError('Vui lòng tải file CSV hoặc nạp dữ liệu mẫu trước khi đồng bộ!');
+      return;
+    }
+    setIsImportingPos(true);
+    setPosImportError('');
+    try {
+      const res = await apiImportPosSales(posImportRows);
+      if (res && res.success) {
+        setIsPosImportModalOpen(false);
+        setPosImportRows([]);
+        if (onRefreshData) await onRefreshData();
+        setToast({
+          type: 'success',
+          message: res.message || `Đã nạp thành công ${res.data?.importedCount || posImportRows.length} bản ghi doanh số POS!`
+        });
+      } else {
+        setPosImportError(res?.message || 'Lỗi khi nạp dữ liệu POS.');
+      }
+    } catch (err) {
+      setPosImportError(err.message || 'Lỗi kết nối máy chủ khi nạp dữ liệu POS.');
+    } finally {
+      setIsImportingPos(false);
+    }
+  };
   const [categories, setCategories] = useState(DEFAULT_FMCG_CATEGORIES);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
@@ -797,27 +890,54 @@ export default function ProductCatalogView({
 
           {canManageCatalog && (
             activeCatalogTab === 'PRODUCTS' ? (
-              <button
-                onClick={handleOpenAdd}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '9px 16px',
-                  borderRadius: '8px',
-                  background: 'var(--accent-primary)',
-                  color: '#ffffff',
-                  border: 'none',
-                  fontWeight: 600,
-                  fontSize: '0.86rem',
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(99, 102, 241, 0.25)',
-                  transition: 'all 0.15s ease'
-                }}
-              >
-                <Plus size={16} />
-                <span>Thêm Sản Phẩm</span>
-              </button>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleLoadSamplePosRows();
+                    setIsPosImportModalOpen(true);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '9px 14px',
+                    borderRadius: '8px',
+                    background: '#ecfdf5',
+                    color: '#047857',
+                    border: '1px solid #a7f3d0',
+                    fontWeight: 700,
+                    fontSize: '0.82rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                  title="Đồng bộ dữ liệu lịch sử bán hàng POS từ file Excel/CSV phục vụ huấn luyện & dự báo AI (Phase 6)"
+                >
+                  <Upload size={15} />
+                  <span>Nhập dữ liệu POS (Excel/CSV)</span>
+                </button>
+                <button
+                  onClick={handleOpenAdd}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '9px 16px',
+                    borderRadius: '8px',
+                    background: 'var(--accent-primary)',
+                    color: '#ffffff',
+                    border: 'none',
+                    fontWeight: 600,
+                    fontSize: '0.86rem',
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 12px rgba(99, 102, 241, 0.25)',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <Plus size={16} />
+                  <span>Thêm Sản Phẩm</span>
+                </button>
+              </div>
             ) : activeCatalogTab === 'CATEGORIES' ? (
               <button
                 onClick={handleOpenAddCategory}
@@ -3456,6 +3576,216 @@ export default function ProductCatalogView({
                   }}
                 >
                   {isSupDeleting ? 'Đang xóa...' : 'Xác Nhận Xóa'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL ĐỒNG BỘ DỮ LIỆU LỊCH SỬ BÁN HÀNG POS TỪ EXCEL/CSV (PHASE 6) */}
+      {isPosImportModalOpen && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(15, 23, 42, 0.55)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '16px'
+        }}>
+          <div style={{
+            width: '100%',
+            maxWidth: '680px',
+            background: 'var(--bg-surface, #ffffff)',
+            border: '1px solid var(--border-subtle, #cbd5e1)',
+            borderRadius: '14px',
+            boxShadow: '0 20px 25px -5px rgba(15, 23, 42, 0.15)',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <div style={{
+              padding: '14px 20px',
+              background: 'var(--bg-subtle, #f8fafc)',
+              borderBottom: '1px solid var(--border-subtle)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <FileSpreadsheet size={20} color="#059669" />
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--text-main)' }}>
+                    Đồng Bộ Dữ Liệu Bán Hàng POS (Excel / CSV)
+                  </h3>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                    Nạp hàng loạt lịch sử tiêu thụ từ máy POS vào bảng sales_history phục vụ dự báo AI
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPosImportModalOpen(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {posImportError && (
+                <div style={{ padding: '8px 12px', borderRadius: '8px', background: '#fee2e2', color: '#b91c1c', fontSize: '0.78rem', fontWeight: 600 }}>
+                  {posImportError}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <label style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '7px 12px',
+                    borderRadius: '7px',
+                    background: 'var(--primary)',
+                    color: '#ffffff',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}>
+                    <Upload size={14} />
+                    <span>Chọn file .CSV</span>
+                    <input type="file" accept=".csv,.txt" onChange={handleParsePosCsvFile} style={{ display: 'none' }} />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleLoadSamplePosRows}
+                    style={{
+                      padding: '7px 12px',
+                      borderRadius: '7px',
+                      border: '1px solid var(--border-subtle)',
+                      background: 'var(--bg-subtle)',
+                      color: 'var(--text-main)',
+                      fontSize: '0.76rem',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Nạp nhanh dữ liệu mẫu (3 Chi nhánh)
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleDownloadPosTemplate}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    padding: '6px 10px',
+                    borderRadius: '7px',
+                    border: '1px solid #a7f3d0',
+                    background: '#ecfdf5',
+                    color: '#047857',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  <Download size={13} />
+                  <span>Tải File Mẫu (.CSV)</span>
+                </button>
+              </div>
+
+              <div style={{ maxHeight: '240px', overflowY: 'auto', border: '1px solid var(--border-subtle)', borderRadius: '8px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg-subtle)', textAlign: 'left', borderBottom: '1px solid var(--border-subtle)' }}>
+                      <th style={{ padding: '8px 10px' }}>#</th>
+                      <th style={{ padding: '8px 10px' }}>Mã Chi Nhánh</th>
+                      <th style={{ padding: '8px 10px' }}>Mã SKU</th>
+                      <th style={{ padding: '8px 10px' }}>Ngày Bán</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'right' }}>Số Lượng</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'right' }}>Đơn Giá</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'center' }}>Kiểm Tra</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {posImportRows.map((r, i) => {
+                      const matched = products.find(p => String(p.sku || '').toUpperCase() === String(r.sku || '').toUpperCase());
+                      const isValid = Boolean(matched) && Number(r.quantitySold) > 0;
+                      return (
+                        <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                          <td style={{ padding: '6px 10px' }}>{i + 1}</td>
+                          <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontWeight: 600 }}>{r.storeCode}</td>
+                          <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>
+                            {r.sku}
+                            {matched && <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'sans-serif' }}>{matched.name}</div>}
+                          </td>
+                          <td style={{ padding: '6px 10px' }}>{r.saleDate}</td>
+                          <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700 }}>{r.quantitySold}</td>
+                          <td style={{ padding: '6px 10px', textAlign: 'right' }}>{Number(r.salePrice || 0).toLocaleString('vi-VN')} đ</td>
+                          <td style={{ padding: '6px 10px', textAlign: 'center' }}>
+                            {isValid ? (
+                              <span style={{ color: '#059669', fontWeight: 700, fontSize: '0.7rem' }}>✓ Hợp lệ</span>
+                            ) : (
+                              <span style={{ color: '#dc2626', fontWeight: 700, fontSize: '0.7rem' }}>✗ Lỗi SKU/SL</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div style={{
+              padding: '12px 20px',
+              background: 'var(--bg-subtle)',
+              borderTop: '1px solid var(--border-subtle)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                Sẵn sàng nạp: <strong>{posImportRows.length}</strong> dòng dữ liệu POS
+              </span>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsPosImportModalOpen(false)}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-subtle)',
+                    background: '#ffffff',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Đóng
+                </button>
+                <button
+                  type="button"
+                  disabled={isImportingPos || posImportRows.length === 0}
+                  onClick={handleSubmitPosImport}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: '#059669',
+                    color: '#ffffff',
+                    fontSize: '0.82rem',
+                    fontWeight: 700,
+                    cursor: isImportingPos ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {isImportingPos ? 'Đang nạp CSDL...' : `Đồng Bộ Ngay (${posImportRows.length} Dòng)`}
                 </button>
               </div>
             </div>

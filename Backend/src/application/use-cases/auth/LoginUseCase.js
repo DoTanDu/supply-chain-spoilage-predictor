@@ -187,7 +187,8 @@ class LoginUseCase {
     const token = TokenService.generateToken({
       userId: user.id,
       username: user.username,
-      roleCode: user.roleCode
+      roleCode: user.roleCode,
+      storeId: user.storeId || null
     });
 
     if (this.auditLogRepository) {

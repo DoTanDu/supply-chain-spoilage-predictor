@@ -6,21 +6,41 @@ class DashboardController {
     this.getDashboardOverviewUseCase = getDashboardOverviewUseCase;
   }
 
-  _extractRole(req) {
-    if (req.user && req.user.roleCode) return req.user.roleCode;
+  _extractContext(req) {
+    if (req.user) {
+      return { roleCode: req.user.roleCode, userStoreId: req.user.storeId };
+    }
     const authHeader = req.headers && req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split(' ')[1];
       const decoded = TokenService.verifyToken(token);
-      if (decoded && decoded.roleCode) return decoded.roleCode;
+      if (decoded) {
+        return { roleCode: decoded.roleCode, userStoreId: decoded.storeId };
+      }
     }
-    return (req.query && req.query.role) || null;
+    return {
+      roleCode: (req.query && req.query.role) || null,
+      userStoreId: null
+    };
   }
 
   async getOverview(req, res, next) {
     try {
-      const roleCode = this._extractRole(req);
-      const result = await this.getDashboardOverviewUseCase.execute({ roleCode });
+      const { roleCode, userStoreId } = this._extractContext(req);
+      const requestedStoreId = req.query?.storeId;
+      const isOwner = !roleCode || roleCode === 'ADMIN' || roleCode === 'OWNER';
+
+      if (!isOwner && userStoreId && requestedStoreId && String(requestedStoreId).toUpperCase() !== 'ALL' && Number(requestedStoreId) !== Number(userStoreId)) {
+        return res.status(403).json({
+          success: false,
+          statusCode: 403,
+          code: 'ERR_STORE_SCOPE_FORBIDDEN',
+          message: `Từ chối truy cập dữ liệu liên chi nhánh (403 Forbidden). Bạn thuộc Chi nhánh #${userStoreId}, không có quyền xem Dashboard của Chi nhánh #${requestedStoreId}.`
+        });
+      }
+
+      const effectiveStoreId = isOwner ? (requestedStoreId || 'ALL') : (requestedStoreId || userStoreId || 1);
+      const result = await this.getDashboardOverviewUseCase.execute({ roleCode, storeId: effectiveStoreId });
       res.json(result);
     } catch (err) {
       next(err);
@@ -29,7 +49,7 @@ class DashboardController {
 
   async getShelfLifeStats(req, res, next) {
     try {
-      const roleCode = this._extractRole(req);
+      const { roleCode } = this._extractContext(req);
       const result = await this.getDashboardOverviewUseCase.execute({ roleCode });
       res.json({
         success: true,
@@ -42,7 +62,7 @@ class DashboardController {
 
   async getSpoilageRate(req, res, next) {
     try {
-      const roleCode = this._extractRole(req);
+      const { roleCode } = this._extractContext(req);
       const result = await this.getDashboardOverviewUseCase.execute({ roleCode });
       res.json({
         success: true,
@@ -59,7 +79,7 @@ class DashboardController {
 
   async getTodayActionBoard(req, res, next) {
     try {
-      const roleCode = this._extractRole(req);
+      const { roleCode } = this._extractContext(req);
       const result = await this.getDashboardOverviewUseCase.execute({ roleCode });
       res.json({
         success: true,

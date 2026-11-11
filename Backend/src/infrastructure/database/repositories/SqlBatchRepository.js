@@ -99,6 +99,9 @@ class SqlBatchRepository extends IBatchRepository {
     if (filter.categoryCode) {
       whereClauses.push(`v.category_code = ${SqlConnection.escapeSql(filter.categoryCode)}`);
     }
+    if (filter.storeId && String(filter.storeId).toUpperCase() !== 'ALL') {
+      whereClauses.push(`ISNULL(b.store_id, 1) = ${Number(filter.storeId)}`);
+    }
     if (filter.search) {
       const safeSearch = String(filter.search).replace(/'/g, "''");
       whereClauses.push(`(v.product_name LIKE N'%${safeSearch}%' OR v.batch_code LIKE N'%${safeSearch}%' OR v.product_sku LIKE N'%${safeSearch}%')`);
@@ -112,10 +115,16 @@ class SqlBatchRepository extends IBatchRepository {
         v.product_sku AS productSku,
         v.product_name AS productName,
         p.unit AS unit,
+        ISNULL(b.store_id, 1) AS storeId,
+        ISNULL(sp.store_code, N'RETAIL-STORE-01') AS storeCode,
+        ISNULL(sp.store_name, N'Cửa hàng Bán lẻ Tiện lợi LHU Mart') AS storeName,
         v.category_name AS categoryName,
         v.category_code AS categoryCode,
         CONVERT(VARCHAR(10), v.import_date, 23) AS importDate,
         CONVERT(VARCHAR(10), v.manufacture_date, 23) AS manufactureDate,
+        CONVERT(VARCHAR(10), DATEADD(day, -ISNULL(v.warning_threshold_days, 7), v.expiry_date), 23) AS alertDate,
+        CONVERT(VARCHAR(10), DATEADD(day, -3, v.expiry_date), 23) AS removalDate,
+        CONVERT(VARCHAR(10), DATEADD(day, -1, v.expiry_date), 23) AS bestBeforeDate,
         CONVERT(VARCHAR(10), v.expiry_date, 23) AS expiryDate,
         v.initial_quantity AS initialQuantity,
         v.current_quantity AS currentQuantity,
@@ -134,6 +143,8 @@ class SqlBatchRepository extends IBatchRepository {
         v.at_risk_cost AS atRiskCost
       FROM vw_Batches_ShelfLife_Alerts v
       LEFT JOIN products p ON v.product_id = p.id
+      LEFT JOIN batches b ON v.batch_id = b.id
+      LEFT JOIN store_profile sp ON ISNULL(b.store_id, 1) = sp.id
       WHERE ${whereClauses.join(' AND ')}
       ORDER BY v.days_left ASC, v.batch_id ASC;
     `;
@@ -143,19 +154,43 @@ class SqlBatchRepository extends IBatchRepository {
       const discPct = Number(row.discountPercent || 0);
       const impPrice = Number(row.importPrice || 0);
       const sellPrice = Number(row.sellingPrice || 0);
+      const daysLeftNum = Number(row.daysLeft);
+      const warnDays = Number(row.warningThresholdDays || 7);
       const isDisposed = row.dbStatus === 'DISPOSED' || currentQty === 0;
       const alertColor = isDisposed ? 'DISPOSED' : (row.alertColor || 'GREEN');
 
       let uiStatus = 'SAFE';
+      let lifecycleState = 'SAFE';
       if (isDisposed) {
         uiStatus = 'DISPOSED';
-      } else if (alertColor === 'EXPIRED' || row.dbStatus === 'EXPIRED' || Number(row.daysLeft) <= 0) {
+        lifecycleState = 'DISPOSED';
+      } else if (alertColor === 'EXPIRED' || row.dbStatus === 'EXPIRED' || daysLeftNum <= 0) {
         uiStatus = 'EXPIRED';
+        lifecycleState = 'EXPIRED';
       } else if (alertColor === 'RED') {
         uiStatus = 'CRITICAL';
+        lifecycleState = 'CRITICAL';
       } else if (alertColor === 'YELLOW') {
         uiStatus = 'WARNING';
+        lifecycleState = 'NEARING_EXPIRY';
       }
+
+      // Wasteless Dynamic Micro-markdown formula: RiskQty = max(0, Q_avail - v_sales * DaysLeft)
+      const estDailyVelocity = Math.max(2, Math.round(Number(row.initialQuantity || 30) / Math.max(7, Number(row.totalShelfLifeDays || 14))));
+      const riskQuantity = daysLeftNum > 0
+        ? Math.max(0, currentQty - estDailyVelocity * daysLeftNum)
+        : currentQty;
+
+      let suggestedMarkdownPercent = 0;
+      if (lifecycleState === 'CRITICAL') {
+        suggestedMarkdownPercent = riskQuantity > currentQty * 0.5 ? 50 : 40;
+      } else if (lifecycleState === 'NEARING_EXPIRY') {
+        const rawRate = 0.3 * (1 - daysLeftNum / Math.max(1, warnDays)) + 0.2 * (riskQuantity / Math.max(1, currentQty));
+        suggestedMarkdownPercent = rawRate >= 0.22 ? 30 : 15;
+      }
+
+      const effectiveDisc = discPct > 0 ? discPct : suggestedMarkdownPercent;
+      const expectedRescuedRevenue = Math.round(currentQty * sellPrice * (1 - effectiveDisc / 100));
 
       return {
         ...row,
@@ -172,12 +207,17 @@ class SqlBatchRepository extends IBatchRepository {
         isShelfRotated: Boolean(row.isShelfRotated),
         dbStatus: row.dbStatus,
         status: uiStatus,
-        daysLeft: Number(row.daysLeft),
+        lifecycleState,
+        daysLeft: daysLeftNum,
         rslPercent: Math.max(0, Math.min(100, Math.round(Number(row.rslPercent || 0)))),
-        warningThresholdDays: Number(row.warningThresholdDays || 7),
+        warningThresholdDays: warnDays,
         alertColor: alertColor,
         totalInventoryCost: Number(row.totalInventoryCost || 0),
-        atRiskCost: Number(row.atRiskCost || 0)
+        atRiskCost: Number(row.atRiskCost || 0),
+        estDailyVelocity,
+        riskQuantity,
+        suggestedMarkdownPercent,
+        expectedRescuedRevenue
       };
     });
   }

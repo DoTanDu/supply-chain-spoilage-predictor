@@ -299,32 +299,39 @@ async function runMasterTestSuite() {
   }
 
   // ==========================================================================================
-  // SECTION 8: BÀN GIAO CA TRỰC & 3 CHẾ TÀI KỶ LUẬT (MỤC 15.2 SSOT)
+  // SECTION 8: CHUẨN HÓA ĐA CỬA HÀNG, DATA SCOPING, REFED REASON CODES & POS IMPORT (6 PHASES)
   // ==========================================================================================
-  console.log('\n--- PHẦN 8: BÀN GIAO CA TRỰC & 3 CHẾ TÀI KỶ LUẬT (MỤC 15.2 SSOT) ---');
-  const handoverRes = await request('POST', '/api/shift-handover', {
-    shiftType: 'MORNING',
-    handoverPerson: 'Đoàn Minh Quân',
-    receiverPerson: 'Đỗ Tấn Du',
-    posSalesAmount: 1000000,
-    cashInDrawer: 980000,
-    cashDifference: -20000,
-    redBatchesCount: 1,
-    yellowBatchesCount: 2,
-    wasteCount: 0,
-    notes: 'Khách hàng chuyển khoản nhầm 20k'
-  }, cashierToken);
-  assert(handoverRes.status === 200 || handoverRes.status === 201, 'Bàn giao ca trực điện tử thành công (Kiểm tra lệch quỹ và ghi nhận AuditLogs)');
+  console.log('\n--- PHẦN 8: KIỂM ĐỊNH DATA SCOPING, REFED REASON CODES, AI CONFIDENCE & POS IMPORT ---');
+
+  // 8.1 Kiểm tra Data Scoping: MANAGER chi nhánh 1 truy cập chi nhánh 2 bị chặn 403 Forbidden
+  const scopeForbiddenRes = await request('GET', '/api/batches?storeId=2', null, managerToken);
+  assert(scopeForbiddenRes.status === 403, 'Data Scoping: Chặn thành công MANAGER Chi nhánh #1 truy cập trái phép dữ liệu nội bộ Chi nhánh #2 (HTTP 403)');
+
+  // 8.2 Kiểm tra OWNER/ADMIN truy cập toàn chuỗi & từng chi nhánh
+  const adminMultiStoreRes = await request('GET', '/api/batches?storeId=ALL', null, adminToken);
+  assert(adminMultiStoreRes.status === 200 && Array.isArray(adminMultiStoreRes.body?.data), 'OWNER/ADMIN truy cập dữ liệu toàn chuỗi (storeId=ALL) thành công');
+  const firstBatch = adminMultiStoreRes.body?.data?.[0];
+  assert(firstBatch && firstBatch.manufactureDate && firstBatch.alertDate && firstBatch.removalDate && firstBatch.lifecycleState, 'Odoo ERP & Wasteless: Lô hàng trả về đủ 4 mốc ngày (MFG, Alert, Removal, EXP) và 5 trạng thái vòng đời');
+
+  // 8.3 Kiểm tra đồng bộ dữ liệu lịch sử bán hàng POS từ Excel/CSV (POST /api/sales/import)
+  const importPosRes = await request('POST', '/api/sales/import', {
+    rows: [
+      { storeCode: 'RETAIL-STORE-01', productId: 1, saleDate: new Date().toISOString().slice(0, 10), quantitySold: 3, salePrice: 32000 },
+      { storeCode: 'RETAIL-STORE-02', productId: 2, saleDate: new Date().toISOString().slice(0, 10), quantitySold: 4, salePrice: 28000 }
+    ]
+  }, adminToken);
+  assert(importPosRes.status === 201 && importPosRes.body?.data?.importedCount === 2, 'Phase 6: Đồng bộ hàng loạt dữ liệu bán hàng POS (Excel/CSV) vào sales_history thành công');
 
   // ==========================================================================================
-  // SECTION 9: VISUAL ANALYTICS DASHBOARD & EXPORT ENGINE (PART 1 & PART 3 WEB)
+  // SECTION 9: VISUAL ANALYTICS DASHBOARD, CROSS-STORE BENCHMARK & PERISHABLE KPIS
   // ==========================================================================================
-  console.log('\n--- PHẦN 9: VISUAL ANALYTICS DASHBOARD & EXPORT ENGINE ---');
-  const dashRes = await request('GET', '/api/dashboard/overview');
+  console.log('\n--- PHẦN 9: VISUAL ANALYTICS DASHBOARD, CROSS-STORE BENCHMARK & PERISHABLE KPIS ---');
+  const dashRes = await request('GET', '/api/dashboard/overview?storeId=ALL', null, adminToken);
   assert(dashRes.status === 200, 'Lấy dữ liệu Executive Dashboard thành công (HTTP 200)');
   assert(dashRes.body?.trend14Days?.length === 14, 'Dữ liệu Biểu đồ Xu hướng 14 ngày trả về đủ 14 mốc ngày liên tục');
   assert(dashRes.body?.categoryBreakdown?.length === 7, 'Dữ liệu Biểu đồ Cơ cấu Ngành hàng trả về chuẩn xác 7 nhóm ngành FMCG');
-  assert(dashRes.body?.kpiMetrics?.totalInventoryCost !== undefined, 'KPI Vốn Tồn Kho khả dụng hiển thị thời gian thực');
+  assert(Array.isArray(dashRes.body?.crossStoreBenchmark) && dashRes.body.crossStoreBenchmark.length === 3, 'Phase 3: Ma trận So sánh Hiệu quả Chéo trả về đủ 3 chi nhánh (Bửu Long, Tân Phong, Trảng Dài)');
+  assert(dashRes.body?.kpiMetrics?.shrinkageRatePercent !== undefined && dashRes.body?.kpiMetrics?.rescueRatePercent !== undefined, 'Phase 3: KPI Chuẩn Ngành (Shrinkage Rate %, Rescue Rate %, Average RSL %) hiển thị đầy đủ');
 
   // ==========================================================================================
   // SECTION 10: RULE 11 - NHẬT KÝ KIỂM TOÁN HỆ THỐNG BẤT BIẾN (SYSTEM AUDIT TRAIL)

@@ -84,12 +84,28 @@ class SpoilageController {
   async getLedger(req, res, next) {
     try {
       const limit = Number(req.query.limit || 50);
-      const { startDate, endDate } = req.query;
+      const { startDate, endDate, storeId: requestedStoreId } = req.query;
+      const userRole = String(req.user?.roleCode || '').toUpperCase();
+      const userStoreId = Number(req.user?.storeId || 1);
+
+      if (requestedStoreId && userRole && userRole !== 'ADMIN' && userRole !== 'OWNER') {
+        if (String(requestedStoreId).toUpperCase() === 'ALL' || Number(requestedStoreId) !== userStoreId) {
+          return res.status(403).json({
+            success: false,
+            errorCode: 'ERR_STORE_SCOPE_FORBIDDEN',
+            message: `Phạm vi dữ liệu bị từ chối: Bạn chỉ được phép truy cập dữ liệu của Chi nhánh #${userStoreId}!`
+          });
+        }
+      }
+      const effectiveStoreId = (userRole === 'ADMIN' || userRole === 'OWNER')
+        ? (requestedStoreId || 'ALL')
+        : (requestedStoreId || userStoreId);
 
       const result = await this.getSpoilageLedgerUseCase.execute({
         limit,
         startDate: startDate || null,
-        endDate: endDate || null
+        endDate: endDate || null,
+        storeId: effectiveStoreId
       });
 
       res.json(result);

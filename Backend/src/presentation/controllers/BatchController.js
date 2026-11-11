@@ -1,5 +1,6 @@
 // src/presentation/controllers/BatchController.js
 const ShelfLife = require('../../domain/value-objects/ShelfLife');
+const TokenService = require('../../infrastructure/security/TokenService');
 
 class BatchController {
   constructor({
@@ -22,14 +23,44 @@ class BatchController {
     this.auditLogRepository = auditLogRepository;
   }
 
+  _extractUserContext(req) {
+    if (req.user) {
+      return { roleCode: req.user.roleCode, storeId: req.user.storeId };
+    }
+    const authHeader = req.headers && req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      const decoded = TokenService.verifyToken(token);
+      if (decoded) {
+        return { roleCode: decoded.roleCode, storeId: decoded.storeId };
+      }
+    }
+    return { roleCode: null, storeId: null };
+  }
+
   async getAllWithAlerts(req, res, next) {
     try {
-      const { alertColor, status, categoryCode, search } = req.query;
+      const { alertColor, status, categoryCode, search, storeId } = req.query;
+      const { roleCode, storeId: userStoreId } = this._extractUserContext(req);
+      const isOwner = roleCode === 'ADMIN' || roleCode === 'OWNER';
+
+      if (!isOwner && userStoreId && storeId && String(storeId).toUpperCase() !== 'ALL' && Number(storeId) !== Number(userStoreId)) {
+        return res.status(403).json({
+          success: false,
+          statusCode: 403,
+          code: 'ERR_STORE_SCOPE_FORBIDDEN',
+          message: `Từ chối truy cập dữ liệu liên chi nhánh (403 Forbidden). Bạn thuộc Chi nhánh #${userStoreId}, không được xem kho của Chi nhánh #${storeId}.`
+        });
+      }
+
+      const effectiveStoreId = isOwner ? (storeId || 'ALL') : (storeId || userStoreId || 1);
+
       const result = await this.getBatchAlertsUseCase.execute({
         alertColor,
         status,
         categoryCode,
-        search
+        search,
+        storeId: effectiveStoreId
       });
       res.json(result);
     } catch (err) {

@@ -33,8 +33,14 @@ export async function apiCheckHealth() {
   return await parseJsonSafe(res, true);
 }
 
-export async function fetchDashboardStats() {
-  const res = await fetch(`${API_BASE}/dashboard/stats`);
+export async function fetchDashboardStats(storeId = null) {
+  const token = localStorage.getItem('token');
+  const query = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  const res = await fetch(`${API_BASE}/dashboard/stats${query}`, {
+    headers: {
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    }
+  });
   const json = await parseJsonSafe(res);
   return json.data || json;
 }
@@ -45,14 +51,26 @@ export async function fetchProducts() {
   return json.data || [];
 }
 
-export async function fetchBatches() {
-  const res = await fetch(`${API_BASE}/batches`);
+export async function fetchBatches(storeId = null) {
+  const token = localStorage.getItem('token');
+  const query = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  const res = await fetch(`${API_BASE}/batches${query}`, {
+    headers: {
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    }
+  });
   const json = await parseJsonSafe(res);
   return json.data || [];
 }
 
-export async function fetchDisposals() {
-  const res = await fetch(`${API_BASE}/disposals`);
+export async function fetchDisposals(storeId = null) {
+  const token = localStorage.getItem('token');
+  const query = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  const res = await fetch(`${API_BASE}/disposals${query}`, {
+    headers: {
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    }
+  });
   const json = await parseJsonSafe(res);
   return json.data || [];
 }
@@ -277,8 +295,14 @@ export async function apiDeleteCategory(id) {
 // ==============================================================================
 
 // Module 4: Executive Dashboard (6 KPI tài chính & Action Board ca trực)
-export async function fetchDashboardOverview() {
-  const res = await fetch(`${API_BASE}/dashboard/overview`);
+export async function fetchDashboardOverview(storeId = null) {
+  const token = localStorage.getItem('token');
+  const query = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  const res = await fetch(`${API_BASE}/dashboard/overview${query}`, {
+    headers: {
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    }
+  });
   return await parseJsonSafe(res);
 }
 
@@ -330,9 +354,10 @@ export async function apiProcessFefoSale(cartItems, weather = 'NORMAL', isHolida
   return await parseJsonSafe(res);
 }
 
-export async function fetchSalesHistory(limit = 50) {
+export async function fetchSalesHistory(limit = 50, storeId = null) {
   const token = localStorage.getItem('token');
-  const res = await fetch(`${API_BASE}/sales/history?limit=${limit}`, {
+  const storeParam = storeId ? `&storeId=${encodeURIComponent(storeId)}` : '';
+  const res = await fetch(`${API_BASE}/sales/history?limit=${limit}${storeParam}`, {
     headers: {
       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
     }
@@ -340,10 +365,24 @@ export async function fetchSalesHistory(limit = 50) {
   return await parseJsonSafe(res);
 }
 
-// Module 7: Sổ hao hụt tài chính & Tiêu hủy hàng (CostLoss = Qty * ImportPrice)
-export async function fetchSpoilageLedger(limit = 50) {
+export async function apiImportPosSales(rows = []) {
   const token = localStorage.getItem('token');
-  const res = await fetch(`${API_BASE}/spoilage/ledger?limit=${limit}`, {
+  const res = await fetch(`${API_BASE}/sales/import`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify({ rows })
+  });
+  return await parseJsonSafe(res);
+}
+
+// Module 7: Sổ hao hụt tài chính & Tiêu hủy hàng (CostLoss = Qty * ImportPrice)
+export async function fetchSpoilageLedger(limit = 50, storeId = null) {
+  const token = localStorage.getItem('token');
+  const storeParam = storeId ? `&storeId=${encodeURIComponent(storeId)}` : '';
+  const res = await fetch(`${API_BASE}/spoilage/ledger?limit=${limit}${storeParam}`, {
     headers: {
       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
     }
@@ -352,9 +391,10 @@ export async function fetchSpoilageLedger(limit = 50) {
 }
 
 // Module 8: Dự báo ROP Đa biến & Quản lý Đơn đặt hàng DC Biên Hòa
-export async function fetchRopForecast(weather = 'NORMAL', isHoliday = false) {
+export async function fetchRopForecast(weather = 'NORMAL', isHoliday = false, storeId = null) {
   const token = localStorage.getItem('token');
-  const res = await fetch(`${API_BASE}/forecast/rop?weather=${weather}&isHoliday=${isHoliday}`, {
+  const storeParam = storeId ? `&storeId=${encodeURIComponent(storeId)}` : '';
+  const res = await fetch(`${API_BASE}/forecast/rop?weather=${weather}&isHoliday=${isHoliday}${storeParam}`, {
     headers: {
       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
     }

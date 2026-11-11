@@ -20,6 +20,14 @@ router.post(
   (req, res, next) => salesController.processSale(req, res, next)
 );
 
+// POST /api/sales/import - Đồng bộ hàng loạt lịch sử bán hàng POS từ file Excel/CSV (Phase 6)
+router.post(
+  '/import',
+  authMiddleware,
+  roleMiddleware(['ADMIN', 'STORE_MANAGER', 'CASHIER']),
+  (req, res, next) => salesController.importSales(req, res, next)
+);
+
 // GET /api/sales/history - Tra cứu lịch sử bán hàng và tổng kết doanh số hôm nay
 router.get('/history', (req, res, next) => salesController.getHistory(req, res, next));
 router.get('/', (req, res, next) => salesController.getHistory(req, res, next));

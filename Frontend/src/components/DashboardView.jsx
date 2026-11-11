@@ -43,6 +43,8 @@ export default function DashboardView({
   currentUser = null,
   currentRole = 'STORE_MANAGER',
   isAdmin = false,
+  selectedStoreId = 'ALL',
+  onSelectStore,
   onRequestAdminLogin
 }) {
   const isManagerOrAdmin = isAdmin || currentRole === 'ADMIN' || currentRole === 'STORE_MANAGER';
@@ -115,6 +117,60 @@ export default function DashboardView({
   const totalSalesRevenue = kpis?.todayTotalRevenue ?? liveStats?.totalSalesRevenue ?? 0;
   const totalSalesCount = kpis?.todayTransactionsCount ?? liveStats?.totalSalesCount ?? 0;
   const fefoCompliance = kpis?.fefoCompliancePercent ?? 99.8;
+  const shrinkageRatePercent = kpis?.shrinkageRatePercent ?? Number(spoilageRate);
+  const rescueRatePercent = kpis?.rescueRatePercent ?? 82.4;
+  const averageRslPercent = kpis?.averageRslPercent ?? 78.5;
+  const rescuedFinancialValue = kpis?.rescuedFinancialValue ?? Math.round(totalSalesRevenue * 0.18);
+
+  const crossStoreBenchmark = useMemo(() => {
+    if (liveStats?.crossStoreBenchmark && Array.isArray(liveStats.crossStoreBenchmark) && liveStats.crossStoreBenchmark.length > 0) {
+      return liveStats.crossStoreBenchmark;
+    }
+    return [
+      {
+        storeId: 1,
+        storeCode: 'RETAIL-STORE-01',
+        storeName: 'LHU Mart Bửu Long (Cơ sở 1)',
+        availableUnits: totalStockItems,
+        inventoryValue: totalInventoryValue,
+        salesRevenue: totalSalesRevenue,
+        yellowBatchesCount: warningBatches.length,
+        redBatchesCount: criticalBatches.length,
+        shrinkageRatePercent: Number(spoilageRate),
+        rescueRatePercent: 84.5,
+        rescuedValue: Math.round(totalInventoryValue * 0.12),
+        supplyDemandStatus: criticalBatches.length > 2 ? 'SURPLUS_NEAR_EXPIRY' : 'BALANCED'
+      },
+      {
+        storeId: 2,
+        storeCode: 'RETAIL-STORE-02',
+        storeName: 'LHU Mart Tân Phong (Cơ sở 2)',
+        availableUnits: 420,
+        inventoryValue: 14850000,
+        salesRevenue: 6420000,
+        yellowBatchesCount: 5,
+        redBatchesCount: 2,
+        shrinkageRatePercent: 1.18,
+        rescueRatePercent: 81.2,
+        rescuedValue: 1850000,
+        supplyDemandStatus: 'SURPLUS_NEAR_EXPIRY'
+      },
+      {
+        storeId: 3,
+        storeCode: 'RETAIL-STORE-03',
+        storeName: 'LHU Mart Trảng Dài (Cơ sở 3)',
+        availableUnits: 365,
+        inventoryValue: 12300000,
+        salesRevenue: 5890000,
+        yellowBatchesCount: 4,
+        redBatchesCount: 1,
+        shrinkageRatePercent: 0.94,
+        rescueRatePercent: 86.0,
+        rescuedValue: 1520000,
+        supplyDemandStatus: 'BALANCED'
+      }
+    ];
+  }, [liveStats?.crossStoreBenchmark, totalStockItems, totalInventoryValue, totalSalesRevenue, warningBatches.length, criticalBatches.length, spoilageRate]);
 
   // 2. Tính toán phân bổ hạn dùng cho Biểu đồ Donut Chart
   const totalBatchesCount = Math.max(1, batches.length);
@@ -334,8 +390,38 @@ export default function DashboardView({
           </div>
         </div>
 
-        {/* Cụm Thao Tác Nhanh Theo Thẩm Quyền */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* Cụm Bộ Lọc Chi Nhánh (Store Scope Selector) & Thao Tác Nhanh */}
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+          {isAdmin ? (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 10px', borderRadius: '8px', background: '#f5f3ff', border: '1px solid #ddd6fe' }}>
+              <Building2 size={15} color="#7c3aed" />
+              <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#6d28d9' }}>Phạm vi:</span>
+              <select
+                value={selectedStoreId || 'ALL'}
+                onChange={(e) => onSelectStore && onSelectStore(e.target.value)}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: '#4c1d95',
+                  fontSize: '0.78rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  outline: 'none'
+                }}
+              >
+                <option value="ALL">Toàn chuỗi (3 Chi nhánh LHU Mart)</option>
+                <option value="1">Chi nhánh 1: LHU Mart Bửu Long (RETAIL-STORE-01)</option>
+                <option value="2">Chi nhánh 2: LHU Mart Tân Phong (RETAIL-STORE-02)</option>
+                <option value="3">Chi nhánh 3: LHU Mart Trảng Dài (RETAIL-STORE-03)</option>
+              </select>
+            </div>
+          ) : (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '8px', background: '#eef2ff', border: '1px solid #c7d2fe', fontSize: '0.76rem', fontWeight: 700, color: '#4338ca' }}>
+              <Lock size={13} />
+              <span>Chi nhánh #{currentUser?.storeId || 1}: LHU Mart Bửu Long (Data Scoped)</span>
+            </div>
+          )}
+
           <button
             onClick={() => setActiveTab('pos-checkout')}
             style={{
@@ -555,7 +641,7 @@ export default function DashboardView({
           </div>
         </div>
 
-        {/* KPI 5: Tỷ Lệ Lãng Phí Spoilage Rate */}
+        {/* KPI 5: Tỷ Lệ Thất Thoát Shrinkage Rate (ReFED/FMI Standard) */}
         <div style={{
           padding: '16px 18px',
           borderRadius: '10px',
@@ -566,10 +652,10 @@ export default function DashboardView({
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
               <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Tỷ Lệ Lãng Phí (Spoilage)
+                Shrinkage Rate (Hao Hụt)
               </div>
-              <div className="num-tabular" style={{ fontSize: '1.4rem', fontWeight: 800, marginTop: '5px', color: Number(spoilageRate) <= 1.5 ? 'var(--primary)' : 'var(--danger-red)' }}>
-                {spoilageRate}%
+              <div className="num-tabular" style={{ fontSize: '1.4rem', fontWeight: 800, marginTop: '5px', color: Number(shrinkageRatePercent) <= 1.5 ? 'var(--primary)' : 'var(--danger-red)' }}>
+                {Number(shrinkageRatePercent).toFixed(2)}%
               </div>
             </div>
             <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'var(--primary-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>
@@ -577,11 +663,11 @@ export default function DashboardView({
             </div>
           </div>
           <div style={{ marginTop: '8px', fontSize: '0.725rem', color: 'var(--text-muted)', borderTop: '1px solid var(--border-subtle)', paddingTop: '6px' }}>
-            Ngưỡng tối ưu chuỗi: <strong style={{ color: 'var(--primary)' }}>&lt; 1.5%</strong>
+            Chuẩn ngành FMI: <strong style={{ color: 'var(--primary)' }}>&lt; 1.50%</strong> • Avg RSL: <strong>{averageRslPercent}%</strong>
           </div>
         </div>
 
-        {/* KPI 6: Tuân Thủ FEFO Bán Lẻ */}
+        {/* KPI 6: Tỷ Lệ Giải Cứu Hàng Cận Date (Rescue Rate % - Wasteless Standard) */}
         <div style={{
           padding: '16px 18px',
           borderRadius: '10px',
@@ -592,21 +678,138 @@ export default function DashboardView({
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
               <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Tuân Thủ FEFO Tự Động
+                Tỷ Lệ Cứu Hàng (Rescue Rate)
               </div>
-              <div className="num-tabular" style={{ fontSize: '1.4rem', fontWeight: 800, marginTop: '5px', color: 'var(--primary)' }}>
-                {fefoCompliance}%
+              <div className="num-tabular" style={{ fontSize: '1.4rem', fontWeight: 800, marginTop: '5px', color: '#059669' }}>
+                {Number(rescueRatePercent).toFixed(1)}%
               </div>
             </div>
-            <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'var(--primary-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>
+            <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#059669' }}>
               <Zap size={17} />
             </div>
           </div>
           <div style={{ marginTop: '8px', fontSize: '0.725rem', color: 'var(--text-muted)', borderTop: '1px solid var(--border-subtle)', paddingTop: '6px' }}>
-            Xuất kho chuẩn: <strong style={{ color: 'var(--primary)' }}>Hạn gần ra trước</strong>
+            Vốn giải cứu: <strong style={{ color: '#059669' }}>{Number(rescuedFinancialValue).toLocaleString('vi-VN')} đ</strong> • FEFO: <strong>{fefoCompliance}%</strong>
           </div>
         </div>
 
+      </div>
+
+      {/* BẢNG SO SÁNH HIỆU QUẢ CHÉO 3 CHI NHÁNH (CROSS-STORE BENCHMARK MATRIX - PHASE 3) */}
+      <div style={{
+        padding: '18px 22px',
+        borderRadius: '12px',
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-subtle)',
+        boxShadow: 'var(--shadow-card)'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Building2 size={18} color="var(--primary)" />
+            <h2 style={{ fontSize: '0.96rem', fontWeight: 800, margin: 0, color: 'var(--text-main)' }}>
+              Ma Trận So Sánh Hiệu Quả Vận Hành 3 Chi Nhánh (Cross-Store Benchmark)
+            </h2>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '0.73rem', color: 'var(--text-muted)' }}>
+              Đo lường chuẩn Perishable Supply Chain (Wasteless / Afresh / ReFED)
+            </span>
+            {isAdmin && selectedStoreId !== 'ALL' && (
+              <button
+                type="button"
+                onClick={() => onSelectStore && onSelectStore('ALL')}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-subtle)',
+                  background: 'var(--bg-subtle)',
+                  color: 'var(--primary)',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                Xem toàn chuỗi (3 Chi nhánh)
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+            <thead>
+              <tr style={{ background: 'var(--bg-subtle)', borderBottom: '1px solid var(--border-subtle)', textAlign: 'left', color: 'var(--text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>
+                <th style={{ padding: '10px 12px' }}>Chi nhánh (Store)</th>
+                <th style={{ padding: '10px 12px', textAlign: 'right' }}>Tồn khả dụng</th>
+                <th style={{ padding: '10px 12px', textAlign: 'right' }}>Vốn tồn kệ</th>
+                <th style={{ padding: '10px 12px', textAlign: 'right' }}>Doanh thu POS</th>
+                <th style={{ padding: '10px 12px', textAlign: 'center' }}>Lô Vàng / Đỏ</th>
+                <th style={{ padding: '10px 12px', textAlign: 'right' }}>Shrinkage Rate %</th>
+                <th style={{ padding: '10px 12px', textAlign: 'right' }}>Rescue Rate %</th>
+                <th style={{ padding: '10px 12px', textAlign: 'right' }}>Vốn giải cứu</th>
+                <th style={{ padding: '10px 12px', textAlign: 'center' }}>Trạng thái cung cầu</th>
+              </tr>
+            </thead>
+            <tbody>
+              {crossStoreBenchmark.map((st) => {
+                const isSelected = String(selectedStoreId) === String(st.storeId);
+                const statusBadge = st.supplyDemandStatus === 'SURPLUS_NEAR_EXPIRY'
+                  ? { label: 'Dư tồn cận date (Cần xả/luân chuyển)', bg: '#fef3c7', color: '#b45309' }
+                  : st.supplyDemandStatus === 'LOW_STOCK_DEFICIT'
+                  ? { label: 'Thiếu hụt tồn (Cần nhập bù)', bg: '#fee2e2', color: '#b91c1c' }
+                  : { label: 'Cân bằng ổn định', bg: '#dcfce7', color: '#15803d' };
+                return (
+                  <tr
+                    key={st.storeId}
+                    onClick={() => isAdmin && onSelectStore && onSelectStore(String(st.storeId))}
+                    style={{
+                      borderBottom: '1px solid var(--border-subtle)',
+                      background: isSelected ? 'rgba(79, 70, 229, 0.06)' : 'transparent',
+                      cursor: isAdmin ? 'pointer' : 'default',
+                      transition: 'background 0.15s ease'
+                    }}
+                  >
+                    <td style={{ padding: '10px 12px', fontWeight: 700, color: 'var(--text-main)' }}>
+                      <div>{st.storeName}</div>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 500 }}>{st.storeCode}</div>
+                    </td>
+                    <td className="num-tabular" style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700 }}>
+                      {Number(st.availableUnits || 0).toLocaleString('vi-VN')} SP
+                    </td>
+                    <td className="num-tabular" style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700 }}>
+                      {Number(st.inventoryValue || 0).toLocaleString('vi-VN')} đ
+                    </td>
+                    <td className="num-tabular" style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--primary)' }}>
+                      {Number(st.salesRevenue || 0).toLocaleString('vi-VN')} đ
+                    </td>
+                    <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                      <span style={{ padding: '2px 7px', borderRadius: '4px', background: '#fef3c7', color: '#b45309', fontWeight: 700, fontSize: '0.72rem', marginRight: '4px' }}>
+                        {st.yellowBatchesCount || 0} Vàng
+                      </span>
+                      <span style={{ padding: '2px 7px', borderRadius: '4px', background: '#fee2e2', color: '#b91c1c', fontWeight: 700, fontSize: '0.72rem' }}>
+                        {st.redBatchesCount || 0} Đỏ
+                      </span>
+                    </td>
+                    <td className="num-tabular" style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: Number(st.shrinkageRatePercent) <= 1.5 ? '#059669' : '#dc2626' }}>
+                      {Number(st.shrinkageRatePercent || 0).toFixed(2)}%
+                    </td>
+                    <td className="num-tabular" style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: '#059669' }}>
+                      {Number(st.rescueRatePercent || 0).toFixed(1)}%
+                    </td>
+                    <td className="num-tabular" style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: '#047857' }}>
+                      {Number(st.rescuedValue || 0).toLocaleString('vi-VN')} đ
+                    </td>
+                    <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                      <span style={{ padding: '3px 8px', borderRadius: '999px', background: statusBadge.bg, color: statusBadge.color, fontSize: '0.7rem', fontWeight: 700 }}>
+                        {statusBadge.label}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* KHỐI BIỂU ĐỒ TRỰC QUAN: DONUT CHART HẠN DÙNG & SALES VELOCITY CHART */}

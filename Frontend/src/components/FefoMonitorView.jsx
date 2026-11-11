@@ -36,6 +36,17 @@ function stripVietnamese(str) {
   return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'd').toLowerCase().trim();
 }
 
+// Helper: Chuẩn hóa định dạng ngày DD/MM/YYYY (Phase 2.4)
+function formatDateVN(dateStr) {
+  if (!dateStr) return '—';
+  const raw = String(dateStr).slice(0, 10);
+  const parts = raw.split('-');
+  if (parts.length === 3) {
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return raw;
+}
+
 export default function FefoMonitorView({ 
   batches = [], 
   products = [],
@@ -157,10 +168,10 @@ export default function FefoMonitorView({
     return sum + (qty * cost);
   }, 0);
 
-  // Mở Modal Đảo Kệ 5 bước cho 1 lô
+  // Mở Modal Đảo Kệ 5 bước cho 1 lô (Phase 1.4: Tự động tích sẵn 5 bước SOP để xác nhận 1-Click nhanh)
   const handleOpenRotateModal = (batch) => {
     setShelfModalBatch(batch);
-    setCompletedSteps([true, false, false, false, false]);
+    setCompletedSteps([true, true, true, true, true]);
   };
 
   // Xác nhận hoàn thành quy trình đảo kệ 5 bước
@@ -680,13 +691,13 @@ export default function FefoMonitorView({
           <table className="modern-table" style={{ margin: 0, width: '100%' }}>
             <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-subtle)' }}>
               <tr>
-                <th style={{ width: '135px', padding: '10px 14px' }}>Mã Lô</th>
-                <th style={{ padding: '10px 14px' }}>Sản Phẩm & Ngành Hàng</th>
-                <th style={{ width: '110px', padding: '10px 14px' }}>Ngày Nhập</th>
-                <th style={{ width: '190px', padding: '10px 14px' }}>Hạn Dùng & Còn Lại</th>
-                <th style={{ width: '140px', padding: '10px 14px' }}>Vòng Đời (RSL)</th>
-                <th style={{ width: '90px', padding: '10px 14px' }}>Tồn Kệ</th>
-                <th style={{ width: '130px', padding: '10px 14px' }}>Trạng Thái FEFO</th>
+                <th style={{ width: '135px', padding: '10px 14px' }}>Mã Lô & Chi Nhánh</th>
+                <th style={{ padding: '10px 14px' }}>Sản Phẩm & Giá POS</th>
+                <th style={{ width: '220px', padding: '10px 14px' }}>4 Mốc Thời Gian (Odoo ERP)</th>
+                <th style={{ width: '180px', padding: '10px 14px' }}>Hạn Dùng (EXP) & Còn Lại</th>
+                <th style={{ width: '130px', padding: '10px 14px' }}>Vòng Đời (RSL)</th>
+                <th style={{ width: '95px', padding: '10px 14px' }}>Tồn Kệ</th>
+                <th style={{ width: '140px', padding: '10px 14px' }}>Trạng Thái (5 Cấp)</th>
                 <th style={{ textAlign: 'right', minWidth: '190px', padding: '10px 14px' }}>Hành Động Khắc Phục</th>
               </tr>
             </thead>
@@ -813,16 +824,27 @@ export default function FefoMonitorView({
                         </div>
                       </td>
 
-                      {/* Ngày Nhập */}
-                      <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-                        {batch.importDate}
+                      {/* 4 Mốc Thời Gian Chuẩn Odoo ERP Stock Expiration (MFG / Alert / Removal / Import) */}
+                      <td style={{ fontSize: '0.73rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
+                        <div>
+                          <span style={{ color: 'var(--text-dim)' }}>NSX (MFG): </span>
+                          <strong style={{ color: 'var(--text-main)' }}>{formatDateVN(batch.manufactureDate || batch.importDate)}</strong>
+                        </div>
+                        <div>
+                          <span style={{ color: '#b45309' }}>Cảnh báo (Alert): </span>
+                          <strong style={{ color: '#b45309' }}>{formatDateVN(batch.alertDate)}</strong>
+                        </div>
+                        <div>
+                          <span style={{ color: '#be123c' }}>Rút kệ (Removal): </span>
+                          <strong style={{ color: '#be123c' }}>{formatDateVN(batch.removalDate)}</strong>
+                        </div>
                       </td>
 
-                      {/* Hạn Sử Dụng & Còn Lại */}
+                      {/* Hạn Sử Dụng (EXP Date) & Còn Lại */}
                       <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ fontWeight: 600, color: daysLeft <= 3 ? 'var(--danger-red)' : 'var(--text-main)', fontSize: '0.825rem' }}>
-                            {batch.expiryDate}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span style={{ fontWeight: 700, color: daysLeft <= 3 ? 'var(--danger-red)' : 'var(--text-main)', fontSize: '0.825rem' }}>
+                            {formatDateVN(batch.expiryDate)}
                           </span>
                           {isExpired ? (
                             <span className="badge badge-expired" style={{ fontSize: '0.675rem', padding: '1px 6px' }}>
@@ -842,6 +864,11 @@ export default function FefoMonitorView({
                             </span>
                           )}
                         </div>
+                        {batch.storeName && (
+                          <div style={{ fontSize: '0.66rem', color: 'var(--text-dim)', marginTop: '2px' }}>
+                            {batch.storeName}
+                          </div>
+                        )}
                       </td>
 
                       {/* Vòng Đời RSL */}
@@ -894,20 +921,35 @@ export default function FefoMonitorView({
                         )}
                       </td>
 
-                      {/* Trạng Thái FEFO */}
+                      {/* Trạng Thái 5 Cấp Chuẩn Quốc Tế (SAFE / NEARING_EXPIRY / CRITICAL / EXPIRED / DISPOSED) */}
                       <td>
-                        {currentStock <= 0 ? (
-                          <span className="badge" style={{ background: 'var(--bg-subtle)', color: 'var(--text-muted)' }}>
-                            Hết hàng
-                          </span>
+                        {currentStock <= 0 || batch.lifecycleState === 'DISPOSED' ? (
+                          <div>
+                            <span className="badge" style={{ background: 'var(--bg-subtle)', color: 'var(--text-muted)' }}>
+                              Đã Thanh Lý / Hết
+                            </span>
+                            <div style={{ fontSize: '0.62rem', color: 'var(--text-dim)', fontWeight: 700, marginTop: '2px' }}>DISPOSED</div>
+                          </div>
                         ) : isExpired ? (
-                          <span className="badge badge-expired">Khóa Bán POS</span>
+                          <div>
+                            <span className="badge badge-expired">Khóa Bán POS</span>
+                            <div style={{ fontSize: '0.62rem', color: 'var(--expired-purple)', fontWeight: 700, marginTop: '2px' }}>EXPIRED</div>
+                          </div>
                         ) : isCritical ? (
-                          <span className="badge badge-danger">Cận Date Đỏ</span>
+                          <div>
+                            <span className="badge badge-danger">Cận Date Đỏ</span>
+                            <div style={{ fontSize: '0.62rem', color: 'var(--danger-red)', fontWeight: 700, marginTop: '2px' }}>CRITICAL</div>
+                          </div>
                         ) : isWarning ? (
-                          <span className="badge badge-warning">Cảnh Báo Vàng</span>
+                          <div>
+                            <span className="badge badge-warning">Cảnh Báo Vàng</span>
+                            <div style={{ fontSize: '0.62rem', color: '#b45309', fontWeight: 700, marginTop: '2px' }}>NEARING_EXPIRY</div>
+                          </div>
                         ) : (
-                          <span className="badge badge-safe">An Toàn</span>
+                          <div>
+                            <span className="badge badge-safe">An Toàn</span>
+                            <div style={{ fontSize: '0.62rem', color: 'var(--primary)', fontWeight: 700, marginTop: '2px' }}>SAFE</div>
+                          </div>
                         )}
                       </td>
 
