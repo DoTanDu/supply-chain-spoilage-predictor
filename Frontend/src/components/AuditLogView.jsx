@@ -360,11 +360,8 @@ export default function AuditLogView({ auditLogs = [], isAdmin = false, onReques
           <div>
             <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--text-main)' }}>
               <ScrollText size={22} color="var(--safe-green)" />
-              Nhật Ký Kiểm Toán Hệ Thống (System Audit Trail)
+              Nhật Ký Kiểm Toán
             </h2>
-            <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-              Truy vết toàn bộ thao tác nhập hàng DC, xuất bán FEFO, phê duyệt tiêu hủy và can thiệp danh mục.
-            </p>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>

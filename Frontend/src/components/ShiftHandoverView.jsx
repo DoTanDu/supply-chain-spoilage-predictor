@@ -286,25 +286,9 @@ export default function ShiftHandoverView({
             <ClipboardCheck size={24} />
           </div>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>
-                Bàn Giao Ca Trực Điện Tử
-              </h2>
-              <span style={{
-                fontSize: '0.72rem',
-                padding: '2px 8px',
-                borderRadius: '10px',
-                background: 'rgba(99, 102, 241, 0.12)',
-                color: 'var(--accent-primary)',
-                fontWeight: 600,
-                border: '1px solid rgba(99, 102, 241, 0.2)'
-              }}>
-                Quy Trình 4 Bước
-              </span>
-            </div>
-            <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              Chốt doanh số tiền két, kiểm đếm lô cận date, rà soát hàng hủy và ký xác nhận điện tử lưu vết kiểm toán
-            </p>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>
+              Bàn Giao Ca Trực
+            </h2>
           </div>
         </div>
 

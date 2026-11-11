@@ -693,14 +693,9 @@ export default function PosCheckoutView({
               <ShoppingCart size={19} />
             </div>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <h2 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0, color: 'var(--text-main)', letterSpacing: '-0.02em' }}>
-                  Quầy Thu Ngân POS
-                </h2>
-                <span style={{ fontSize: '0.675rem', fontWeight: 700, padding: '2px 7px', borderRadius: '5px', background: 'var(--primary-bg)', color: 'var(--primary)', border: '1px solid var(--primary-border)' }}>
-                  FEFO Tự Động
-                </span>
-              </div>
+              <h2 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0, color: 'var(--text-main)', letterSpacing: '-0.02em' }}>
+                Quầy Thu Ngân POS
+              </h2>
             </div>
           </div>
 

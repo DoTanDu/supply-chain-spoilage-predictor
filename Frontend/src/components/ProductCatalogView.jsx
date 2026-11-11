@@ -719,50 +719,13 @@ export default function ProductCatalogView({
             {activeCatalogTab === 'PRODUCTS' ? <Package size={24} /> : activeCatalogTab === 'CATEGORIES' ? <Layers size={24} /> : <Truck size={24} />}
           </div>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>
-                {activeCatalogTab === 'PRODUCTS' 
-                  ? 'Danh Mục Sản Phẩm & Giá Bán Lẻ' 
-                  : activeCatalogTab === 'CATEGORIES' 
-                    ? 'Quản Lý Danh Mục Ngành Hàng FMCG' 
-                    : 'Quản Lý Nhà Cung Cấp & Kho Tổng DC'}
-              </h2>
-              <span style={{
-                fontSize: '0.72rem',
-                padding: '2px 8px',
-                borderRadius: '10px',
-                background: 'rgba(16, 185, 129, 0.12)',
-                color: 'var(--safe-green)',
-                fontWeight: 600,
-                border: '1px solid rgba(16, 185, 129, 0.2)'
-              }}>
-                FMCG {categories.length} Ngành Hàng • {suppliers.length} Nhà Cung Ứng
-              </span>
-              {!canManageCatalog && (
-                <span style={{
-                  fontSize: '0.72rem',
-                  padding: '2px 8px',
-                  borderRadius: '10px',
-                  background: 'rgba(245, 158, 11, 0.12)',
-                  color: 'var(--warning-amber)',
-                  fontWeight: 600,
-                  border: '1px solid rgba(245, 158, 11, 0.25)',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}>
-                  <Eye size={12} />
-                  Chế độ Tra cứu Sản phẩm & Bảo quản (STAFF - Chỉ đọc)
-                </span>
-              )}
-            </div>
-            <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              {activeCatalogTab === 'PRODUCTS'
-                ? 'Kiểm soát điều kiện bảo quản, ngưỡng cảnh báo hạn dùng và ngăn chặn trùng lặp SKU/Tên ≥ 85%'
-                : activeCatalogTab === 'CATEGORIES'
-                  ? 'Cấu hình mã ngành, nhiệt độ bảo quản yêu cầu và thời gian cảnh báo date mặc định'
-                  : 'Quản lý Kho tổng DC Biên Hòa, thời gian giao hàng Lead Time (ngày) và các nhà cung ứng FMCG đối tác'}
-            </p>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>
+              {activeCatalogTab === 'PRODUCTS' 
+                ? 'Danh Mục Sản Phẩm' 
+                : activeCatalogTab === 'CATEGORIES' 
+                  ? 'Quản Lý Ngành Hàng' 
+                  : 'Nhà Cung Cấp & Kho DC'}
+            </h2>
           </div>
         </div>
 

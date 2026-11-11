@@ -195,15 +195,9 @@ export default function SpoilageDisposalView({
             <Trash2 size={20} />
           </div>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h2 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0, color: 'var(--text-main)', letterSpacing: '-0.02em' }}>
-                Sổ Hao Hụt Tài Chính & Tiêu Hủy Hàng Hỏng
-              </h2>
-              
-            </div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-              Cơ sở: <strong style={{ color: 'var(--primary)' }}>{storeProfile?.storeCode || 'RETAIL-STORE-01'}</strong> ({storeProfile?.storeName || 'LHU Mart'}) 
-            </div>
+            <h2 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0, color: 'var(--text-main)', letterSpacing: '-0.02em' }}>
+              Tiêu Hủy & Sổ Hao Hụt
+            </h2>
           </div>
         </div>
 

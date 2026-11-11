@@ -95,7 +95,7 @@ export default function Sidebar({
     },
     {
       id: 'reorder-predictor',
-      label: 'Dự báo ROP & Đơn DC',
+      label: 'Dự báo & Đặt hàng DC',
       icon: TrendingUp,
       allowedRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER']
     },
@@ -103,7 +103,7 @@ export default function Sidebar({
       id: 'stock-transfer',
       label: 'Điều phối Liên cửa hàng',
       icon: ArrowLeftRight,
-      allowedRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER']
+      allowedRoles: ['ADMIN']
     },
     {
       id: 'audit-log',
@@ -113,13 +113,13 @@ export default function Sidebar({
     },
     {
       id: 'store-settings',
-      label: 'Cấu hình Cửa hàng & DC',
+      label: 'Cấu hình Cửa hàng',
       icon: Sliders,
       allowedRoles: ['ADMIN', 'STORE_MANAGER']
     },
     {
       id: 'user-management',
-      label: 'Quản trị Tài khoản & Khóa',
+      label: 'Quản lý Tài khoản',
       icon: Users,
       allowedRoles: ['ADMIN']
     }

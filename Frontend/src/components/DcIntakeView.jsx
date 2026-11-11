@@ -547,31 +547,9 @@ export default function DcIntakeView({
             <Truck size={22} />
           </div>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h1 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: 'var(--text-main)', letterSpacing: '-0.02em' }}>
-                Tiếp Nhận Hàng DC Biên Hòa
-              </h1>
-              <span
-                style={{
-                  fontSize: '0.72rem',
-                  fontWeight: 700,
-                  padding: '3px 8px',
-                  borderRadius: '6px',
-                  background: 'var(--primary-bg)',
-                  color: 'var(--primary)',
-                  border: '1px solid var(--primary-border)',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}
-              >
-                <ShieldCheck size={13} />
-                Tiêu Chuẩn RSL ≥ {minRslThreshold}%
-              </span>
-            </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-              Kiểm tra nghiêm ngặt hạn sử dụng (EXP), độ tươi mới lô hàng trước khi nhập kho cửa hàng LHU Mart
-            </div>
+            <h1 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: 'var(--text-main)', letterSpacing: '-0.02em' }}>
+              Tiếp Nhận Hàng DC
+            </h1>
           </div>
         </div>
 

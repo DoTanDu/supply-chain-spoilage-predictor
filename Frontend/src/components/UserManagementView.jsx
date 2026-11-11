@@ -155,25 +155,9 @@ export default function UserManagementView({
             <Users size={26} />
           </div>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-main)' }}>
-                Quản Trị Tài Khoản & Phân Quyền Nhân Sự (RBAC)
-              </h2>
-              <span style={{
-                fontSize: '0.72rem',
-                padding: '2px 8px',
-                borderRadius: '6px',
-                background: 'rgba(124, 58, 237, 0.12)',
-                color: '#7c3aed',
-                fontWeight: 700,
-                border: '1px solid rgba(124, 58, 237, 0.3)'
-              }}>
-                Chỉ Admin
-              </span>
-            </div>
-            <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              Quản lý tài khoản, danh tính và quyền khóa/mở khóa tức thì phục vụ bảo mật ca trực
-            </p>
+            <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-main)' }}>
+              Quản Lý Tài Khoản Nhân Sự
+            </h2>
           </div>
         </div>
 
@@ -219,7 +203,7 @@ export default function UserManagementView({
             }}
           >
             <RefreshCw size={15} style={{ animation: isLoading ? 'spin 1s linear infinite' : 'none' }} />
-            <span>Đồng Bộ LocalDB</span>
+            <span>Làm mới</span>
           </button>
 
           {isAdmin && (

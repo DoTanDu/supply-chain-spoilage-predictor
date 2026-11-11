@@ -328,25 +328,9 @@ export default function DashboardView({
             <Store size={24} />
           </div>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h1 style={{ fontSize: '1.2rem', fontWeight: 800, margin: 0, letterSpacing: '-0.02em', color: 'var(--text-main)' }}>
-                Tổng Quan Điều Hành
-              </h1>
-              <span style={{
-                fontSize: '0.675rem',
-                padding: '2px 8px',
-                borderRadius: '6px',
-                background: 'var(--primary-bg)',
-                color: 'var(--primary)',
-                fontWeight: 700,
-                border: '1px solid var(--primary-border)'
-              }}>
-                RETAIL-STORE-01
-              </span>
-            </div>
-            <p style={{ margin: '2px 0 0', fontSize: '0.775rem', color: 'var(--text-muted)' }}>
-              Giám sát KPI tài chính, vòng đời hạn dùng FEFO & điều phối chuỗi thời gian thực
-            </p>
+            <h1 style={{ fontSize: '1.2rem', fontWeight: 800, margin: 0, letterSpacing: '-0.02em', color: 'var(--text-main)' }}>
+              Tổng Quan Điều Hành
+            </h1>
           </div>
         </div>
 
@@ -641,7 +625,7 @@ export default function DashboardView({
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
             <h2 style={{ fontSize: '0.95rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-main)' }}>
               <PieChart size={18} color="var(--primary)" />
-              Phân Bổ Vòng Đời Lô Hàng (Donut Chart)
+              Phân Bổ Vòng Đời Lô Hàng
             </h2>
             <span style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>
               Cơ cấu 4 nhóm date
@@ -772,7 +756,7 @@ export default function DashboardView({
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
             <h2 style={{ fontSize: '0.95rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-main)' }}>
               <BarChart2 size={18} color="var(--primary)" />
-              Vận Tốc Tiêu Thụ Bán Lẻ POS (Sales Velocity)
+              Tốc Độ Tiêu Thụ Bán Lẻ POS
             </h2>
             <span style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>
               Phân bổ 4 ca trực
@@ -836,26 +820,10 @@ export default function DashboardView({
         {/* Header Phân Hệ Biểu Đồ & Chuyển Tab Trực Quan */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '14px' }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h2 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <TrendingUp size={20} color="var(--primary)" />
-                Phân Tích Xu Hướng Chuỗi Cung Ứng & Cơ Cấu Ngành Hàng (Visual Analytics)
-              </h2>
-              <span style={{
-                fontSize: '0.675rem',
-                padding: '2px 8px',
-                borderRadius: '6px',
-                background: 'var(--primary-bg)',
-                color: 'var(--primary)',
-                fontWeight: 700,
-                border: '1px solid var(--primary-border)'
-              }}>
-                Thời Gian Thực
-              </span>
-            </div>
-            <p style={{ margin: '4px 0 0', fontSize: '0.785rem', color: 'var(--text-muted)' }}>
-              Trực quan hóa tương quan Doanh thu FEFO vs Tổn thất Tiêu hủy 14 ngày và tỷ trọng rủi ro theo 7 nhóm ngành FMCG
-            </p>
+            <h2 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <TrendingUp size={20} color="var(--primary)" />
+              Xu Hướng & Cơ Cấu Ngành Hàng
+            </h2>
           </div>
 
           {/* Tab Switcher: Xu Hướng 14 Ngày vs Cơ Cấu Ngành Hàng */}
@@ -2202,10 +2170,10 @@ export default function DashboardView({
               <div style={{ textAlign: 'center', padding: '24px 14px', background: 'var(--primary-bg)', borderRadius: '8px', border: '1px solid var(--primary-border)' }}>
                 <CheckCircle2 size={24} color="var(--primary)" style={{ margin: '0 auto 6px' }} />
                 <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--primary)' }}>
-                  Cân bằng tồn kho chuỗi 3 cửa hàng đạt mức tối ưu
+                  Tồn kho cân bằng tối ưu
                 </div>
                 <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                  Thuật toán MILP Google OR-Tools xác nhận không có chi nhánh nào bị lệch tồn kho cận date cần san tải.
+                  Không có tồn kho cận date cần điều phối.
                 </div>
               </div>
             ) : (

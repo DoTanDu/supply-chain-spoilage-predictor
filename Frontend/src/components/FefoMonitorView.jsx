@@ -1104,7 +1104,7 @@ export default function FefoMonitorView({
                 </div>
                 <div>
                   <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--text-main)' }}>
-                    SOP Quy Trình Đảo Kệ Mặt Tiền (5 Bước)
+                    Quy Trình Đảo Kệ Mặt Tiền
                   </h3>
                   <span style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>
                     Tiêu chuẩn vận hành trưng bày FEFO • LHU Mart

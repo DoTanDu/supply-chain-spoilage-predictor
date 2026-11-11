@@ -281,25 +281,9 @@ export default function StoreSettingsView({
             <Sliders size={28} />
           </div>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-main)' }}>
-                Cấu Hình Tham Số Cửa Hàng & DC Biên Hòa
-              </h2>
-              <span style={{
-                fontSize: '0.72rem',
-                padding: '2px 8px',
-                borderRadius: '6px',
-                background: 'rgba(79, 70, 229, 0.12)',
-                color: '#4f46e5',
-                fontWeight: 700,
-                border: '1px solid rgba(79, 70, 229, 0.3)'
-              }}>
-                Chỉ Admin
-              </span>
-            </div>
-            <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              Thiết lập động các tiêu chuẩn nhận hàng DC (Min RSL), cảnh báo Shelf-life 3 màu và Lead Time
-            </p>
+            <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-main)' }}>
+              Cấu Hình Cửa Hàng & DC
+            </h2>
           </div>
         </div>
 

@@ -415,25 +415,9 @@ export default function ReorderPredictorView({
             <TrendingUp size={24} />
           </div>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>
-                Dự Báo Tái Đặt Hàng & Cảnh Báo Ứ Đọng (ROP Forecast)
-              </h2>
-              <span style={{
-                fontSize: '0.72rem',
-                padding: '2px 8px',
-                borderRadius: '10px',
-                background: 'var(--primary-bg)',
-                color: 'var(--primary)',
-                fontWeight: 600,
-                border: '1px solid var(--primary-border)'
-              }}>
-                AI Demand Forecast
-              </span>
-            </div>
-            <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              Tích hợp công thức chuẩn ROP = (d × L) + SS và phát hiện nghịch đảo DOS &gt; DUE ngăn chặn lãng phí date
-            </p>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>
+              Dự Báo Nhu Cầu & Đặt Hàng DC
+            </h2>
           </div>
         </div>
 

@@ -220,25 +220,9 @@ export default function StockTransferView({
               <Cpu size={24} />
             </div>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>
-                   Trung tâm Điều phối Chuỗi 3 Cửa hàng & Tối ưu AI (LightGBM + OR-Tools)
-                </h2>
-                <span style={{
-                  fontSize: '0.72rem',
-                  fontWeight: 700,
-                  padding: '3px 10px',
-                  borderRadius: '999px',
-                  background: '#ecfdf5',
-                  color: '#047857',
-                  border: '1px solid #a7f3d0'
-                }}>
-                  Pre-trained Model Active
-                </span>
-              </div>
-              <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#475569' }}>
-                Dự báo sức mua 7 ngày bằng mô hình LightGBM & tối ưu hóa điều chuyển hàng cận date giữa 3 chi nhánh (OR-Tools)
-              </p>
+              <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>
+                Điều Phối Liên Cửa Hàng
+              </h2>
             </div>
           </div>
 

@@ -213,7 +213,7 @@ export default function Header({
             </div>
             
             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 500, marginTop: '1px' }}>
-              {storeProfile?.storeName || 'LHU Mart Bửu Long'} • Chuỗi 3 Chi Nhánh
+              {storeProfile?.storeName || 'LHU Mart'}
             </div>
           </div>
         </div>
