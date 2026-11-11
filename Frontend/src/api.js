@@ -398,34 +398,6 @@ export async function apiUpdatePOStatus(orderId, status, notes = '') {
   return await parseJsonSafe(res);
 }
 
-// Module 9: Bàn giao ca trực điện tử 4 bước (Mục 15 SSOT)
-export async function apiSubmitShiftHandover(handoverData) {
-  const token = localStorage.getItem('token');
-  const res = await fetch(`${API_BASE}/shift-handover`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    },
-    body: JSON.stringify(handoverData)
-  });
-  return await parseJsonSafe(res);
-}
-
-export async function apiGetShiftHandoverHistory() {
-  const res = await fetch(`${API_BASE}/shift-handover/history`);
-  return await parseJsonSafe(res);
-}
-
-export async function apiGetShiftSummary() {
-  const token = localStorage.getItem('token');
-  const res = await fetch(`${API_BASE}/shift-handover/summary`, {
-    headers: {
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    }
-  });
-  return await parseJsonSafe(res);
-}
 // Module 10: Quản trị Tài khoản Nhân sự & Khóa / Mở khóa tài khoản (RBAC - Rule 11 SSOT)
 export async function apiGetUsers() {
   const token = localStorage.getItem('token');

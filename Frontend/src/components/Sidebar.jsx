@@ -12,7 +12,6 @@ import {
   Store,
   Truck,
   Package,
-  ClipboardCheck,
   Users,
   Sliders,
   ArrowLeftRight,
@@ -85,12 +84,6 @@ export default function Sidebar({
       id: 'spoilage-disposal',
       label: 'Tiêu hủy & Sổ hao hụt',
       icon: Trash2,
-      allowedRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER']
-    },
-    {
-      id: 'shift-handover',
-      label: 'Bàn giao Ca trực',
-      icon: ClipboardCheck,
       allowedRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER']
     },
     {

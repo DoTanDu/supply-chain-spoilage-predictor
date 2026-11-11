@@ -11,7 +11,6 @@ import StockTransferView from './components/StockTransferView';
 import AuditLogView from './components/AuditLogView';
 import LoginView from './components/LoginView';
 import ProductCatalogView from './components/ProductCatalogView';
-import ShiftHandoverView from './components/ShiftHandoverView';
 import UserManagementView from './components/UserManagementView';
 import StoreSettingsView from './components/StoreSettingsView';
 import AdminLoginModal from './components/AdminLoginModal';
@@ -27,7 +26,6 @@ const VALID_TABS = [
   'dc-intake',
   'product-catalog',
   'spoilage-disposal',
-  'shift-handover',
   'reorder-predictor',
   'stock-transfer',
   'audit-log',
@@ -42,7 +40,6 @@ const TAB_ALLOWED_ROLES = {
   'dc-intake': ['ADMIN', 'STORE_MANAGER', 'CASHIER'],
   'product-catalog': ['ADMIN', 'STORE_MANAGER', 'CASHIER'],
   'spoilage-disposal': ['ADMIN', 'STORE_MANAGER', 'CASHIER'],
-  'shift-handover': ['ADMIN', 'STORE_MANAGER', 'CASHIER'],
   'reorder-predictor': ['ADMIN', 'STORE_MANAGER', 'CASHIER'],
   'stock-transfer': ['ADMIN', 'STORE_MANAGER', 'CASHIER'],
   'audit-log': ['ADMIN', 'STORE_MANAGER'],
@@ -638,16 +635,6 @@ export default function App() {
                   onApproveDisposal={handleApproveDisposal}
                   preselectedBatchId={preselectedDisposalBatchId}
                   onRequestAdminLogin={() => setShowAdminModal(true)}
-                />
-              )}
-
-              {activeTab === 'shift-handover' && (
-                <ShiftHandoverView 
-                  currentUser={currentUser}
-                  batches={batches}
-                  disposals={disposals}
-                  liveStats={liveStats}
-                  storeProfile={storeProfile}
                 />
               )}
 
