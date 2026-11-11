@@ -13,8 +13,6 @@ import {
 import { apiChangePassword } from '../api';
 
 export default function ChangePasswordModal({ isOpen, onClose, currentUser }) {
-  if (!isOpen) return null;
-
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -28,6 +26,8 @@ export default function ChangePasswordModal({ isOpen, onClose, currentUser }) {
   const isLengthValid = newPassword.length >= 6;
   const isMatch = newPassword.length > 0 && newPassword === confirmPassword;
   const isNotSameAsOld = newPassword.length > 0 && oldPassword.length > 0 && newPassword !== oldPassword;
+
+  if (!isOpen) return null;
 
   const handleReset = () => {
     setOldPassword('');

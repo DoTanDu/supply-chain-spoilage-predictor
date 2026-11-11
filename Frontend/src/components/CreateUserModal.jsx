@@ -18,8 +18,6 @@ import {
 import { apiCreateUser } from '../api';
 
 export default function CreateUserModal({ isOpen, onClose, onUserCreated }) {
-  if (!isOpen) return null;
-
   const [username, setUsername] = useState('');
   const [fullName, setFullName] = useState('');
   const [roleCode, setRoleCode] = useState('CASHIER');
@@ -40,6 +38,8 @@ export default function CreateUserModal({ isOpen, onClose, onUserCreated }) {
       if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
     };
   }, []);
+
+  if (!isOpen) return null;
 
   const rolesConfig = [
     {

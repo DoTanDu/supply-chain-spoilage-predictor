@@ -42,10 +42,9 @@ class SqlConnection {
       if (!fs.existsSync(tempDir)) {
         try { fs.mkdirSync(tempDir, { recursive: true }); } catch (e) {}
       }
-      const tempFile = path.join(
-        tempDir,
-        `qry_${process.pid}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}.sql`
-      );
+      const uniqueId = `qry_${process.pid}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      const tempFile = path.join(tempDir, `${uniqueId}.sql`);
+      const outFile = path.join(tempDir, `${uniqueId}.out`);
       fs.writeFileSync(tempFile, '\uFEFFSET NOCOUNT ON;\n' + normalizedSql, 'utf8');
 
       const handleSuccess = (stdout) => {
@@ -65,6 +64,7 @@ class SqlConnection {
         const runnerScript = path.join(__dirname, '..', '..', '..', 'sql_runner.ps1');
         execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', runnerScript, tempFile], { encoding: 'utf8', maxBuffer: 30 * 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
           try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch (e) {}
+          try { if (fs.existsSync(outFile)) fs.unlinkSync(outFile); } catch (e) {}
           if (error) {
             const errMsg = (stderr && stderr.trim()) || (stdout && stdout.trim()) || error.message;
             const sqlErr = new Error(errMsg);
@@ -84,26 +84,34 @@ class SqlConnection {
           '-y', '0',
           '-S', '(localdb)\\mssqllocaldb',
           '-d', 'retail_spoilage_db',
-          '-i', tempFile
+          '-i', tempFile,
+          '-o', outFile
         ];
 
         execFile('sqlcmd', args, { encoding: 'utf8', maxBuffer: 30 * 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
+          let outputContent = '';
+          if (fs.existsSync(outFile)) {
+            try {
+              outputContent = fs.readFileSync(outFile, 'utf8').replace(/^\uFEFF/, '');
+              fs.unlinkSync(outFile);
+            } catch (e) {}
+          }
+          try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch (e) {}
+
           if (error) {
-            const errMsg = (stdout && stdout.trim()) || (stderr && stderr.trim()) || error.message;
+            const errMsg = (outputContent && outputContent.trim()) || (stdout && stdout.trim()) || (stderr && stderr.trim()) || error.message;
             if (process.platform === 'win32' && (errMsg.includes('ODBC') || errMsg.includes('Data source') || errMsg.includes('error: 52'))) {
               preferPowerShell = true;
               return runWithPs();
             }
-            try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch (e) {}
             const sqlErr = new Error(errMsg);
             sqlErr.code = error.code;
             return reject(sqlErr);
           }
-          try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch (e) {}
-          if (stdout && stdout.includes('Msg ') && /Level (1[1-9]|2[0-9])/i.test(stdout)) {
-            return reject(new Error(stdout.trim()));
+          if (outputContent && outputContent.includes('Msg ') && /Level (1[1-9]|2[0-9])/i.test(outputContent)) {
+            return reject(new Error(outputContent.trim()));
           }
-          handleSuccess(stdout);
+          handleSuccess(outputContent);
         });
       }
     }).finally(() => {

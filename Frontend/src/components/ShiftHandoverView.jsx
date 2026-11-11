@@ -21,7 +21,8 @@ import {
   Calendar,
   Eye,
   Check,
-  X
+  X,
+  Search
 } from 'lucide-react';
 import * as api from '../api';
 

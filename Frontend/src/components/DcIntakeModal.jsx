@@ -71,9 +71,9 @@ export default function DcIntakeModal({
   canManageCatalog,
   onOpenAddProduct
 }) {
-  if (!isOpen) return null;
-
   const [modalSearchProduct, setModalSearchProduct] = useState('');
+
+  if (!isOpen) return null;
 
   const selectedProd = products.find(p => p.id === Number(selectedProductId)) || products[0];
 

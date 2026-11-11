@@ -27,7 +27,8 @@ import {
   Flame,
   ArrowLeftRight,
   Cpu,
-  Building2
+  Building2,
+  Thermometer
 } from 'lucide-react';
 import { fetchAiSupplyChainMatrix } from '../api';
 

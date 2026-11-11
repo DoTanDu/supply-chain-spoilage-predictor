@@ -37,8 +37,6 @@ export default function PosPaymentModal({
   clearCart,
   getAvailableStock
 }) {
-  if (!isOpen) return null;
-
   const [paymentMethod, setPaymentMethod] = useState('CASH'); // 'CASH' | 'VIETQR'
   const cashInputRef = useRef(null);
 
@@ -48,6 +46,7 @@ export default function PosPaymentModal({
   const totalItemsCount = cart.reduce((s, i) => s + i.quantity, 0);
 
   useEffect(() => {
+    if (!isOpen) return;
     // Focus vào ô nhập tiền khi mở modal ở chế độ tiền mặt
     if (paymentMethod === 'CASH') {
       setTimeout(() => {
@@ -57,10 +56,11 @@ export default function PosPaymentModal({
         }
       }, 100);
     }
-  }, [paymentMethod]);
+  }, [isOpen, paymentMethod]);
 
   // Lắng nghe phím tắt trong modal (Enter để xác nhận, Esc để đóng, F8 đủ tiền)
   useEffect(() => {
+    if (!isOpen) return;
     const handleModalKeyDown = (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -82,7 +82,9 @@ export default function PosPaymentModal({
     };
     window.addEventListener('keydown', handleModalKeyDown);
     return () => window.removeEventListener('keydown', handleModalKeyDown);
-  }, [customerPaidNumber, totalAmount, paymentMethod, isSubmitting, onConfirmCheckout, onClose, setCustomerPaid, cart.length]);
+  }, [isOpen, customerPaidNumber, totalAmount, paymentMethod, isSubmitting, onConfirmCheckout, onClose, setCustomerPaid, cart.length]);
+
+  if (!isOpen) return null;
 
   // Sinh link mã VietQR động chuẩn Napas247
   const vietQrUrl = `https://api.vietqr.io/image/970422-0901234567-compact2.jpg?amount=${totalAmount}&addInfo=${encodeURIComponent(`LHU MART POS ${Date.now().toString().slice(-4)}`)}&accountName=${encodeURIComponent('LHU MART RETAIL')}`;

@@ -59,9 +59,9 @@ async function runMasterTestSuite() {
   // ==========================================================================================
   // SECTION 0: XÁC THỰC & BẢO MẬT ĐĂNG NHẬP (RBAC & BRUTE-FORCE PROTECTION)
   // ==========================================================================================
-  console.log('--- PHẦN 0: XÁC THỰC, PHÂN QUYỀN 4 VAI TRÒ & BẢO MẬT CHỐNG BRUTE-FORCE ---');
+  console.log('--- PHẦN 0: XÁC THỰC, PHÂN QUYỀN 3 VAI TRÒ & BẢO MẬT CHỐNG BRUTE-FORCE ---');
   
-  // 0.1 Đăng nhập 4 vai trò
+  // 0.1 Đăng nhập 3 vai trò (3-Actor RBAC Model SSOT)
   const loginAdmin = await request('POST', '/api/auth/login', { username: 'admin', password: 'Password123@' });
   assert(loginAdmin.status === 200 && loginAdmin.body?.data?.token, 'Đăng nhập vai trò ADMIN thành công (nhận Bearer Token)');
   adminToken = loginAdmin.body.data.token;
@@ -71,12 +71,9 @@ async function runMasterTestSuite() {
   managerToken = loginMgr.body.data.token;
 
   const loginCashier = await request('POST', '/api/auth/login', { username: 'cashier', password: 'Password123@' });
-  assert(loginCashier.status === 200 && loginCashier.body?.data?.token, 'Đăng nhập vai trò CASHIER thành công (Thu ngân POS)');
+  assert(loginCashier.status === 200 && loginCashier.body?.data?.token, 'Đăng nhập vai trò CASHIER thành công (Nhân viên cửa hàng: POS & Kho kệ)');
   cashierToken = loginCashier.body.data.token;
-
-  const loginWarehouse = await request('POST', '/api/auth/login', { username: 'warehouse', password: 'Password123@' });
-  assert(loginWarehouse.status === 200 && loginWarehouse.body?.data?.token, 'Đăng nhập vai trò WAREHOUSE_STAFF thành công (Nhân viên kho)');
-  warehouseToken = loginWarehouse.body.data.token;
+  warehouseToken = cashierToken;
 
   // 0.2 Kiểm tra cơ chế chống Brute-force: Khóa tài khoản sau 5 lần sai mật khẩu
   console.log('   Kiểm tra tính năng bảo mật chống Brute-force (Mục 22.3):');

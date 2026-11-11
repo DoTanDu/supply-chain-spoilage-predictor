@@ -243,6 +243,44 @@ export default function AuditLogView({ auditLogs = [], isAdmin = false, onReques
   const [search, setSearch] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('ALL');
 
+  // Chuẩn hóa toàn bộ danh sách audit logs
+  const normalizedLogs = useMemo(() => {
+    return (auditLogs || []).map(normalizeLogRecord).filter(Boolean);
+  }, [auditLogs]);
+
+  // Bộ lọc dữ liệu theo nhóm hành động và từ khóa tìm kiếm
+  const filteredLogs = useMemo(() => {
+    return normalizedLogs.filter(log => {
+      // Lọc theo nhóm hành vi
+      if (selectedFilter !== 'ALL') {
+        const act = (log.action || '').toUpperCase();
+        if (selectedFilter === 'POS' && act !== 'POS_CHECKOUT') return false;
+        if (selectedFilter === 'DC' && !['DC_INBOUND', 'CREATE_PURCHASE_ORDER', 'UPDATE_PO_STATUS'].includes(act)) return false;
+        if (selectedFilter === 'DISPOSAL' && act !== 'SPOILAGE_DISPOSAL') return false;
+        if (selectedFilter === 'SHELF' && !['ROTATE_SHELF_FEFO', 'QUICK_MARKDOWN'].includes(act)) return false;
+        if (selectedFilter === 'CATALOG' && !['CREATE_PRODUCT', 'UPDATE_PRODUCT', 'DELETE_PRODUCT'].includes(act)) return false;
+        if (selectedFilter === 'SHIFT' && act !== 'SHIFT_HANDOVER') return false;
+        if (selectedFilter === 'SECURITY' && !['LOGIN_FAILED', 'ACCOUNT_LOCKED_FAILED_ATTEMPTS', 'LOGIN', 'RESET_PASSWORD', 'CHANGE_PASSWORD', 'CREATE_USER', 'UPDATE_USER', 'LOCK_USER', 'UNLOCK_USER', 'UPDATE_STORE_PROFILE'].includes(act)) return false;
+      }
+
+      // Lọc theo từ khóa tìm kiếm đa trường
+      if (!search.trim()) return true;
+      const normSearch = stripVietnamese(search);
+      const normUser = stripVietnamese(log.user);
+      const normAction = stripVietnamese(log.action);
+      const normDetails = stripVietnamese(log.details);
+      const normIp = stripVietnamese(log.ip);
+      const tokens = normSearch.split(/\s+/).filter(Boolean);
+
+      return tokens.every(tok => 
+        normUser.includes(tok) || 
+        normAction.includes(tok) || 
+        normDetails.includes(tok) ||
+        normIp.includes(tok)
+      );
+    });
+  }, [normalizedLogs, search, selectedFilter]);
+
   if (!isAdmin) {
     return (
       <div className="glass-panel" style={{
@@ -312,44 +350,6 @@ export default function AuditLogView({ auditLogs = [], isAdmin = false, onReques
       </div>
     );
   }
-
-  // Chuẩn hóa toàn bộ danh sách audit logs
-  const normalizedLogs = useMemo(() => {
-    return (auditLogs || []).map(normalizeLogRecord).filter(Boolean);
-  }, [auditLogs]);
-
-  // Bộ lọc dữ liệu theo nhóm hành động và từ khóa tìm kiếm
-  const filteredLogs = useMemo(() => {
-    return normalizedLogs.filter(log => {
-      // Lọc theo nhóm hành vi
-      if (selectedFilter !== 'ALL') {
-        const act = (log.action || '').toUpperCase();
-        if (selectedFilter === 'POS' && act !== 'POS_CHECKOUT') return false;
-        if (selectedFilter === 'DC' && !['DC_INBOUND', 'CREATE_PURCHASE_ORDER', 'UPDATE_PO_STATUS'].includes(act)) return false;
-        if (selectedFilter === 'DISPOSAL' && act !== 'SPOILAGE_DISPOSAL') return false;
-        if (selectedFilter === 'SHELF' && !['ROTATE_SHELF_FEFO', 'QUICK_MARKDOWN'].includes(act)) return false;
-        if (selectedFilter === 'CATALOG' && !['CREATE_PRODUCT', 'UPDATE_PRODUCT', 'DELETE_PRODUCT'].includes(act)) return false;
-        if (selectedFilter === 'SHIFT' && act !== 'SHIFT_HANDOVER') return false;
-        if (selectedFilter === 'SECURITY' && !['LOGIN_FAILED', 'ACCOUNT_LOCKED_FAILED_ATTEMPTS', 'LOGIN', 'RESET_PASSWORD', 'CHANGE_PASSWORD', 'CREATE_USER', 'UPDATE_USER', 'LOCK_USER', 'UNLOCK_USER', 'UPDATE_STORE_PROFILE'].includes(act)) return false;
-      }
-
-      // Lọc theo từ khóa tìm kiếm đa trường
-      if (!search.trim()) return true;
-      const normSearch = stripVietnamese(search);
-      const normUser = stripVietnamese(log.user);
-      const normAction = stripVietnamese(log.action);
-      const normDetails = stripVietnamese(log.details);
-      const normIp = stripVietnamese(log.ip);
-      const tokens = normSearch.split(/\s+/).filter(Boolean);
-
-      return tokens.every(tok => 
-        normUser.includes(tok) || 
-        normAction.includes(tok) || 
-        normDetails.includes(tok) ||
-        normIp.includes(tok)
-      );
-    });
-  }, [normalizedLogs, search, selectedFilter]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
