@@ -13,18 +13,20 @@ const authMiddleware = require('../middlewares/authMiddleware');
 const roleMiddleware = require('../middlewares/roleMiddleware');
 
 const router = express.Router();
+const poReadGuard = roleMiddleware(['ADMIN', 'STORE_MANAGER', 'CASHIER'], { pageKey: 'smart-ordering' });
+const poManageGuard = roleMiddleware(['ADMIN', 'STORE_MANAGER'], { pageKey: 'smart-ordering' });
 
 // GET /api/purchase-orders - Danh sách đơn đặt hàng gửi DC (Mục 22.8 SSOT)
-router.get('/', (req, res, next) => forecastController.getAllPO(req, res, next));
+router.get('/', poReadGuard, (req, res, next) => forecastController.getAllPO(req, res, next));
 
 // GET /api/purchase-orders/:id - Chi tiết đơn PO
-router.get('/:id', (req, res, next) => forecastController.getPOById(req, res, next));
+router.get('/:id', poReadGuard, (req, res, next) => forecastController.getPOById(req, res, next));
 
 // POST /api/purchase-orders - Lập đơn PO mới gửi DC Biên Hòa (Chỉ ADMIN & STORE_MANAGER)
 router.post(
   '/',
   authMiddleware,
-  roleMiddleware(['ADMIN', 'STORE_MANAGER']),
+  poManageGuard,
   (req, res, next) => forecastController.createPO(req, res, next)
 );
 
@@ -32,7 +34,7 @@ router.post(
 router.post(
   '/:id/send-to-dc',
   authMiddleware,
-  roleMiddleware(['ADMIN', 'STORE_MANAGER']),
+  poManageGuard,
   (req, res, next) => forecastController.sendPOToDC(req, res, next)
 );
 
@@ -40,7 +42,7 @@ router.post(
 router.patch(
   '/:id/status',
   authMiddleware,
-  roleMiddleware(['ADMIN', 'STORE_MANAGER', 'CASHIER']),
+  poReadGuard,
   (req, res, next) => forecastController.updatePOStatus(req, res, next)
 );
 

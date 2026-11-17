@@ -11,6 +11,7 @@ class ProductDTO {
       supplier: productEntity.supplierName || 'Kho DC Biên Hòa',
       supplierId: productEntity.supplierId,
       unit: productEntity.unit,
+      packSize: productEntity.packSize || 1,
       costPrice: productEntity.costPrice,
       price: productEntity.sellingPrice,
       sellingPrice: productEntity.sellingPrice,

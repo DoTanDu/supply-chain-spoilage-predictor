@@ -13,6 +13,7 @@ class Product {
     costPrice = 0,
     sellingPrice = 0,
     standardShelfLifeDays,
+    packSize = 1,
     minStockLevel = 15,
     maxStockLevel = 150,
     customWarningDays = null,
@@ -35,6 +36,7 @@ class Product {
     this.costPrice = Number(costPrice) || 0;
     this.sellingPrice = Number(sellingPrice) || 0;
     this.standardShelfLifeDays = Number(standardShelfLifeDays);
+    this.packSize = Math.max(1, Number(packSize) || 1);
     this.minStockLevel = Number(minStockLevel) || 15;
     this.maxStockLevel = Number(maxStockLevel) || 150;
     this.customWarningDays = customWarningDays !== null && customWarningDays !== undefined ? Number(customWarningDays) : null;

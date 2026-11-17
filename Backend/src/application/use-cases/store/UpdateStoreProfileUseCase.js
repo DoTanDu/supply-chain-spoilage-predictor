@@ -13,14 +13,27 @@ class UpdateStoreProfileUseCase {
       throw new Error(`Trạng thái cửa hàng không hợp lệ. Chỉ chấp nhận: ${validStatuses.join(', ')}`);
     }
 
-    const targetId = updateData.id ? Number(updateData.id) : 1;
+    const targetId = updateData.id !== undefined && updateData.id !== null ? Number(updateData.id) : 1;
+    if (!Number.isInteger(targetId) || targetId <= 0) {
+      const err = new Error(`Mã chi nhánh (id) không hợp lệ: [${updateData.id}].`);
+      err.statusCode = 400;
+      throw err;
+    }
+
     const current = await this.storeProfileRepository.getProfile(targetId);
-    const roleCode = currentUser?.roleCode || 'GUEST';
+    if (!current) {
+      const err = new Error(`Không tìm thấy hồ sơ chi nhánh với ID [${targetId}].`);
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const rawRole = String(currentUser?.roleCode || 'GUEST').toUpperCase().trim();
+    const isStoreManager = rawRole === 'STORE_MANAGER' || rawRole === 'MANAGER';
 
     // Ranh giới Phân quyền (SoD - Mục 4.1, 4.2 & Mục 5 SSOT):
     // STORE_MANAGER chỉ được phép chuyển đổi Trạng thái hoạt động cửa hàng (status) và khung giờ ca trực,
     // không được phép tự ý thay đổi các ngưỡng kỹ thuật lõi (Min RSL, Cảnh báo 3 màu, Lead Time, Cửa hàng trưởng).
-    if (roleCode === 'STORE_MANAGER' && current) {
+    if (isStoreManager) {
       const triedChangeRsl = updateData.minInboundRslPercent !== undefined && Number(updateData.minInboundRslPercent) !== Number(current.minInboundRslPercent);
       const triedChangeWarn = updateData.defaultWarningDays !== undefined && Number(updateData.defaultWarningDays) !== Number(current.defaultWarningDays);
       const triedChangeCrit = updateData.criticalWarningDays !== undefined && Number(updateData.criticalWarningDays) !== Number(current.criticalWarningDays);
@@ -30,16 +43,24 @@ class UpdateStoreProfileUseCase {
       const triedChangeUnits = updateData.shelfCapacityUnits !== undefined && Number(updateData.shelfCapacityUnits) !== Number(current.shelfCapacityUnits);
 
       if (triedChangeRsl || triedChangeWarn || triedChangeCrit || triedChangeLead || triedChangeManager || triedChangeSkus || triedChangeUnits) {
-        throw new Error(
+        const err = new Error(
           'Vi phạm Ranh giới Phân quyền (SoD - Mục 4.2 & Mục 5): Cửa hàng trưởng chỉ được phép chuyển đổi Trạng thái hoạt động cửa hàng (OPEN/CLOSED/INVENTORY/SUSPENDED) và giờ đóng/mở ca. Quyền thay đổi ngưỡng Min RSL, Cảnh báo 3 màu, Lead Time, Sức chứa quầy kệ và bổ nhiệm Cửa hàng trưởng thuộc về Quản trị viên hệ thống (ADMIN).'
         );
+        err.statusCode = 403;
+        throw err;
       }
 
-      // Khóa cứng payload của STORE_MANAGER chỉ cập nhật status và giờ hoạt động
+      // Khóa cứng payload của STORE_MANAGER chỉ cập nhật status và giờ hoạt động nhưng PHẢI giữ nguyên targetId
       updateData = {
+        id: targetId,
         status: updateData.status !== undefined ? updateData.status : current.status,
         openTime: updateData.openTime !== undefined ? updateData.openTime : current.openTime,
         closeTime: updateData.closeTime !== undefined ? updateData.closeTime : current.closeTime
+      };
+    } else {
+      updateData = {
+        ...updateData,
+        id: targetId
       };
     }
 

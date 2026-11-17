@@ -36,19 +36,25 @@ class SqlAuditLogRepository extends IAuditLogRepository {
     });
   }
 
-  async findRecent(limit = 50) {
+  async findRecent(limit = 50, storeId = null) {
+    let whereClause = '1=1';
+    if (storeId && String(storeId).toUpperCase() !== 'ALL' && !isNaN(Number(storeId))) {
+      whereClause = `u.store_id = ${Number(storeId)}`;
+    }
     const sql = `
       SELECT TOP (${Number(limit)})
-        id,
-        user_id AS userId,
-        action_type AS actionType,
-        entity_name AS entityName,
-        entity_id AS entityId,
-        description,
-        ip_address AS ipAddress,
-        created_at AS createdAt
-      FROM system_audit_logs
-      ORDER BY id DESC
+        sal.id,
+        sal.user_id AS userId,
+        sal.action_type AS actionType,
+        sal.entity_name AS entityName,
+        sal.entity_id AS entityId,
+        sal.description,
+        sal.ip_address AS ipAddress,
+        sal.created_at AS createdAt
+      FROM system_audit_logs sal
+      LEFT JOIN users u ON sal.user_id = u.id
+      WHERE ${whereClause}
+      ORDER BY sal.id DESC
     `;
     return await SqlConnection.queryJson(sql);
   }

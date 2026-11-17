@@ -13,6 +13,7 @@ const authMiddleware = require('../middlewares/authMiddleware');
 const roleMiddleware = require('../middlewares/roleMiddleware');
 
 const router = express.Router();
+const catalogManageGuard = roleMiddleware(['ADMIN', 'STORE_MANAGER'], { pageKey: 'settings-integration' });
 
 // GET /api/suppliers
 router.get('/', SupplierController.getSuppliers);
@@ -21,13 +22,13 @@ router.get('/', SupplierController.getSuppliers);
 router.get('/:id', SupplierController.getSupplierById);
 
 // POST /api/suppliers (Chỉ ADMIN và STORE_MANAGER được thêm NCC mới)
-router.post('/', authMiddleware, roleMiddleware(['ADMIN', 'STORE_MANAGER']), SupplierController.createSupplier);
+router.post('/', authMiddleware, catalogManageGuard, SupplierController.createSupplier);
 
 // PUT /api/suppliers/:id (Chỉnh sửa thông tin NCC, Lead Time, Trạng thái)
-router.put('/:id', authMiddleware, roleMiddleware(['ADMIN', 'STORE_MANAGER']), SupplierController.updateSupplier);
+router.put('/:id', authMiddleware, catalogManageGuard, SupplierController.updateSupplier);
 
 // DELETE /api/suppliers/:id (Xóa NCC nếu chưa có sản phẩm hoặc PO liên kết)
-router.delete('/:id', authMiddleware, roleMiddleware(['ADMIN', 'STORE_MANAGER']), SupplierController.deleteSupplier);
+router.delete('/:id', authMiddleware, catalogManageGuard, SupplierController.deleteSupplier);
 
 module.exports = router;
 

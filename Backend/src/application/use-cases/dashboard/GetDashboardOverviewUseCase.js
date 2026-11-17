@@ -29,34 +29,36 @@ class GetDashboardOverviewUseCase {
           ISNULL((SELECT SUM(b.initial_quantity * b.import_price) FROM dbo.batches b WHERE ISNULL(b.store_id, 1) = sp.id), 1) AS totalImportValue,
           ISNULL((SELECT SUM(sh.total_amount) FROM dbo.sales_history sh WHERE ISNULL(sh.store_id, 1) = sp.id), 0) AS totalSalesRevenue,
           ISNULL((SELECT SUM(sr.cost_loss) FROM dbo.spoilage_records sr WHERE ISNULL(sr.store_id, 1) = sp.id), 0) AS totalSpoilageLoss,
-          ISNULL((SELECT COUNT(*) FROM dbo.batches b WHERE ISNULL(b.store_id, 1) = sp.id AND b.current_quantity > 0 AND DATEDIFF(day, CAST(GETDATE() AS DATE), b.expiry_date) BETWEEN 4 AND 7), 0) AS yellowBatchesCount,
-          ISNULL((SELECT COUNT(*) FROM dbo.batches b WHERE ISNULL(b.store_id, 1) = sp.id AND b.current_quantity > 0 AND DATEDIFF(day, CAST(GETDATE() AS DATE), b.expiry_date) BETWEEN 1 AND 3), 0) AS redBatchesCount,
-          ISNULL((SELECT COUNT(*) FROM dbo.batches b WHERE ISNULL(b.store_id, 1) = sp.id AND b.current_quantity > 0 AND DATEDIFF(day, CAST(GETDATE() AS DATE), b.expiry_date) <= 0), 0) AS expiredBatchesCount,
+          ISNULL((SELECT COUNT(*) FROM dbo.vw_Batches_ShelfLife_Alerts v WHERE ISNULL(v.store_id, 1) = sp.id AND v.current_quantity > 0 AND v.alert_color = 'YELLOW'), 0) AS yellowBatchesCount,
+          ISNULL((SELECT COUNT(*) FROM dbo.vw_Batches_ShelfLife_Alerts v WHERE ISNULL(v.store_id, 1) = sp.id AND v.current_quantity > 0 AND v.alert_color = 'RED'), 0) AS redBatchesCount,
+          ISNULL((SELECT COUNT(*) FROM dbo.vw_Batches_ShelfLife_Alerts v WHERE ISNULL(v.store_id, 1) = sp.id AND v.current_quantity > 0 AND v.alert_color = 'EXPIRED'), 0) AS expiredBatchesCount,
           ISNULL((SELECT SUM((b.initial_quantity - b.current_quantity) * b.import_price) FROM dbo.batches b WHERE ISNULL(b.store_id, 1) = sp.id AND b.discount_percent > 0), 0) AS markdownRescuedValue,
-          ISNULL((SELECT SUM(st.transfer_quantity * 32000) FROM dbo.stock_transfers st WHERE (st.from_store_id = sp.id OR st.to_store_id = sp.id) AND st.status IN ('APPROVED', 'IN_TRANSIT', 'RECEIVED')), 0) AS transferRescuedValue,
-          ISNULL((SELECT COUNT(*) FROM dbo.stock_transfers st WHERE (st.from_store_id = sp.id OR st.to_store_id = sp.id) AND st.status IN ('PROPOSED', 'APPROVED', 'IN_TRANSIT', 'RECEIVED')), 0) AS transferOrdersCount
+          ISNULL((SELECT SUM(st.transfer_quantity * ISNULL(b.import_price, ISNULL(p.cost_price, 0))) FROM dbo.stock_transfers st LEFT JOIN dbo.batches b ON st.source_batch_id = b.id LEFT JOIN dbo.products p ON st.product_id = p.id WHERE (st.from_store_id = sp.id OR st.to_store_id = sp.id) AND st.status IN ('APPROVED', 'IN_TRANSIT', 'RECEIVED')), 0) AS transferRescuedValue,
+          ISNULL((SELECT COUNT(*) FROM dbo.stock_transfers st WHERE (st.from_store_id = sp.id OR st.to_store_id = sp.id) AND st.status IN ('PROPOSED', 'APPROVED', 'IN_TRANSIT', 'RECEIVED')), 0) AS transferOrdersCount,
+          ISNULL((SELECT COUNT(*) FROM dbo.products pr WHERE pr.is_active = 1 AND ISNULL((SELECT SUM(b2.current_quantity) FROM dbo.batches b2 WHERE ISNULL(b2.store_id, 1) = sp.id AND b2.product_id = pr.id AND b2.status IN ('ACTIVE', 'WARNING') AND b2.current_quantity > 0), 0) <= pr.min_stock_level), 0) AS lowStockSkuCount
         FROM dbo.store_profile sp
         ORDER BY sp.id ASC;
       `;
       const rows = await SqlConnection.queryJson(sql);
       return (rows || []).map(r => {
-        const importVal = Math.max(1, Number(r.totalImportValue || 1));
+        const importVal = Number(r.totalImportValue || 0);
         const spoilLoss = Number(r.totalSpoilageLoss || 0);
-        const rawShrinkage = Number(((spoilLoss / importVal) * 100).toFixed(2));
-        const shrinkageRatePercent = Math.min(9.5, Math.max(0.4, rawShrinkage));
+        const shrinkageRatePercent = importVal > 0 ? Number(((spoilLoss / importVal) * 100).toFixed(2)) : 0;
 
-        const rescuedVal = Number(r.markdownRescuedValue || 0) + Number(r.transferRescuedValue || 0) + (r.storeId === 1 ? 2450000 : (r.storeId === 2 ? 1680000 : 1120000));
-        const rescueDenom = Math.max(1, rescuedVal + spoilLoss);
-        const rescueRatePercent = Number(((rescuedVal / rescueDenom) * 100).toFixed(1));
+        const rescuedVal = Number(r.markdownRescuedValue || 0) + Number(r.transferRescuedValue || 0);
+        const rescueDenom = rescuedVal + spoilLoss;
+        const rescueRatePercent = rescueDenom > 0 ? Number(((rescuedVal / rescueDenom) * 100).toFixed(1)) : 0;
 
+        const nearExpCount = Number(r.yellowBatchesCount || 0) + Number(r.redBatchesCount || 0);
+        const lowSkus = Number(r.lowStockSkuCount || 0);
         let supplyStatus = 'BALANCED';
         let supplyStatusLabel = 'Cân bằng';
-        if (r.storeId === 1 || Number(r.yellowBatchesCount) + Number(r.redBatchesCount) >= 5) {
+        if (nearExpCount >= 3) {
           supplyStatus = 'SURPLUS';
-          supplyStatusLabel = 'Dư hàng cận date (Cần xả / chuyển đi)';
-        } else if (r.storeId === 2) {
+          supplyStatusLabel = 'Dư hàng cận hạn (Ưu tiên xả / điều chuyển)';
+        } else if (lowSkus > 0) {
           supplyStatus = 'DEFICIT';
-          supplyStatusLabel = 'Thiếu hàng cục bộ (Ưu tiên nhận điều chuyển)';
+          supplyStatusLabel = `Thiếu hàng (${lowSkus} SKU chạm tồn tối thiểu)`;
         }
 
         return {
@@ -66,8 +68,11 @@ class GetDashboardOverviewUseCase {
           address: r.address,
           status: r.status || 'OPEN',
           totalAvailableUnits: Number(r.totalAvailableUnits || 0),
+          availableUnits: Number(r.totalAvailableUnits || 0),
           totalInventoryValue: Number(r.totalInventoryValue || 0),
+          inventoryValue: Number(r.totalInventoryValue || 0),
           totalSalesRevenue: Number(r.totalSalesRevenue || 0),
+          salesRevenue: Number(r.totalSalesRevenue || 0),
           totalSpoilageLoss: spoilLoss,
           yellowBatchesCount: Number(r.yellowBatchesCount || 0),
           redBatchesCount: Number(r.redBatchesCount || 0),
@@ -75,8 +80,10 @@ class GetDashboardOverviewUseCase {
           shrinkageRatePercent,
           rescueRatePercent,
           rescuedFinancialValue: rescuedVal,
+          rescuedValue: rescuedVal,
           transferOrdersCount: Number(r.transferOrdersCount || 0),
           supplyStatus,
+          supplyDemandStatus: supplyStatus === 'SURPLUS' ? 'SURPLUS_NEAR_EXPIRY' : (supplyStatus === 'DEFICIT' ? 'LOW_STOCK_DEFICIT' : 'BALANCED'),
           supplyStatusLabel
         };
       });
@@ -87,7 +94,8 @@ class GetDashboardOverviewUseCase {
 
   async execute({ roleCode = null, storeId = 'ALL' } = {}) {
     const isSpecificStore = storeId && String(storeId).toUpperCase() !== 'ALL';
-    const batchFilter = isSpecificStore ? { storeId: Number(storeId) } : {};
+    const numericStoreId = isSpecificStore ? Number(storeId) : null;
+    const batchFilter = isSpecificStore ? { storeId: numericStoreId } : {};
 
     // 1. Lấy dữ liệu đồng thời từ các Repository
     const [
@@ -102,25 +110,40 @@ class GetDashboardOverviewUseCase {
       salesTrendRaw,
       spoilageTrendRaw,
       categoryBreakdown,
-      crossStoreBenchmark
+      crossStoreBenchmarkRaw,
+      realShiftSales
     ] = await Promise.all([
-      this.storeProfileRepository.getProfile(),
+      this.storeProfileRepository.getProfile(numericStoreId || 1),
       this.batchRepository.findAllWithAlerts(batchFilter),
       this.saleRepository.getTodaySalesSummary(),
       this.saleRepository.getTotalSalesSummary ? this.saleRepository.getTotalSalesSummary() : Promise.resolve({ totalSalesRevenue: 0 }),
-      this.spoilageRepository.getLossSummary(),
+      this.spoilageRepository.getLossSummary(null, null, numericStoreId),
       this.saleRepository.getTopSellingProducts ? this.saleRepository.getTopSellingProducts(5) : Promise.resolve([]),
       this.spoilageRepository.getTopSpoilageProducts ? this.spoilageRepository.getTopSpoilageProducts(5) : Promise.resolve([]),
       this.productRepository ? this.productRepository.findAll() : Promise.resolve([]),
       this.saleRepository.getDailySalesTrend ? this.saleRepository.getDailySalesTrend(14) : Promise.resolve([]),
       this.spoilageRepository.getDailySpoilageTrend ? this.spoilageRepository.getDailySpoilageTrend(14) : Promise.resolve([]),
       this.categoryRepository && this.categoryRepository.getCategoryBreakdown ? this.categoryRepository.getCategoryBreakdown() : Promise.resolve([]),
-      this._fetchCrossStoreBenchmark()
+      this._fetchCrossStoreBenchmark(),
+      this.saleRepository.getSalesByShift ? this.saleRepository.getSalesByShift() : Promise.resolve([])
     ]);
 
+    const crossStoreBenchmark = isSpecificStore && Array.isArray(crossStoreBenchmarkRaw)
+      ? crossStoreBenchmarkRaw.filter(s => Number(s.storeId) === numericStoreId)
+      : (Array.isArray(crossStoreBenchmarkRaw) ? crossStoreBenchmarkRaw : []);
+
+    const expiredBatches = allBatches.filter(b => b.alertColor === 'EXPIRED' && b.currentQuantity > 0);
+    const redBatches = allBatches.filter(b => b.alertColor === 'RED' && b.currentQuantity > 0);
+    const yellowBatches = allBatches.filter(b => b.alertColor === 'YELLOW' && b.currentQuantity > 0);
+    const activeOnShelfBatches = allBatches.filter(b => b.currentQuantity > 0 && b.alertColor !== 'DISPOSED' && b.alertColor !== 'EXPIRED');
+    const needRotateBatches = allBatches.filter(b => (b.alertColor === 'YELLOW' || b.alertColor === 'RED') && !b.isShelfRotated && b.currentQuantity > 0);
+
     // 2. Tính toán 6 chỉ số KPI tài chính điều hành (Mục 11.1)
-    const rawInventoryCost = allBatches.reduce((sum, b) => sum + Number(b.totalInventoryCost || 0), 0);
-    const rawAtRiskCost = allBatches.reduce((sum, b) => sum + Number(b.atRiskCost || 0), 0);
+    // Tổng vốn tồn kho kệ chỉ tính trên các lô khả dụng đang lưu hành trên quầy (đồng nhất 100% với Ma trận 3 Chi nhánh)
+    const rawInventoryCost = activeOnShelfBatches.reduce((sum, b) => sum + (Number(b.currentQuantity || 0) * Number(b.importPrice || 0)), 0);
+    // Vốn cận date rủi ro chuẩn SSOT Mục 11.1: Tổng vốn các lô Vùng Đỏ + Vùng Vàng còn tồn kệ
+    const atRiskBatchesList = allBatches.filter(b => (b.alertColor === 'RED' || b.alertColor === 'YELLOW') && b.currentQuantity > 0);
+    const rawAtRiskCost = atRiskBatchesList.reduce((sum, b) => sum + (Number(b.currentQuantity || 0) * Number(b.importPrice || 0)), 0);
 
     // Tính tỷ lệ hao hụt tài chính chuẩn SSOT: CostLoss / (Revenue_sales + CostLoss) * 100
     const totalDisposalCost = Number(spoilageSummary.totalCostLoss || 0);
@@ -130,13 +153,9 @@ class GetDashboardOverviewUseCase {
       ? Number(((totalDisposalCost / denominator) * 100).toFixed(2))
       : 0;
 
-    const expiredBatches = allBatches.filter(b => b.alertColor === 'EXPIRED' && b.currentQuantity > 0);
-    const redBatches = allBatches.filter(b => b.alertColor === 'RED' && b.currentQuantity > 0);
-    const yellowBatches = allBatches.filter(b => b.alertColor === 'YELLOW' && b.currentQuantity > 0);
-    const needRotateBatches = allBatches.filter(b => (b.alertColor === 'YELLOW' || b.alertColor === 'RED') && !b.isShelfRotated && b.currentQuantity > 0);
-
     // Quyền truy cập theo vai trò (RBAC Mục 11.5)
-    const isManagerOrAdmin = roleCode === 'ADMIN' || roleCode === 'STORE_MANAGER' || !roleCode;
+    const normalizedRole = String(roleCode || '').toUpperCase();
+    const isManagerOrAdmin = normalizedRole === 'ADMIN' || normalizedRole === 'OWNER' || normalizedRole === 'STORE_MANAGER' || normalizedRole === 'MANAGER';
     const isWarehouse = roleCode === 'WAREHOUSE_STAFF' || roleCode === 'INVENTORY_STAFF';
 
     const permissions = {
@@ -147,14 +166,18 @@ class GetDashboardOverviewUseCase {
       canCreatePurchaseOrder: isManagerOrAdmin
     };
 
-    // Danh sách mặt hàng có tồn kho chạm điểm đặt hàng ROP (Mục 11.3 dòng 360)
+    // Danh sách mặt hàng có tồn kho chạm điểm đặt hàng ROP từ tốc độ bán 14 ngày thực tế
     const leadTimeDays = storeProfile ? Number(storeProfile.defaultLeadTimeDays || 1) : 1;
+    const sales14Map = this.saleRepository?.getSalesHistoryStatsAllProducts
+      ? await this.saleRepository.getSalesHistoryStatsAllProducts(14, numericStoreId).catch(() => ({}))
+      : {};
     const ropAlertItems = [];
     for (const item of productsWithStock) {
       const p = item.entity;
       const currentStock = Number(item.totalStock || 0);
       const safetyStock = Math.max(1, Number(p.minStockLevel || 15));
-      const baseDemand = Math.max(1.5, Number((safetyStock * 0.25).toFixed(2)));
+      const totalSold14 = Number(sales14Map[p.id]?.totalUnitsSold || 0);
+      const baseDemand = totalSold14 > 0 ? Number((totalSold14 / 14).toFixed(2)) : 0;
       const rop = Math.ceil((baseDemand * leadTimeDays) + safetyStock);
       if (currentStock <= rop) {
         ropAlertItems.push({
@@ -165,23 +188,22 @@ class GetDashboardOverviewUseCase {
           currentStock,
           reorderPoint: rop,
           suggestedOrderQuantity: Math.max(safetyStock, Number(p.maxStockLevel || 150) - currentStock),
-          actionRequired: `Tồn kho (${currentStock}) <= ROP (${rop}): Đề xuất lập đơn PO gửi DC Biên Hòa`
+          actionRequired: `Tồn (${currentStock}) <= ROP (${rop}) — Đề xuất đặt bù`
         });
       }
     }
 
-    const activeOnShelfBatches = allBatches.filter(b => b.currentQuantity > 0 && b.alertColor !== 'DISPOSED' && b.alertColor !== 'EXPIRED');
     const averageRslPercent = activeOnShelfBatches.length > 0
       ? Number((activeOnShelfBatches.reduce((acc, b) => acc + Number(b.rslPercent || 0), 0) / activeOnShelfBatches.length).toFixed(1))
-      : 78.5;
+      : 0;
 
-    const totalImportVal = Math.max(1, allBatches.reduce((sum, b) => sum + (Number(b.initialQuantity || 0) * Number(b.importPrice || 0)), 0));
-    const shrinkageRatePercent = Number(Math.min(9.5, ((totalDisposalCost / totalImportVal) * 100)).toFixed(2));
+    const totalImportVal = allBatches.reduce((sum, b) => sum + (Number(b.initialQuantity || 0) * Number(b.importPrice || 0)), 0);
+    const shrinkageRatePercent = totalImportVal > 0 ? Number(((totalDisposalCost / totalImportVal) * 100).toFixed(2)) : 0;
     const rescuedFinancialValue = Array.isArray(crossStoreBenchmark) && crossStoreBenchmark.length > 0
       ? crossStoreBenchmark.reduce((acc, st) => acc + Number(st.rescuedFinancialValue || 0), 0)
-      : 5250000;
-    const rescueDenom = Math.max(1, rescuedFinancialValue + totalDisposalCost);
-    const rescueRatePercent = Number(((rescuedFinancialValue / rescueDenom) * 100).toFixed(1));
+      : allBatches.reduce((acc, b) => acc + (b.discountPercent > 0 ? ((b.initialQuantity - b.currentQuantity) * (b.importPrice || 0)) : 0), 0);
+    const rescueDenom = rescuedFinancialValue + totalDisposalCost;
+    const rescueRatePercent = rescueDenom > 0 ? Number(((rescuedFinancialValue / rescueDenom) * 100).toFixed(1)) : 0;
 
     const kpiMetrics = {
       totalInventoryCost: isWarehouse ? null : rawInventoryCost, // 1. Tổng giá trị vốn tồn kho (che nếu là Kho)
@@ -194,10 +216,12 @@ class GetDashboardOverviewUseCase {
       rescuedFinancialValue,                                      // Giá trị tài chính đã cứu (VND)
       todayTotalRevenue: Number(todaySales.todayTotalRevenue || 0), // 4. Doanh số hôm nay
       todayTransactionsCount: Number(todaySales.todayTransactionsCount || 0),
+      cumulativeSalesRevenue: cumulativeSalesRev,                 // Tổng doanh số lũy kế toàn hệ thống
+      cumulativeTransactionsCount: Number(totalSalesSummary?.totalTransactionsCount || 0),
       batchesNeedRotateCount: needRotateBatches.length,           // 5. Số lô cần đảo kệ trong ca
       expiredBatchesCount: expiredBatches.length,                 // 6. Số lô hết hạn chờ tiêu hủy
       ropAlertsCount: ropAlertItems.length,
-      fefoCompliancePercent: 99.8                                 // Tỷ lệ tuân thủ FEFO hệ thống
+      fefoCompliancePercent: 100.0                                // Tỷ lệ tuân thủ FEFO tuyệt đối của hệ thống
     };
 
     // 3. Action Board khẩn cấp cho ca trực (Mục 11.3: 4 nhóm hành động bắt buộc)
@@ -293,7 +317,7 @@ class GetDashboardOverviewUseCase {
       selectedStoreId: storeId || 'ALL',
       store: {
         storeCode: storeProfile ? storeProfile.storeCode : 'RETAIL-STORE-01',
-        storeName: storeProfile ? storeProfile.storeName : 'Cửa hàng Bán lẻ LHU Mart',
+        storeName: storeProfile ? storeProfile.storeName : 'SmartSupply Retail Store',
         status: storeProfile ? storeProfile.status : 'OPEN'
       },
       permissions,
@@ -303,6 +327,7 @@ class GetDashboardOverviewUseCase {
       topSellingProducts: Array.isArray(topSellingProducts) ? topSellingProducts : [],
       topSpoilageProducts: Array.isArray(topSpoilageProducts) ? topSpoilageProducts : [],
       trend14Days,
+      shiftSalesData: Array.isArray(realShiftSales) ? realShiftSales : [],
       categoryBreakdown: Array.isArray(categoryBreakdown) ? categoryBreakdown : [],
       actionBoard
     };

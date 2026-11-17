@@ -30,7 +30,7 @@ class GetSaleReceiptUseCase {
     let store = null;
     if (this.storeProfileRepository && typeof this.storeProfileRepository.getProfile === 'function') {
       try {
-        store = await this.storeProfileRepository.getProfile();
+        store = await this.storeProfileRepository.getProfile(receipt.storeId || 1);
       } catch (e) {
         store = null;
       }
@@ -42,9 +42,9 @@ class GetSaleReceiptUseCase {
         ...receipt,
         store: {
           storeCode: store ? store.storeCode : 'RETAIL-STORE-01',
-          storeName: store ? store.storeName : 'Cửa hàng Bán lẻ Tiện lợi LHU Mart',
-          address: store ? store.address : 'Số 10 Huỳnh Văn Nghệ, P. Bửu Long, TP. Biên Hòa, Đồng Nai',
-          phone: store ? store.phone : '0251.3952.778'
+          storeName: store ? store.storeName : 'SmartSupply Retail Store',
+          address: store ? store.address : '',
+          phone: store ? store.phone : ''
         }
       }
     };

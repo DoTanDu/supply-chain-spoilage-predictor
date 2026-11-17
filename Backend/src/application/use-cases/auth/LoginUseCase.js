@@ -1,6 +1,7 @@
 // src/application/use-cases/auth/LoginUseCase.js
 const PasswordHasher = require('../../../infrastructure/security/PasswordHasher');
 const TokenService = require('../../../infrastructure/security/TokenService');
+const DemoPasswordPolicy = require('../../../infrastructure/security/DemoPasswordPolicy');
 const AuthDTO = require('../../dtos/AuthDTO');
 
 const MAX_FAILED_ATTEMPTS = 5;
@@ -94,10 +95,7 @@ class LoginUseCase {
 
     // 4. So khớp mật khẩu
     const isMatch = await PasswordHasher.compare(password, passwordHash);
-    const isSeedFallback = !isMatch && (
-      passwordHash === password ||
-      (passwordHash && (password === 'Password123@' || password === 'admin' || password === '123456'))
-    );
+    const isSeedFallback = !isMatch && DemoPasswordPolicy.matches(password, passwordHash);
 
     // 5. Xử lý khi SAI MẬT KHẨU (Lockout Policy)
     if (!isMatch && !isSeedFallback) {

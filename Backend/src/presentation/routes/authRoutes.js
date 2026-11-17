@@ -24,6 +24,9 @@ router.get('/me', authMiddleware, AuthController.getMe);
 // GET /api/auth/users (Chỉ ADMIN & STORE_MANAGER)
 router.get('/users', authMiddleware, roleMiddleware(['ADMIN', 'STORE_MANAGER']), AuthController.getUsers);
 
+// GET /api/auth/users/page-catalog (Danh mục 10 trang có thể bật/tắt phân quyền, chỉ ADMIN)
+router.get('/users/page-catalog', authMiddleware, roleMiddleware(['ADMIN']), AuthController.getPageCatalog);
+
 // PATCH /api/auth/users/:id/status (Khóa/Mở khóa tài khoản, chỉ ADMIN)
 router.patch('/users/:id/status', authMiddleware, roleMiddleware(['ADMIN']), AuthController.toggleUserStatus);
 

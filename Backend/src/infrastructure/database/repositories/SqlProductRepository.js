@@ -18,6 +18,7 @@ class SqlProductRepository extends IProductRepository {
         p.default_supplier_id AS supplierId,
         sup.name AS supplierName,
         p.unit,
+        ISNULL(p.pack_size, 1) AS packSize,
         p.cost_price AS costPrice,
         p.selling_price AS sellingPrice,
         p.standard_shelf_life_days AS standardShelfLifeDays,
@@ -55,6 +56,7 @@ class SqlProductRepository extends IProductRepository {
         p.default_supplier_id AS supplierId,
         sup.name AS supplierName,
         p.unit,
+        ISNULL(p.pack_size, 1) AS packSize,
         p.cost_price AS costPrice,
         p.selling_price AS sellingPrice,
         p.standard_shelf_life_days AS standardShelfLifeDays,
@@ -86,6 +88,7 @@ class SqlProductRepository extends IProductRepository {
         p.category_id AS categoryId,
         p.default_supplier_id AS supplierId,
         p.unit,
+        ISNULL(p.pack_size, 1) AS packSize,
         p.cost_price AS costPrice,
         p.selling_price AS sellingPrice,
         p.standard_shelf_life_days AS standardShelfLifeDays
@@ -104,6 +107,7 @@ class SqlProductRepository extends IProductRepository {
     const safeCat = Number(product.categoryId);
     const safeSup = Number(product.supplierId || 1);
     const safeUnit = SqlConnection.escapeSql(product.unit || 'Hộp');
+    const safePack = Math.max(1, Number(product.packSize) || 1);
     const safeCost = Number(product.costPrice) || 0;
     const safePrice = Number(product.sellingPrice) || 0;
     const safeShelf = Number(product.standardShelfLifeDays) || 30;
@@ -114,11 +118,11 @@ class SqlProductRepository extends IProductRepository {
 
     const sql = `
       INSERT INTO products (
-        sku, name, normalized_name, category_id, default_supplier_id, unit,
+        sku, name, normalized_name, category_id, default_supplier_id, unit, pack_size,
         cost_price, selling_price, standard_shelf_life_days, min_stock_level, max_stock_level,
         custom_warning_days, image_url, is_active, created_at, updated_at
       ) VALUES (
-        ${safeSku}, ${safeName}, ${safeNorm}, ${safeCat}, ${safeSup}, ${safeUnit},
+        ${safeSku}, ${safeName}, ${safeNorm}, ${safeCat}, ${safeSup}, ${safeUnit}, ${safePack},
         ${safeCost}, ${safePrice}, ${safeShelf}, ${safeMin}, ${safeMax},
         ${safeCustomWarn}, ${safeImg}, 1, GETDATE(), GETDATE()
       );
@@ -145,6 +149,9 @@ class SqlProductRepository extends IProductRepository {
     }
     if (data.unit !== undefined) {
       updates.push(`unit = ${SqlConnection.escapeSql(data.unit)}`);
+    }
+    if (data.packSize !== undefined) {
+      updates.push(`pack_size = ${Math.max(1, Number(data.packSize) || 1)}`);
     }
     if (data.costPrice !== undefined) {
       updates.push(`cost_price = ${Number(data.costPrice)}`);

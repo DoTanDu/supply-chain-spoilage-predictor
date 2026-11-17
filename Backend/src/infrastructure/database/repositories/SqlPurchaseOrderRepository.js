@@ -8,6 +8,7 @@ class SqlPurchaseOrderRepository extends IPurchaseOrderRepository {
    */
   async createOrderWithItems(purchaseOrder) {
     const code = SqlConnection.escapeSql(purchaseOrder.orderCode);
+    const storeId = Number(purchaseOrder.storeId || 1);
     const supId = Number(purchaseOrder.supplierId);
     const crBy = Number(purchaseOrder.createdBy);
     const apBy = purchaseOrder.approvedBy ? Number(purchaseOrder.approvedBy) : 'NULL';
@@ -44,10 +45,10 @@ class SqlPurchaseOrderRepository extends IPurchaseOrderRepository {
         DECLARE @NewOrderId INT;
 
         INSERT INTO purchase_orders (
-          order_code, supplier_id, created_by, approved_by, status,
+          order_code, store_id, supplier_id, created_by, approved_by, status,
           total_estimated_cost, expected_delivery_date, notes, created_at, updated_at
         ) VALUES (
-          ${code}, ${supId}, ${crBy}, ${apBy}, ${statusStr},
+          ${code}, ${storeId}, ${supId}, ${crBy}, ${apBy}, ${statusStr},
           ${cost}, ${expDeliv}, ${noteStr}, GETDATE(), GETDATE()
         );
 
@@ -75,6 +76,7 @@ class SqlPurchaseOrderRepository extends IPurchaseOrderRepository {
     const orderSql = `
       SELECT 
         po.id,
+        ISNULL(po.store_id, 1) AS storeId,
         po.order_code AS orderCode,
         po.supplier_id AS supplierId,
         s.name AS supplierName,
@@ -119,10 +121,15 @@ class SqlPurchaseOrderRepository extends IPurchaseOrderRepository {
     return order;
   }
 
-  async findRecentOrders(limit = 50) {
+  async findRecentOrders(limit = 50, storeId = null) {
+    let storeWhere = '1=1';
+    if (storeId && String(storeId).toUpperCase() !== 'ALL' && !isNaN(Number(storeId))) {
+      storeWhere = `ISNULL(po.store_id, 1) = ${Number(storeId)}`;
+    }
     const sql = `
       SELECT TOP (${Number(limit)})
         po.id,
+        ISNULL(po.store_id, 1) AS storeId,
         po.order_code AS orderCode,
         po.supplier_id AS supplierId,
         s.name AS supplierName,
@@ -156,6 +163,7 @@ class SqlPurchaseOrderRepository extends IPurchaseOrderRepository {
       INNER JOIN suppliers s ON po.supplier_id = s.id
       INNER JOIN users u1 ON po.created_by = u1.id
       LEFT JOIN users u2 ON po.approved_by = u2.id
+      WHERE ${storeWhere}
       ORDER BY po.id DESC
       FOR JSON PATH;
     `;
@@ -167,8 +175,8 @@ class SqlPurchaseOrderRepository extends IPurchaseOrderRepository {
     }));
   }
 
-  async findAll() {
-    return await this.findRecentOrders(100);
+  async findAll(storeId = null) {
+    return await this.findRecentOrders(100, storeId);
   }
 
   async updateOrderStatus(orderId, status, managerId = null) {

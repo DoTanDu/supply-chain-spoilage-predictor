@@ -8,6 +8,7 @@ const WeatherCondition = require('../value-objects/WeatherCondition');
 class SaleOrder {
   constructor({
     transactionCode = null,
+    storeId = 1,
     cashierId = null,
     saleDate = new Date(),
     weather = 'NORMAL',
@@ -15,6 +16,7 @@ class SaleOrder {
     items = []
   }) {
     this.transactionCode = transactionCode || this.generateTransactionCode();
+    this.storeId = Number(storeId || 1);
     this.cashierId = cashierId ? Number(cashierId) : null;
     this.saleDate = new Date(saleDate);
     this.weatherCondition = new WeatherCondition(weather);

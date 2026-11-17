@@ -6,8 +6,8 @@ class GetStoreProfileUseCase {
     this.storeProfileRepository = storeProfileRepository;
   }
 
-  async execute() {
-    const profile = await this.storeProfileRepository.getProfile();
+  async execute(storeId = 1) {
+    const profile = await this.storeProfileRepository.getProfile(storeId);
     return StoreProfileDTO.toResponse(profile);
   }
 }

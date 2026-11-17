@@ -35,15 +35,16 @@ class SqlSaleRepository extends ISaleRepository {
           THROW 50001, N'Tranh chấp tồn kho đồng thời (Rule 3): Lô hàng không còn đủ số lượng khả dụng để xuất bán!', 1;
       `);
 
-      // 2. Chèn bản ghi lịch sử bán hàng đích danh theo mã lô
+      const safeStoreId = Number(saleOrder.storeId || 1);
+      // 2. Chèn bản ghi lịch sử bán hàng đích danh theo mã lô & chi nhánh
       salesInserts.push(`
         INSERT INTO sales_history (
-          transaction_code, product_id, batch_id, quantity_sold, sale_price,
+          transaction_code, store_id, product_id, batch_id, quantity_sold, sale_price,
           total_amount, sale_date, day_of_week, weather, is_holiday,
           cashier_id, created_at
         )
         VALUES (
-          ${txnCode}, ${pId}, ${bId}, ${qty}, ${price},
+          ${txnCode}, ${safeStoreId}, ${pId}, ${bId}, ${qty}, ${price},
           ${total}, ${safeDate}, ${safeDayOfWeek}, ${safeWeather}, ${safeHoliday},
           ${safeCashier}, GETDATE()
         );
@@ -88,9 +89,11 @@ class SqlSaleRepository extends ISaleRepository {
   /**
    * Lấy lịch sử số lượng bán trong N ngày gần nhất (phục vụ dự báo ROP Rule 8)
    */
-  async getSalesHistoryByProduct(productId, days = 14) {
+  async getSalesHistoryByProduct(productId, days = 14, storeId = null) {
     const safeProdId = Number(productId);
     const safeDays = Number(days);
+    const hasStore = storeId && Number(storeId) > 0;
+    const storeFilter = hasStore ? `AND store_id = ${Number(storeId)}` : '';
 
     const sql = `
       SELECT 
@@ -99,6 +102,7 @@ class SqlSaleRepository extends ISaleRepository {
       FROM sales_history
       WHERE product_id = ${safeProdId}
         AND sale_date >= DATEADD(day, -${safeDays}, CAST(GETDATE() AS DATE))
+        ${storeFilter}
       GROUP BY sale_date
       ORDER BY sale_date ASC;
     `;
@@ -107,26 +111,53 @@ class SqlSaleRepository extends ISaleRepository {
   }
 
   /**
-   * Lấy lịch sử số lượng bán 14 ngày của toàn bộ sản phẩm trong 1 truy vấn duy nhất (Tối ưu hóa tốc độ ROP)
+   * Lấy lịch sử số lượng bán N ngày của toàn bộ sản phẩm trong 1 truy vấn duy nhất (có thể lọc theo storeId)
    */
-  async getSalesHistoryAllProducts(days = 14) {
+  async getSalesHistoryAllProducts(days = 14, storeId = null) {
+    const statsMap = await this.getSalesHistoryStatsAllProducts(days, storeId);
+    const map = {};
+    for (const [pId, stat] of Object.entries(statsMap)) {
+      map[pId] = stat.dailyQuantities;
+    }
+    return map;
+  }
+
+  /**
+   * Lấy thống kê chi tiết lịch sử bán N ngày (chuỗi sản lượng ngày, số ngày có giao dịch, số giao dịch)
+   */
+  async getSalesHistoryStatsAllProducts(days = 14, storeId = null) {
     const safeDays = Number(days);
+    const hasStore = storeId && Number(storeId) > 0;
+    const storeFilter = hasStore ? `AND store_id = ${Number(storeId)}` : '';
     const sql = `
       SELECT 
         product_id AS productId,
-        sale_date AS saleDate,
-        SUM(quantity_sold) AS dailyQuantity
+        CONVERT(VARCHAR(10), sale_date, 23) AS saleDay,
+        SUM(quantity_sold) AS dailyQuantity,
+        COUNT(*) AS txCount
       FROM sales_history
       WHERE sale_date >= DATEADD(day, -${safeDays}, CAST(GETDATE() AS DATE))
-      GROUP BY product_id, sale_date
-      ORDER BY product_id ASC, sale_date ASC;
+        ${storeFilter}
+      GROUP BY product_id, CONVERT(VARCHAR(10), sale_date, 23)
+      ORDER BY product_id ASC, saleDay ASC;
     `;
     const rows = await SqlConnection.queryJson(sql);
     const map = {};
     for (const r of rows) {
       const pId = Number(r.productId);
-      if (!map[pId]) map[pId] = [];
-      map[pId].push(Number(r.dailyQuantity || 0));
+      if (!map[pId]) {
+        map[pId] = {
+          dailyQuantities: [],
+          historyDaysCount: 0,
+          transactionCount: 0,
+          totalUnitsSold: 0
+        };
+      }
+      const qty = Number(r.dailyQuantity || 0);
+      map[pId].dailyQuantities.push(qty);
+      map[pId].historyDaysCount += 1;
+      map[pId].transactionCount += Number(r.txCount || 0);
+      map[pId].totalUnitsSold += qty;
     }
     return map;
   }
@@ -201,7 +232,7 @@ class SqlSaleRepository extends ISaleRepository {
   /**
    * Nhập hàng loạt dữ liệu lịch sử bán hàng POS từ Excel/CSV (Phase 6)
    */
-  async importPosSalesRows(rows = [], cashierId = 1) {
+  async importPosSalesRows(rows = [], cashierId = 1, enforcedStoreId = null) {
     if (!Array.isArray(rows) || rows.length === 0) {
       const err = new Error('Danh sách dữ liệu nhập POS không được để trống!');
       err.statusCode = 400;
@@ -238,6 +269,32 @@ class SqlSaleRepository extends ISaleRepository {
       storeCodeMap[String(s.storeCode || '').toUpperCase().trim()] = Number(s.id);
     }
 
+    const scopedSid = enforcedStoreId !== null && enforcedStoreId !== undefined ? Number(enforcedStoreId) : null;
+    if (scopedSid) {
+      for (let i = 0; i < rows.length; i++) {
+        const raw = rows[i] || {};
+        const rawSid = raw.storeId !== undefined && raw.storeId !== null ? String(raw.storeId).trim() : '';
+        const rawSCode = String(raw.storeCode || '').toUpperCase().trim();
+        if (rawSid !== '') {
+          if (rawSid.toUpperCase() === 'ALL' || Number(rawSid) !== scopedSid) {
+            const err = new Error(`Từ chối nhập dữ liệu liên chi nhánh (403 Forbidden) tại dòng ${i + 1}: Bạn chỉ được phép nhập doanh số cho Chi nhánh #${scopedSid}.`);
+            err.statusCode = 403;
+            err.code = 'ERR_STORE_SCOPE_FORBIDDEN';
+            throw err;
+          }
+        }
+        if (rawSCode !== '') {
+          const mappedSid = storeCodeMap[rawSCode];
+          if (!mappedSid || mappedSid !== scopedSid) {
+            const err = new Error(`Từ chối nhập dữ liệu liên chi nhánh (403 Forbidden) tại dòng ${i + 1}: Mã cửa hàng [${rawSCode}] không thuộc Chi nhánh #${scopedSid}.`);
+            err.statusCode = 403;
+            err.code = 'ERR_STORE_SCOPE_FORBIDDEN';
+            throw err;
+          }
+        }
+      }
+    }
+
     const validInserts = [];
     const errors = [];
     const daysOfWeek = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
@@ -259,7 +316,7 @@ class SqlSaleRepository extends ISaleRepository {
       }
 
       const rawStoreCode = String(raw.storeCode || '').toUpperCase().trim();
-      const targetStoreId = Number(raw.storeId) || storeCodeMap[rawStoreCode] || 1;
+      const targetStoreId = scopedSid || Number(raw.storeId) || storeCodeMap[rawStoreCode] || 1;
 
       const matchedBatch = (batches || []).find(b => Number(b.productId) === Number(prod.id) && Number(b.storeId || 1) === targetStoreId)
         || (batches || []).find(b => Number(b.productId) === Number(prod.id));
@@ -384,6 +441,45 @@ class SqlSaleRepository extends ISaleRepository {
   }
 
   /**
+   * Truy vấn doanh số thực tế 100% theo 4 ca trực trong ngày từ sales_history
+   */
+  async getSalesByShift() {
+    const sql = `
+      SELECT 
+        CASE 
+          WHEN DATEPART(hour, created_at) >= 6 AND DATEPART(hour, created_at) < 11 THEN 'MORNING'
+          WHEN DATEPART(hour, created_at) >= 11 AND DATEPART(hour, created_at) < 15 THEN 'NOON'
+          WHEN DATEPART(hour, created_at) >= 15 AND DATEPART(hour, created_at) < 19 THEN 'AFTERNOON'
+          ELSE 'EVENING'
+        END AS shiftCode,
+        COUNT(DISTINCT transaction_code) AS billCount,
+        COALESCE(SUM(total_amount), 0) AS totalRevenue
+      FROM sales_history
+      GROUP BY 
+        CASE 
+          WHEN DATEPART(hour, created_at) >= 6 AND DATEPART(hour, created_at) < 11 THEN 'MORNING'
+          WHEN DATEPART(hour, created_at) >= 11 AND DATEPART(hour, created_at) < 15 THEN 'NOON'
+          WHEN DATEPART(hour, created_at) >= 15 AND DATEPART(hour, created_at) < 19 THEN 'AFTERNOON'
+          ELSE 'EVENING'
+        END;
+    `;
+    const rows = await SqlConnection.queryJson(sql);
+    const shiftMap = {
+      MORNING: { shift: 'Ca Sáng (06h - 11h)', revenue: 0, bills: 0 },
+      NOON: { shift: 'Ca Trưa (11h - 15h)', revenue: 0, bills: 0 },
+      AFTERNOON: { shift: 'Ca Chiều (15h - 19h)', revenue: 0, bills: 0 },
+      EVENING: { shift: 'Ca Tối (19h - 22h)', revenue: 0, bills: 0 }
+    };
+    (rows || []).forEach(r => {
+      if (shiftMap[r.shiftCode]) {
+        shiftMap[r.shiftCode].revenue = Number(r.totalRevenue || 0);
+        shiftMap[r.shiftCode].bills = Number(r.billCount || 0);
+      }
+    });
+    return Object.values(shiftMap);
+  }
+
+  /**
    * Truy vấn chi tiết hóa đơn bán lẻ POS theo mã giao dịch (Mục 22.6 Đặc tả SSOT: GET /api/sales/receipt/:txnCode)
    */
   async getReceiptByTxnCode(txnCode) {
@@ -391,6 +487,7 @@ class SqlSaleRepository extends ISaleRepository {
     const sql = `
       SELECT 
         sh.id,
+        ISNULL(sh.store_id, 1) AS storeId,
         sh.transaction_code AS transactionCode,
         sh.product_id AS productId,
         p.name AS productName,
@@ -426,6 +523,7 @@ class SqlSaleRepository extends ISaleRepository {
 
     return {
       transactionCode: first.transactionCode,
+      storeId: Number(first.storeId || 1),
       saleDate: first.saleDate,
       createdAt: first.createdAt,
       cashierId: first.cashierId,

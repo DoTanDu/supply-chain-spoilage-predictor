@@ -7,6 +7,7 @@ const ChangePasswordUseCase = require('../../application/use-cases/auth/ChangePa
 const CreateUserUseCase = require('../../application/use-cases/auth/CreateUserUseCase');
 const ResetPasswordUseCase = require('../../application/use-cases/auth/ResetPasswordUseCase');
 const UpdateUserUseCase = require('../../application/use-cases/auth/UpdateUserUseCase');
+const { resolveStoreScope, assertStoreOwnership } = require('../middlewares/storeScope');
 
 const userRepo = new SqlUserRepository();
 const auditRepo = new SqlAuditLogRepository();
@@ -50,7 +51,13 @@ class AuthController {
 
   static async getUsers(req, res, next) {
     try {
-      const users = await userRepo.findAll();
+      const scope = resolveStoreScope(req, req.query?.storeId, { adminDefault: 'ALL' });
+      if (!scope.ok) {
+        return res.status(scope.statusCode).json(scope.error);
+      }
+
+      const filterStoreId = scope.isOwner && scope.storeId === 'ALL' ? null : scope.storeId;
+      const users = await userRepo.findAll(filterStoreId);
       res.json({
         success: true,
         data: users.map(u => u.toSafeProfile())
@@ -150,7 +157,7 @@ class AuthController {
 
   static async createUser(req, res, next) {
     try {
-      const { username, password, fullName, email, phone, roleCode, roleId } = req.body;
+      const { username, password, fullName, email, phone, roleCode, roleId, storeId } = req.body;
       const performedBy = req.user;
       const ipAddress = req.ip || req.connection?.remoteAddress || '127.0.0.1';
 
@@ -162,6 +169,7 @@ class AuthController {
         phone,
         roleCode,
         roleId,
+        storeId,
         performedBy,
         ipAddress
       });
@@ -211,7 +219,7 @@ class AuthController {
   static async updateUser(req, res, next) {
     try {
       const { id } = req.params;
-      const { fullName, email, phone, roleCode, roleId } = req.body;
+      const { fullName, email, phone, roleCode, roleId, storeId, pagePermissions } = req.body;
       const performedBy = req.user;
       const ipAddress = req.ip || req.connection?.remoteAddress || '127.0.0.1';
 
@@ -222,6 +230,8 @@ class AuthController {
         phone,
         roleCode,
         roleId,
+        storeId,
+        pagePermissions,
         performedBy,
         ipAddress
       });
@@ -231,6 +241,24 @@ class AuthController {
       res.status(400).json({
         success: false,
         message: err.message
+      });
+    }
+  }
+
+  static async getPageCatalog(req, res) {
+    try {
+      const { MANAGEABLE_PAGES, OWNER_ONLY_PAGES } = require('../../domain/constants/pagePermissions');
+      return res.json({
+        success: true,
+        data: {
+          pages: MANAGEABLE_PAGES,
+          ownerOnlyPages: OWNER_ONLY_PAGES
+        }
+      });
+    } catch (err) {
+      return res.status(500).json({
+        success: false,
+        message: err.message || 'Lỗi tải danh sách trang phân quyền.'
       });
     }
   }
@@ -271,6 +299,10 @@ class AuthController {
           success: false,
           message: `Không tìm thấy người dùng ID [${targetId}].`
         });
+      }
+      const ownership = assertStoreOwnership(req.user, user.storeId, `nhân sự ID [${targetId}]`);
+      if (!ownership.ok) {
+        return res.status(ownership.statusCode).json(ownership.error);
       }
       res.json({
         success: true,

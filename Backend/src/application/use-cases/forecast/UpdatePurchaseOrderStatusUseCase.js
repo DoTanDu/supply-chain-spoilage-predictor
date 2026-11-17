@@ -49,7 +49,7 @@ class UpdatePurchaseOrderStatusUseCase {
     // Ghi nhật ký kiểm toán bất biến
     if (this.auditLogRepository) {
       const actionMsg = statusNorm === 'SUBMITTED'
-        ? `Gửi đơn đặt hàng ${order.orderCode} sang Kho tổng DC Biên Hòa.`
+        ? `Gửi đơn đặt hàng ${order.orderCode} sang Kho tổng / Nhà cung cấp.`
         : `Cập nhật trạng thái đơn ${order.orderCode} thành [${statusNorm}].`;
 
       await this.auditLogRepository.log({
@@ -68,7 +68,7 @@ class UpdatePurchaseOrderStatusUseCase {
       orderCode: order.orderCode,
       status: statusNorm,
       message: statusNorm === 'SUBMITTED'
-        ? `Đã gửi thành công đơn đặt hàng ${order.orderCode} về Kho tổng DC Biên Hòa!`
+        ? `Đã gửi thành công đơn đặt hàng ${order.orderCode}!`
         : `Đã cập nhật trạng thái đơn hàng thành ${statusNorm}!`
     };
   }

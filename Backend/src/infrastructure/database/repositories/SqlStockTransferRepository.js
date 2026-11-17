@@ -1,223 +1,219 @@
 // src/infrastructure/database/repositories/SqlStockTransferRepository.js
-const fs = require('fs');
 const path = require('path');
-const { exec } = require('child_process');
+const { spawn } = require('child_process');
 const SqlConnection = require('../sqlConnection');
+const WeatherCondition = require('../../../domain/value-objects/WeatherCondition');
+const RealEnvironmentService = require('../../services/RealEnvironmentService');
 
-const WEIGHTS_JSON_PATH = path.join(__dirname, '../../../../ai_engine/pretrained_lgbm_weights.json');
 const PREDICT_CLI_PATH = path.join(__dirname, '../../../../ai_engine/predict_cli.py');
 
 class SqlStockTransferRepository {
   /**
-   * Đọc thông số Pre-trained LightGBM Model từ file JSON đã xuất
+   * Chạy kiểm thử trực tiếp file .pkl trên dữ liệu bán hàng thực tế trong SQL Server + thời tiết Open-Meteo
    */
-  loadPretrainedBundle() {
-    try {
-      const raw = fs.readFileSync(WEIGHTS_JSON_PATH, 'utf8');
-      return JSON.parse(raw);
-    } catch (err) {
-      console.error('[AI ENGINE] Không thể đọc pretrained_lgbm_weights.json:', err.message);
-      return null;
-    }
-  }
+  async runLivePklInference(limit = 12) {
+    const safeLimit = Math.max(1, Math.min(50, Number(limit) || 12));
+    const [liveEnv, dbRows] = await Promise.all([
+      RealEnvironmentService.getLiveEnvironment({ storeId: 1 }).catch(() => null),
+      SqlConnection.queryJson(`
+        SELECT TOP (${safeLimit})
+          ISNULL(sh.store_id, 1) AS store_id,
+          ISNULL(sp.store_code, 'RETAIL-STORE-01') AS store_code,
+          p.id AS product_id,
+          p.sku,
+          p.name AS product_name,
+          ISNULL(p.standard_shelf_life_days, 14) AS shelf_life_days,
+          ISNULL((SELECT MAX(b.discount_percent) FROM dbo.batches b WHERE b.product_id = p.id AND b.store_id = ISNULL(sh.store_id, 1) AND b.current_quantity > 0), 0) AS discount_pct,
+          CAST(ISNULL(SUM(CASE WHEN sh.sale_date >= DATEADD(day, -7, CAST(GETDATE() AS DATE)) THEN sh.quantity_sold ELSE 0 END), 0) / 7.0 AS FLOAT) AS rolling_mean_7d,
+          CAST(ISNULL(SUM(CASE WHEN sh.sale_date >= DATEADD(day, -14, CAST(GETDATE() AS DATE)) THEN sh.quantity_sold ELSE 0 END), 0) / 14.0 AS FLOAT) AS rolling_mean_14d,
+          CAST(ISNULL((SELECT TOP 1 s2.quantity_sold FROM dbo.sales_history s2 WHERE s2.product_id = p.id AND ISNULL(s2.store_id, 1) = ISNULL(sh.store_id, 1) ORDER BY s2.sale_date DESC, s2.id DESC), 0) AS FLOAT) AS lag_1d,
+          CAST(ISNULL(SUM(sh.quantity_sold) / NULLIF(COUNT(DISTINCT CONVERT(VARCHAR(10), sh.sale_date, 23)), 0), 0) AS FLOAT) AS actual_demand
+        FROM dbo.sales_history sh
+        INNER JOIN dbo.products p ON sh.product_id = p.id
+        LEFT JOIN dbo.store_profile sp ON ISNULL(sh.store_id, 1) = sp.id
+        GROUP BY ISNULL(sh.store_id, 1), sp.store_code, p.id, p.sku, p.name, p.standard_shelf_life_days
+        ORDER BY SUM(sh.quantity_sold) DESC;
+      `).catch(() => [])
+    ]);
 
-  /**
-   * Chạy kiểm thử trực tiếp file .pkl trên tập sample_retail_dataset.csv qua Python CLI
-   */
-  runLivePklInference(limit = 10) {
+    if (!dbRows || dbRows.length === 0) {
+      throw new Error('Chưa có dữ liệu giao dịch bán hàng thực tế trong SQL Server để kiểm định mô hình .pkl.');
+    }
+
+    const now = new Date();
+    const dow = now.getDay();
+    const liveTemp = liveEnv?.current?.temp ?? 28;
+    const cond = liveEnv?.current?.condition || 'NORMAL';
+    const wCode = cond === 'RAINY' ? 2 : cond === 'SUNNY' ? 1 : 0;
+    const isHoliday = liveEnv?.calendar?.isPublicHoliday ? 1 : 0;
+
+    const payloadRows = dbRows.map(r => ({
+      store_id: Number(r.store_id || 1),
+      store_code: r.store_code || 'RETAIL-STORE-01',
+      product_id: Number(r.product_id),
+      sku: r.sku,
+      product_name: r.product_name,
+      day_of_week: dow,
+      is_weekend: (dow === 0 || dow === 6) ? 1 : 0,
+      is_holiday: isHoliday,
+      weather_code: wCode,
+      temperature_c: Number(liveTemp),
+      discount_pct: Number(r.discount_pct || 0),
+      shelf_life_days: Number(r.shelf_life_days || 14),
+      lag_1d: Number(r.lag_1d || 0),
+      lag_7d: Number(r.rolling_mean_7d || 0),
+      rolling_mean_7d: Number(r.rolling_mean_7d || 0),
+      rolling_mean_14d: Number(r.rolling_mean_14d || 0),
+      actual_demand: Number(r.actual_demand || 0)
+    }));
+
     return new Promise((resolve, reject) => {
-      const safeLimit = Math.max(1, Math.min(50, Number(limit) || 10));
       const pyBin = process.platform === 'win32' ? 'py' : 'python3';
-      const cmd = `${pyBin} "${PREDICT_CLI_PATH}" ${safeLimit}`;
-      exec(cmd, { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
-        if (err) {
-          return reject(new Error(stderr || err.message));
+      const child = spawn(pyBin, [PREDICT_CLI_PATH], { windowsHide: true });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.on('data', d => { stdout += d.toString(); });
+      child.stderr.on('data', d => { stderr += d.toString(); });
+      child.on('error', err => reject(err));
+      child.on('close', (code) => {
+        if (code !== 0) {
+          return reject(new Error(stderr || `Python process exited with code ${code}`));
         }
         try {
-          const parsed = JSON.parse(stdout.trim());
-          resolve(parsed);
+          resolve(JSON.parse(stdout.trim()));
         } catch (parseErr) {
           reject(new Error('Lỗi phân tích kết quả JSON từ Python AI CLI: ' + parseErr.message));
         }
       });
+      child.stdin.write(JSON.stringify({ rows: payloadRows }));
+      child.stdin.end();
     });
   }
 
   /**
-   * Đảm bảo CSDL có đầy đủ dữ liệu mẫu 24 dòng ai_forecasts và 4 phiếu stock_transfers chuẩn 3NF
+   * Ma trận Cân bằng Cung - Cầu các Chi nhánh hoàn toàn từ SQL Server + Thời tiết & Lịch lễ thực tế
    */
-  async ensureSeedDataInSql() {
-    const checkSql = `
-      SELECT 
-        (SELECT COUNT(*) FROM dbo.ai_forecasts) AS forecastCount,
-        (SELECT COUNT(*) FROM dbo.stock_transfers) AS transferCount
-    `;
-    const counts = await SqlConnection.queryJson(checkSql);
-    const fcCount = counts[0]?.forecastCount || 0;
-    const trCount = counts[0]?.transferCount || 0;
+  async getAiSupplyChainMatrix({ weather = 'AUTO', isHoliday = 'auto' } = {}) {
+    const [stores, products, batchSummary, fefoBatchRows, salesRows14d, liveEnv] = await Promise.all([
+      SqlConnection.queryJson(`
+        SELECT id, store_code AS storeCode, store_name AS storeName, address, phone, status
+        FROM dbo.store_profile
+        WHERE ISNULL(status, 'OPEN') <> 'SUSPENDED'
+        ORDER BY id ASC
+      `),
+      SqlConnection.queryJson(`
+        SELECT p.id AS product_id, p.sku, p.name, p.standard_shelf_life_days AS shelf_life,
+               p.cost_price AS cost, p.selling_price AS price,
+               p.min_stock_level AS minStockLevel, ISNULL(c.name, N'FMCG') AS categoryName
+        FROM dbo.products p
+        LEFT JOIN dbo.categories c ON p.category_id = c.id
+        WHERE p.is_active = 1
+        ORDER BY p.id ASC
+      `),
+      SqlConnection.queryJson(`
+        SELECT
+          b.store_id AS storeId,
+          b.product_id AS productId,
+          SUM(b.current_quantity) AS totalStock,
+          SUM(CASE WHEN DATEDIFF(day, CAST(GETDATE() AS DATE), b.expiry_date) BETWEEN 1 AND 7 THEN b.current_quantity ELSE 0 END) AS nearExpiryStock,
+          MIN(DATEDIFF(day, CAST(GETDATE() AS DATE), b.expiry_date)) AS minDaysLeft
+        FROM dbo.batches b
+        WHERE b.current_quantity > 0
+          AND b.status IN ('ACTIVE', 'WARNING')
+          AND b.expiry_date > CAST(GETDATE() AS DATE)
+        GROUP BY b.store_id, b.product_id
+      `),
+      SqlConnection.queryJson(`
+        SELECT
+          b.id,
+          b.store_id AS storeId,
+          b.product_id AS productId,
+          b.batch_code AS batchCode,
+          b.current_quantity AS currentQuantity,
+          DATEDIFF(day, CAST(GETDATE() AS DATE), b.expiry_date) AS daysLeft
+        FROM dbo.batches b
+        WHERE b.current_quantity > 0
+          AND b.status IN ('ACTIVE', 'WARNING')
+          AND DATEDIFF(day, CAST(GETDATE() AS DATE), b.expiry_date) >= 2
+        ORDER BY b.expiry_date ASC, b.id ASC
+      `),
+      SqlConnection.queryJson(`
+        SELECT
+          ISNULL(sh.store_id, 1) AS storeId,
+          sh.product_id AS productId,
+          SUM(sh.quantity_sold) AS totalSold14d,
+          COUNT(DISTINCT CONVERT(VARCHAR(10), sh.sale_date, 23)) AS activeDays
+        FROM dbo.sales_history sh
+        WHERE sh.sale_date >= DATEADD(day, -14, CAST(GETDATE() AS DATE))
+        GROUP BY ISNULL(sh.store_id, 1), sh.product_id
+      `).catch(() => []),
+      RealEnvironmentService.getLiveEnvironment({ storeId: 1 }).catch(() => null)
+    ]);
 
-    if (trCount < 4) {
-      const seedTransfersSql = `
-        DECLARE @b1 INT = (SELECT TOP 1 id FROM dbo.batches WHERE product_id = 1 AND current_quantity >= 20 ORDER BY expiry_date ASC, id ASC);
-        DECLARE @b2 INT = (SELECT TOP 1 id FROM dbo.batches WHERE product_id = 2 AND current_quantity >= 15 ORDER BY expiry_date ASC, id ASC);
-        DECLARE @bFallback INT = (SELECT TOP 1 id FROM dbo.batches WHERE current_quantity > 0 ORDER BY id ASC);
-        IF @b1 IS NULL SET @b1 = @bFallback;
-        IF @b2 IS NULL SET @b2 = @bFallback;
+    const reqW = String(weather || 'AUTO').toUpperCase();
+    const wKey = ['NORMAL', 'SUNNY', 'RAINY'].includes(reqW) ? reqW : (liveEnv?.current?.condition || 'NORMAL');
+    const effHoliday = (isHoliday === 'auto' || isHoliday === undefined)
+      ? Boolean(liveEnv?.calendar?.isHoliday)
+      : (isHoliday === true || isHoliday === 'true');
+    const holidayMultiplier = effHoliday ? 1.30 : 1.0;
 
-        IF @b1 IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.stock_transfers WHERE transfer_code = N'TRF-20261105-002')
-        BEGIN
-          INSERT INTO dbo.stock_transfers (
-            transfer_code, from_store_id, to_store_id, product_id, source_batch_id,
-            transfer_quantity, shipping_cost, status, ai_recommendation_note, requested_by, approved_by
-          )
-          VALUES (
-            N'TRF-20261105-002', 1, 2, 2, @b2,
-            18, 25000, N'PROPOSED',
-            N'[OR-Tools MILP] Chi nhánh Bửu Long (Store A) dư 32 hộp cận date, Chi nhánh Tân Phong (Store B) thiếu 24 hộp. Điều chuyển 18 hộp giúp cứu 648.000đ nguy cơ hủy hàng.',
-            2, NULL
-          );
-        END
-
-        IF @b1 IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.stock_transfers WHERE transfer_code = N'TRF-20261105-003')
-        BEGIN
-          INSERT INTO dbo.stock_transfers (
-            transfer_code, from_store_id, to_store_id, product_id, source_batch_id,
-            transfer_quantity, shipping_cost, status, ai_recommendation_note, requested_by, approved_by
-          )
-          VALUES (
-            N'TRF-20261105-003', 1, 3, 1, @b1,
-            12, 30000, N'IN_TRANSIT',
-            N'[OR-Tools MILP] Cân bằng tồn kho FEFO: Điều chuyển 12 hộp Sữa tươi Vinamilk 1L từ Store A sang Store C (Trảng Dài) đang thiếu hụt cục bộ.',
-            2, 1
-          );
-        END
-
-        IF @b1 IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.stock_transfers WHERE transfer_code = N'TRF-20261104-009')
-        BEGIN
-          INSERT INTO dbo.stock_transfers (
-            transfer_code, from_store_id, to_store_id, product_id, source_batch_id,
-            transfer_quantity, shipping_cost, status, ai_recommendation_note, requested_by, approved_by, received_at
-          )
-          VALUES (
-            N'TRF-20261104-009', 3, 2, 2, @b2,
-            10, 20000, N'RECEIVED',
-            N'[OR-Tools MILP] Hoàn tất điều chuyển 10 đơn vị từ Chi nhánh Trảng Dài sang Chi nhánh Tân Phong, tiết kiệm 360.000đ chi phí hủy hàng.',
-            2, 1, DATEADD(hour, -6, GETDATE())
-          );
-        END
-      `;
-      await SqlConnection.executeSql(seedTransfersSql);
-    }
-
-    if (fcCount < 12) {
-      const bundle = this.loadPretrainedBundle();
-      if (bundle && Array.isArray(bundle.predictions)) {
-        const normalPreds = bundle.predictions.filter(p => p.weather === 'NORMAL');
-        let insertStmts = [];
-        for (const p of normalPreds) {
-          const pred7d = Number(p.predictedDemand7d || 70);
-          const lower = Math.round(pred7d * 0.85 * 10) / 10;
-          const upper = Math.round(pred7d * 1.15 * 10) / 10;
-          const riskQty = p.storeId === 1 ? Math.round(pred7d * 0.22) : 0;
-          const sugOrder = p.storeId === 2 ? Math.round(pred7d * 0.35) : (p.storeId === 3 ? Math.round(pred7d * 0.20) : 0);
-          insertStmts.push(`
-            IF NOT EXISTS (SELECT 1 FROM dbo.ai_forecasts WHERE store_id = ${Number(p.storeId)} AND product_id = ${Number(p.productId)})
-            BEGIN
-              INSERT INTO dbo.ai_forecasts (
-                store_id, product_id, forecast_date, predicted_sales, lower_bound, upper_bound,
-                spoilage_risk_qty, suggested_order_qty, model_name, mae_metric
-              )
-              VALUES (
-                ${Number(p.storeId)}, ${Number(p.productId)}, CAST(DATEADD(day, 1, GETDATE()) AS DATE),
-                ${pred7d}, ${lower}, ${upper}, ${riskQty}, ${sugOrder},
-                N'LightGBM-HistGBT-v2.1', ${Number(bundle.metrics?.mae || 1.51)}
-              );
-            END
-          `);
-        }
-        if (insertStmts.length > 0) {
-          await SqlConnection.executeSql(insertStmts.join('\n'));
-        }
-      }
-    }
-  }
-
-  /**
-   * Lấy Ma trận Cân bằng Cung - Cầu 3 Chi nhánh + Đề xuất Tối ưu OR-Tools (MILP)
-   */
-  async getAiSupplyChainMatrix({ weather = 'NORMAL', isHoliday = false } = {}) {
-    await this.ensureSeedDataInSql();
-    const bundle = this.loadPretrainedBundle();
-    const wKey = ['NORMAL', 'SUNNY', 'RAINY'].includes(String(weather).toUpperCase())
-      ? String(weather).toUpperCase()
-      : 'NORMAL';
-    const holidayMultiplier = isHoliday ? 1.22 : 1.0;
-
-    // Truy vấn danh sách cửa hàng & tồn kho thực tế từ SQL Server
-    const stores = await SqlConnection.queryJson(`
-      SELECT id, store_code AS storeCode, store_name AS storeName, address, phone, status
-      FROM dbo.store_profile
-      ORDER BY id ASC
-    `);
-
-    const batchSummary = await SqlConnection.queryJson(`
-      SELECT 
-        b.store_id AS storeId,
-        b.product_id AS productId,
-        SUM(b.current_quantity) AS totalStock,
-        SUM(CASE WHEN DATEDIFF(day, CAST(GETDATE() AS DATE), b.expiry_date) BETWEEN 1 AND 7 THEN b.current_quantity ELSE 0 END) AS nearExpiryStock,
-        MIN(CASE WHEN b.current_quantity > 0 THEN b.id ELSE NULL END) AS earliestBatchId,
-        MIN(CASE WHEN b.current_quantity > 0 THEN b.batch_code ELSE NULL END) AS earliestBatchCode,
-        MIN(CASE WHEN b.current_quantity > 0 THEN DATEDIFF(day, CAST(GETDATE() AS DATE), b.expiry_date) ELSE NULL END) AS minDaysLeft
-      FROM dbo.batches b
-      WHERE b.current_quantity > 0 AND b.status IN ('ACTIVE', 'WARNING')
-      GROUP BY b.store_id, b.product_id
-    `);
+    const storeList = Array.isArray(stores) ? stores : [];
+    const storeCount = storeList.length;
+    const isSingleStore = storeCount <= 1;
 
     const batchMap = new Map();
-    for (const row of batchSummary) {
+    for (const row of (batchSummary || [])) {
       batchMap.set(`${row.storeId}_${row.productId}`, row);
     }
 
-    // Kịch bản tồn kho thực tế của 3 chi nhánh (Chi nhánh 1 lấy trực tiếp từ bảng batches + chuẩn hóa thực tế; Chi nhánh 2 & 3 mô phỏng trạng thái thiếu/cân bằng để đối sánh OR-Tools)
-    const simulatedStoreStockProfile = {
-      // product_id: { 1: Store A (dư cận date), 2: Store B (thiếu hàng), 3: Store C (vừa đủ / thiếu nhẹ) }
-      1: { 1: { stock: 165, nearExpiry: 45 }, 2: { stock: 95, nearExpiry: 0 }, 3: { stock: 80, nearExpiry: 5 } },
-      2: { 1: { stock: 140, nearExpiry: 38 }, 2: { stock: 110, nearExpiry: 0 }, 3: { stock: 92, nearExpiry: 0 } },
-      3: { 1: { stock: 155, nearExpiry: 25 }, 2: { stock: 145, nearExpiry: 0 }, 3: { stock: 110, nearExpiry: 0 } },
-      4: { 1: { stock: 145, nearExpiry: 20 }, 2: { stock: 130, nearExpiry: 0 }, 3: { stock: 95, nearExpiry: 0 } },
-      5: { 1: { stock: 118, nearExpiry: 34 }, 2: { stock: 72, nearExpiry: 0 }, 3: { stock: 68, nearExpiry: 6 } },
-      8: { 1: { stock: 112, nearExpiry: 18 }, 2: { stock: 98, nearExpiry: 0 }, 3: { stock: 74, nearExpiry: 0 } },
-      10: { 1: { stock: 96, nearExpiry: 28 }, 2: { stock: 58, nearExpiry: 0 }, 3: { stock: 52, nearExpiry: 0 } },
-      12: { 1: { stock: 88, nearExpiry: 30 }, 2: { stock: 54, nearExpiry: 0 }, 3: { stock: 48, nearExpiry: 4 } }
-    };
+    const salesMap = new Map();
+    let sufficientPairsCount = 0;
+    for (const r of (salesRows14d || [])) {
+      salesMap.set(`${r.storeId}_${r.productId}`, r);
+      if (Number(r.activeDays || 0) >= 7) sufficientPairsCount++;
+    }
+    const hasSufficientHistory = sufficientPairsCount > 0;
 
-    const products = bundle?.products || [];
-    const preds = (bundle?.predictions || []).filter(p => p.weather === wKey);
+    const fefoBatchesByKey = new Map();
+    for (const b of (fefoBatchRows || [])) {
+      const k = `${b.storeId}_${b.productId}`;
+      if (!fefoBatchesByKey.has(k)) fefoBatchesByKey.set(k, []);
+      fefoBatchesByKey.get(k).push(b);
+    }
+
+    const dailyEnvList = Array.isArray(liveEnv?.dailyForecast) && liveEnv.dailyForecast.length === 7
+      ? liveEnv.dailyForecast
+      : Array.from({ length: 7 }, () => ({ condition: wKey, isHoliday: effHoliday }));
 
     const matrixByProduct = [];
     const orToolsTransferProposals = [];
 
-    for (const prod of products) {
+    for (const prod of (products || [])) {
       const storeCells = [];
-      for (const st of stores) {
-        const predObj = preds.find(p => p.storeId === st.id && p.productId === prod.product_id);
-        const rawDemand7d = (predObj ? Number(predObj.predictedDemand7d) : prod.base_daily * 7) * holidayMultiplier;
-        const predictedDemand7d = Math.round(rawDemand7d * 10) / 10;
-        const safetyStock = Math.round(predictedDemand7d * 0.15);
+      for (const st of storeList) {
+        const sStat = salesMap.get(`${st.id}_${prod.product_id}`);
+        const dBase14 = sStat ? Number(sStat.totalSold14d || 0) / 14.0 : 0;
+
+        const dailySeries = dailyEnvList.map(day => {
+          if (dBase14 <= 0) return 0;
+          const wf = new WeatherCondition(day.condition || wKey).getDemandFactor(prod.categoryName || 'FMCG');
+          const hf = day.isHoliday ? 1.30 : holidayMultiplier;
+          return Math.round(dBase14 * wf * hf);
+        });
+        const predictedDemand7d = Math.round(dailySeries.reduce((s, v) => s + v, 0) * 10) / 10;
+        const safetyStock = Math.max(0, Number(prod.minStockLevel || 15));
 
         const liveBatch = batchMap.get(`${st.id}_${prod.product_id}`);
-        const simStock = simulatedStoreStockProfile[prod.product_id]?.[st.id] || { stock: 100, nearExpiry: 0 };
-
-        // Ưu tiên tồn kho thực cho Store 1 nhưng giới hạn hợp lý để hiển thị ma trận trực quan
-        const currentStock = simStock.stock;
-        const nearExpiryQty = simStock.nearExpiry;
+        const storeFefoBatches = fefoBatchesByKey.get(`${st.id}_${prod.product_id}`) || [];
+        const firstFefoBatch = storeFefoBatches[0] || null;
+        const currentStock = liveBatch ? Number(liveBatch.totalStock || 0) : 0;
+        const nearExpiryQty = liveBatch ? Number(liveBatch.nearExpiryStock || 0) : 0;
         const requiredTotal = Math.round(predictedDemand7d + safetyStock);
-        const netBalance = Math.round(currentStock - requiredTotal); // > 0: Dư hàng (Surplus), < 0: Thiếu hàng (Deficit)
+        const netBalance = Math.round(currentStock - requiredTotal);
 
-        const spoilageRiskProb = netBalance > 0
-          ? Math.min(0.95, Math.round((( netBalance + nearExpiryQty * 0.8) / Math.max(currentStock, 1)) * 100) / 100)
-          : 0.05;
+        const spoilageRiskProb = currentStock > 0 && (netBalance > 0 || nearExpiryQty > 0)
+          ? Math.min(1, Math.round(((Math.max(0, netBalance) + nearExpiryQty * 0.8) / Math.max(currentStock, 1)) * 100) / 100)
+          : 0;
 
         storeCells.push({
           storeId: st.id,
@@ -226,68 +222,79 @@ class SqlStockTransferRepository {
           currentStock,
           nearExpiryQty,
           predictedDemand7d,
-          dailySeries: predObj?.predictedDailySeries || [],
+          dailySeries,
           safetyStock,
           requiredTotal,
           netBalance,
           surplusQty: netBalance > 0 ? netBalance : 0,
           deficitQty: netBalance < 0 ? Math.abs(netBalance) : 0,
           spoilageRiskProb,
-          earliestBatchId: liveBatch?.earliestBatchId || 6,
-          earliestBatchCode: liveBatch?.earliestBatchCode || `LOT-FEFO-P${prod.product_id}`
+          earliestBatchId: firstFefoBatch?.id || null,
+          earliestBatchCode: firstFefoBatch?.batchCode || null,
+          earliestBatchQty: firstFefoBatch ? Number(firstFefoBatch.currentQuantity || 0) : 0,
+          fefoBatches: storeFefoBatches
         });
       }
 
-      // Giải bài toán tối ưu điều chuyển OR-Tools (MILP Heuristic) giữa cửa hàng DƯ và cửa hàng THIẾU
-      const surplusStores = storeCells.filter(c => c.surplusQty >= 8).sort((a, b) => b.surplusQty - a.surplusQty);
-      const deficitStores = storeCells.filter(c => c.deficitQty >= 8).sort((a, b) => b.deficitQty - a.deficitQty);
+      const surplusStores = isSingleStore ? [] : storeCells.filter(c => c.surplusQty >= 6).sort((a, b) => b.surplusQty - a.surplusQty);
+      const deficitStores = isSingleStore ? [] : storeCells.filter(c => c.deficitQty >= 6).sort((a, b) => b.deficitQty - a.deficitQty);
 
       let totalTransferredForProd = 0;
       const productTransfers = [];
 
-      for (const sStore of surplusStores) {
-        for (const dStore of deficitStores) {
-          const avail = sStore.surplusQty;
-          const needed = dStore.deficitQty;
-          if (avail >= 6 && needed >= 6) {
-            const transferQty = Math.min(avail, needed);
-            const shippingCost = 25000; // 25,000đ phí ship nội bộ TP. Biên Hòa
-            const savedSpoilageValue = transferQty * prod.cost;
-            const netBenefit = savedSpoilageValue - shippingCost;
+      if (!isSingleStore) {
+        for (const sStore of surplusStores) {
+          for (const dStore of deficitStores) {
+            const avail = sStore.surplusQty;
+            const needed = dStore.deficitQty;
+            if (avail >= 6 && needed >= 6 && Array.isArray(sStore.fefoBatches) && sStore.fefoBatches.length > 0) {
+              const desiredQty = Math.min(avail, needed);
+              const chosenBatch =
+                sStore.fefoBatches.find(b => Number(b.currentQuantity) >= desiredQty) ||
+                sStore.fefoBatches.slice().sort((a, b) => Number(b.currentQuantity) - Number(a.currentQuantity))[0];
 
-            if (netBenefit > 0) {
-              sStore.surplusQty -= transferQty;
-              dStore.deficitQty -= transferQty;
-              totalTransferredForProd += transferQty;
+              const transferQty = chosenBatch ? Math.min(desiredQty, Number(chosenBatch.currentQuantity || 0)) : 0;
+              if (!chosenBatch || transferQty < 1) continue;
 
-              const proposal = {
-                productId: prod.product_id,
-                sku: prod.sku,
-                productName: prod.name,
-                unitCost: prod.cost,
-                unitPrice: prod.price,
-                fromStoreId: sStore.storeId,
-                fromStoreCode: sStore.storeCode,
-                fromStoreName: sStore.storeName,
-                toStoreId: dStore.storeId,
-                toStoreCode: dStore.storeCode,
-                toStoreName: dStore.storeName,
-                sourceBatchId: sStore.earliestBatchId,
-                sourceBatchCode: sStore.earliestBatchCode,
-                transferQuantity: transferQty,
-                shippingCost,
-                savedSpoilageValue,
-                netFinancialBenefit: netBenefit,
-                aiReason: `[OR-Tools MILP] ${sStore.storeName} dư ${avail} ĐV (rủi ro cận date ${(sStore.spoilageRiskProb * 100).toFixed(0)}%), ${dStore.storeName} thiếu ${needed} ĐV (dự báo 7 ngày: ${dStore.predictedDemand7d} ĐV). Điều chuyển ${transferQty} ĐV tiết kiệm ${savedSpoilageValue.toLocaleString('vi-VN')}đ.`
-              };
-              productTransfers.push(proposal);
-              orToolsTransferProposals.push(proposal);
+              const shippingCost = 0;
+              const savedSpoilageValue = Math.round(transferQty * Number(prod.cost || 0));
+              const netBenefit = savedSpoilageValue - shippingCost;
+
+              if (netBenefit > 0) {
+                sStore.surplusQty -= transferQty;
+                dStore.deficitQty -= transferQty;
+                chosenBatch.currentQuantity = Math.max(0, Number(chosenBatch.currentQuantity) - transferQty);
+                totalTransferredForProd += transferQty;
+
+                const proposal = {
+                  productId: prod.product_id,
+                  sku: prod.sku,
+                  productName: prod.name,
+                  unitCost: Number(prod.cost || 0),
+                  unitPrice: Number(prod.price || 0),
+                  fromStoreId: sStore.storeId,
+                  fromStoreCode: sStore.storeCode,
+                  fromStoreName: sStore.storeName,
+                  toStoreId: dStore.storeId,
+                  toStoreCode: dStore.storeCode,
+                  toStoreName: dStore.storeName,
+                  sourceBatchId: chosenBatch.id,
+                  sourceBatchCode: chosenBatch.batchCode,
+                  sourceBatchDaysLeft: Number(chosenBatch.daysLeft),
+                  transferQuantity: transferQty,
+                  shippingCost,
+                  savedSpoilageValue,
+                  netFinancialBenefit: netBenefit,
+                  aiReason: `${sStore.storeName} dư ${avail} ĐV, ${dStore.storeName} thiếu ${needed} ĐV. Điều chuyển ${transferQty} ĐV từ lô ${chosenBatch.batchCode} (còn ${chosenBatch.daysLeft} ngày HSD).`
+                };
+                productTransfers.push(proposal);
+                orToolsTransferProposals.push(proposal);
+              }
             }
           }
         }
       }
 
-      // Lượng cần đặt thêm từ Kho tổng DC sau khi đã điều chuyển nội bộ
       const remainingDeficit = storeCells.reduce((acc, c) => acc + c.deficitQty, 0);
       const remainingSurplus = storeCells.reduce((acc, c) => acc + c.surplusQty, 0);
 
@@ -296,8 +303,8 @@ class SqlStockTransferRepository {
         sku: prod.sku,
         productName: prod.name,
         shelfLifeDays: prod.shelf_life,
-        unitCost: prod.cost,
-        unitPrice: prod.price,
+        unitCost: Number(prod.cost || 0),
+        unitPrice: Number(prod.price || 0),
         stores: storeCells,
         totalChainStock: storeCells.reduce((s, c) => s + c.currentStock, 0),
         totalChainDemand7d: Math.round(storeCells.reduce((s, c) => s + c.predictedDemand7d, 0) * 10) / 10,
@@ -308,15 +315,28 @@ class SqlStockTransferRepository {
       });
     }
 
+    const resolvedMetrics = hasSufficientHistory
+      ? { mae: null, rmse: null, mapePct: null, confidenceScore: null, isDataSufficient: true, warning: null }
+      : {
+          mae: null,
+          rmse: null,
+          mapePct: null,
+          confidenceScore: null,
+          isDataSufficient: false,
+          warning: 'Chưa đủ dữ liệu bán hàng thực tế tối thiểu 7 ngày — hệ thống không gán độ chính xác giả tạo.'
+        };
+
     return {
-      modelVersion: bundle?.modelVersion || 'LightGBM-HistGBT-v2.1-Pretrained',
-      optimizerEngine: bundle?.optimizerEngine || 'Google-OR-Tools-MILP-v1.4',
-      datasetFile: bundle?.datasetFile || 'sample_retail_dataset.csv',
-      totalDatasetRows: bundle?.totalDatasetRows || 1824,
-      metrics: bundle?.metrics || { mae: 1.508, rmse: 1.892, mapePct: 10.95, confidenceScore: 0.8905 },
+      modelVersion: 'ROP-Live-Sales-Weather',
+      optimizerEngine: 'FEFO-Chain-Rebalance',
+      datasetFile: 'SQL Server retail_spoilage_db + Open-Meteo',
+      totalDatasetRows: (salesRows14d || []).length,
+      metrics: resolvedMetrics,
+      isSingleStore,
+      storeCount,
       weather: wKey,
-      isHoliday: Boolean(isHoliday),
-      stores,
+      isHoliday: Boolean(effHoliday),
+      stores: storeList,
       matrixByProduct,
       orToolsTransferProposals
     };
@@ -326,7 +346,6 @@ class SqlStockTransferRepository {
    * Truy vấn danh sách toàn bộ Phiếu điều chuyển liên cửa hàng từ bảng dbo.stock_transfers
    */
   async getAllTransfers({ status, storeId } = {}) {
-    await this.ensureSeedDataInSql();
     let whereClauses = ['1=1'];
     if (status && status !== 'ALL') {
       whereClauses.push(`st.status = ${SqlConnection.escapeSql(String(status).toUpperCase())}`);
@@ -349,6 +368,7 @@ class SqlStockTransferRepository {
         st.product_id AS productId,
         p.sku,
         p.name AS productName,
+        COALESCE(c.storage_temperature, N'Nhiệt độ phòng (25°C)') AS storageTemperature,
         p.selling_price AS unitPrice,
         st.source_batch_id AS sourceBatchId,
         b.batch_code AS sourceBatchCode,
@@ -369,6 +389,7 @@ class SqlStockTransferRepository {
       INNER JOIN dbo.store_profile fs ON st.from_store_id = fs.id
       INNER JOIN dbo.store_profile ts ON st.to_store_id = ts.id
       INNER JOIN dbo.products p ON st.product_id = p.id
+      LEFT JOIN dbo.categories c ON p.category_id = c.id
       INNER JOIN dbo.batches b ON st.source_batch_id = b.id
       INNER JOIN dbo.users uReq ON st.requested_by = uReq.id
       LEFT JOIN dbo.users uApp ON st.approved_by = uApp.id
@@ -380,6 +401,7 @@ class SqlStockTransferRepository {
 
   /**
    * Tạo phiếu đề xuất điều chuyển liên cửa hàng mới (PROPOSED / APPROVED)
+   * Bắt buộc kiểm tra lô nguồn hợp lệ cùng chi nhánh xuất, đúng sản phẩm, còn hạn và đủ tồn kho (CHƯA trừ kho ở bước tạo).
    */
   async createTransfer({
     fromStoreId,
@@ -387,30 +409,154 @@ class SqlStockTransferRepository {
     productId,
     sourceBatchId,
     transferQuantity,
-    shippingCost = 25000,
+    shippingCost = 0,
     aiRecommendationNote = '',
     requestedBy = 2,
     autoApprove = false
   }) {
-    const fId = Number(fromStoreId || 1);
-    const tId = Number(toStoreId || 2);
-    const pId = Number(productId || 1);
-    const qty = Number(transferQuantity || 10);
-    const shipCost = Number(shippingCost || 25000);
+    const fId = Number(fromStoreId);
+    const tId = Number(toStoreId);
+    const pId = Number(productId);
+    const qty = Number(transferQuantity);
+    const shipCost = (shippingCost === undefined || shippingCost === null || shippingCost === '')
+      ? 0
+      : Number(shippingCost);
     const reqUserId = Number(requestedBy || 2);
 
+    if (!Number.isInteger(fId) || fId <= 0 || !Number.isInteger(tId) || tId <= 0) {
+      const err = new Error('Mã chi nhánh xuất và chi nhánh nhận phải là số nguyên dương hợp lệ!');
+      err.statusCode = 400;
+      throw err;
+    }
     if (fId === tId) {
       const err = new Error('Cửa hàng xuất và Cửa hàng nhận phải khác nhau (CK_stock_transfers_diff_stores)!');
       err.statusCode = 400;
       throw err;
     }
-    if (qty <= 0) {
-      const err = new Error('Số lượng điều chuyển phải lớn hơn 0!');
+    if (!Number.isInteger(pId) || pId <= 0) {
+      const err = new Error('Mã sản phẩm điều chuyển không hợp lệ!');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (!Number.isInteger(qty) || qty <= 0) {
+      const err = new Error('Số lượng điều chuyển phải là số nguyên lớn hơn 0!');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (!Number.isFinite(shipCost) || shipCost < 0) {
+      const err = new Error('Chi phí vận chuyển không được âm!');
       err.statusCode = 400;
       throw err;
     }
 
-    const transferCode = `TRF-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(100 + Math.random() * 900)}`;
+    const [storesCheck, activeChainRows, prodCheck] = await Promise.all([
+      SqlConnection.queryJson(`SELECT id, ISNULL(status, 'OPEN') AS status FROM dbo.store_profile WHERE id IN (${fId}, ${tId})`),
+      SqlConnection.queryJson(`SELECT COUNT(*) AS activeCount FROM dbo.store_profile WHERE ISNULL(status, 'OPEN') <> 'SUSPENDED'`),
+      SqlConnection.queryJson(`SELECT TOP 1 id, name FROM dbo.products WHERE id = ${pId}`)
+    ]);
+
+    const activeStoreCount = Number(activeChainRows?.[0]?.activeCount || 0);
+    if (activeStoreCount <= 1) {
+      const err = new Error('Hệ thống đang vận hành ở chế độ Cửa hàng độc lập (1 chi nhánh), không hỗ trợ điều chuyển liên cửa hàng (Mục A3 #1)!');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const storeStatusMap = new Map((storesCheck || []).map(s => [Number(s.id), String(s.status || 'OPEN').toUpperCase()]));
+    if (!storeStatusMap.has(fId) || !storeStatusMap.has(tId)) {
+      const err = new Error(`Không tìm thấy chi nhánh xuất (#${fId}) hoặc chi nhánh nhận (#${tId}) trong hệ thống!`);
+      err.statusCode = 404;
+      throw err;
+    }
+    if (storeStatusMap.get(fId) === 'SUSPENDED' || storeStatusMap.get(tId) === 'SUSPENDED') {
+      const err = new Error('Chi nhánh xuất hoặc nhận đang tạm ngưng hoạt động (SUSPENDED), không thể điều chuyển!');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (!prodCheck || prodCheck.length === 0) {
+      const err = new Error(`Không tìm thấy sản phẩm #${pId}!`);
+      err.statusCode = 404;
+      throw err;
+    }
+
+    let resolvedBatchId = null;
+    if (sourceBatchId !== undefined && sourceBatchId !== null && String(sourceBatchId).trim() !== '') {
+      const sBatchId = Number(sourceBatchId);
+      if (!Number.isInteger(sBatchId) || sBatchId <= 0) {
+        const err = new Error('Mã lô nguồn (sourceBatchId) không hợp lệ!');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      const batchRows = await SqlConnection.queryJson(`
+        SELECT TOP 1
+          id,
+          ISNULL(store_id, 1) AS storeId,
+          product_id AS productId,
+          batch_code AS batchCode,
+          current_quantity AS currentQuantity,
+          status,
+          DATEDIFF(day, CAST(GETDATE() AS DATE), expiry_date) AS daysLeft
+        FROM dbo.batches
+        WHERE id = ${sBatchId}
+      `);
+      if (!batchRows || batchRows.length === 0) {
+        const err = new Error(`Không tìm thấy lô hàng nguồn #${sBatchId}!`);
+        err.statusCode = 404;
+        throw err;
+      }
+      const batch = batchRows[0];
+      if (Number(batch.storeId) !== fId) {
+        const err = new Error(`Lô hàng #${sBatchId} thuộc Chi nhánh #${batch.storeId}, không thể xuất từ Chi nhánh #${fId}!`);
+        err.statusCode = 403;
+        err.code = 'ERR_STORE_SCOPE_FORBIDDEN';
+        throw err;
+      }
+      if (Number(batch.productId) !== pId) {
+        const err = new Error(`Lô hàng ${batch.batchCode} (#${sBatchId}) không thuộc sản phẩm #${pId}!`);
+        err.statusCode = 400;
+        throw err;
+      }
+      if (!['ACTIVE', 'WARNING'].includes(String(batch.status || '').toUpperCase()) || Number(batch.daysLeft) <= 0) {
+        const err = new Error(`Lô hàng ${batch.batchCode} đã hết hạn hoặc ngừng lưu hành (Rule 5), không thể điều chuyển!`);
+        err.statusCode = 400;
+        throw err;
+      }
+      if (Number(batch.daysLeft) < 2) {
+        const err = new Error(`Lô hàng ${batch.batchCode} chỉ còn ${batch.daysLeft} ngày HSD (cần tối thiểu 2 ngày để vận chuyển và bán tại chi nhánh nhận) — hãy giảm giá xả tại chỗ!`);
+        err.statusCode = 400;
+        throw err;
+      }
+      if (Number(batch.currentQuantity) < qty) {
+        const err = new Error(`Lô hàng ${batch.batchCode} chỉ còn ${batch.currentQuantity} ĐV khả dụng, không đủ để điều chuyển ${qty} ĐV!`);
+        err.statusCode = 400;
+        throw err;
+      }
+      resolvedBatchId = sBatchId;
+    } else {
+      // Tự động chọn lô FEFO còn hạn (>= 2 ngày) và đủ số lượng tại ĐÚNG chi nhánh xuất & ĐÚNG sản phẩm
+      const fefoRows = await SqlConnection.queryJson(`
+        SELECT TOP 1 id, batch_code AS batchCode, current_quantity AS currentQuantity
+        FROM dbo.batches
+        WHERE product_id = ${pId}
+          AND ISNULL(store_id, 1) = ${fId}
+          AND status IN ('ACTIVE', 'WARNING')
+          AND DATEDIFF(day, CAST(GETDATE() AS DATE), expiry_date) >= 2
+          AND current_quantity >= ${qty}
+        ORDER BY expiry_date ASC, id ASC
+      `);
+      if (!fefoRows || fefoRows.length === 0) {
+        const err = new Error(
+          `Chi nhánh #${fId} không có lô hàng sản phẩm #${pId} nào còn hạn và đủ ${qty} ĐV khả dụng để tạo lệnh điều chuyển!`
+        );
+        err.statusCode = 400;
+        throw err;
+      }
+      resolvedBatchId = Number(fefoRows[0].id);
+    }
+
+    const uniqueSuffix = `${Date.now().toString(36).toUpperCase().slice(-4)}${Math.floor(100 + Math.random() * 900)}`;
+    const transferCode = `TRF-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${uniqueSuffix}`;
     const initStatus = autoApprove ? 'APPROVED' : 'PROPOSED';
     const appUserSql = autoApprove ? reqUserId : 'NULL';
     const safeNote = SqlConnection.escapeSql(
@@ -418,68 +564,97 @@ class SqlStockTransferRepository {
     );
 
     const sql = `
-      DECLARE @validBatchId INT = ${sourceBatchId ? Number(sourceBatchId) : 'NULL'};
-      IF @validBatchId IS NULL OR NOT EXISTS (SELECT 1 FROM dbo.batches WHERE id = @validBatchId)
-      BEGIN
-        SELECT TOP 1 @validBatchId = id FROM dbo.batches WHERE product_id = ${pId} AND current_quantity > 0 ORDER BY expiry_date ASC, id ASC;
-      END
-      IF @validBatchId IS NULL
-      BEGIN
-        SELECT TOP 1 @validBatchId = id FROM dbo.batches ORDER BY id ASC;
-      END
+      BEGIN TRANSACTION;
+      BEGIN TRY
+        DECLARE @newId INT;
 
-      INSERT INTO dbo.stock_transfers (
-        transfer_code, from_store_id, to_store_id, product_id, source_batch_id,
-        transfer_quantity, shipping_cost, status, ai_recommendation_note, requested_by, approved_by
-      )
-      VALUES (
-        ${SqlConnection.escapeSql(transferCode)},
-        ${fId}, ${tId}, ${pId}, @validBatchId,
-        ${qty}, ${shipCost}, ${SqlConnection.escapeSql(initStatus)},
-        ${safeNote}, ${reqUserId}, ${appUserSql}
-      );
+        IF NOT EXISTS (
+          SELECT 1 FROM dbo.batches WITH (UPDLOCK, ROWLOCK)
+          WHERE id = ${resolvedBatchId}
+            AND ISNULL(store_id, 1) = ${fId}
+            AND product_id = ${pId}
+            AND status IN ('ACTIVE', 'WARNING')
+            AND expiry_date > CAST(GETDATE() AS DATE)
+            AND current_quantity >= ${qty}
+        )
+          THROW 50003, N'Lô hàng nguồn không còn đủ tồn kho khả dụng hoặc đã hết hạn!', 1;
 
-      DECLARE @newId INT = SCOPE_IDENTITY();
+        INSERT INTO dbo.stock_transfers (
+          transfer_code, from_store_id, to_store_id, product_id, source_batch_id,
+          transfer_quantity, shipping_cost, status, ai_recommendation_note, requested_by, approved_by
+        )
+        VALUES (
+          ${SqlConnection.escapeSql(transferCode)},
+          ${fId}, ${tId}, ${pId}, ${resolvedBatchId},
+          ${qty}, ${shipCost}, ${SqlConnection.escapeSql(initStatus)},
+          ${safeNote}, ${reqUserId}, ${appUserSql}
+        );
 
-      INSERT INTO dbo.system_audit_logs (user_id, action_type, entity_name, entity_id, description, ip_address, created_at)
-      VALUES (
-        ${reqUserId},
-        N'CREATE_STOCK_TRANSFER',
-        N'StockTransfer',
-        CAST(@newId AS NVARCHAR(50)),
-        N'Khởi tạo phiếu điều chuyển liên cửa hàng ' + ${SqlConnection.escapeSql(transferCode)} + N' (Số lượng: ${qty})',
-        N'127.0.0.1',
-        GETDATE()
-      );
+        SET @newId = SCOPE_IDENTITY();
 
-      SELECT 
-        st.id,
-        st.transfer_code AS transferCode,
-        st.from_store_id AS fromStoreId,
-        st.to_store_id AS toStoreId,
-        st.product_id AS productId,
-        st.source_batch_id AS sourceBatchId,
-        st.transfer_quantity AS transferQuantity,
-        st.shipping_cost AS shippingCost,
-        st.status,
-        st.ai_recommendation_note AS aiRecommendationNote,
-        st.created_at AS createdAt
-      FROM dbo.stock_transfers st
-      WHERE st.id = @newId
-      FOR JSON PATH;
+        INSERT INTO dbo.system_audit_logs (user_id, action_type, entity_name, entity_id, description, ip_address, created_at)
+        VALUES (
+          ${reqUserId},
+          N'CREATE_STOCK_TRANSFER',
+          N'StockTransfer',
+          CAST(@newId AS NVARCHAR(50)),
+          N'Khởi tạo phiếu điều chuyển liên cửa hàng ' + ${SqlConnection.escapeSql(transferCode)} + N' (CN #' + CAST(${fId} AS NVARCHAR(10)) + N' -> CN #' + CAST(${tId} AS NVARCHAR(10)) + N', Lô #' + CAST(${resolvedBatchId} AS NVARCHAR(10)) + N', Số lượng: ${qty}, Trạng thái: ${initStatus})',
+          N'127.0.0.1',
+          GETDATE()
+        );
+
+        COMMIT TRANSACTION;
+
+        SELECT 
+          st.id,
+          st.transfer_code AS transferCode,
+          st.from_store_id AS fromStoreId,
+          st.to_store_id AS toStoreId,
+          st.product_id AS productId,
+          st.source_batch_id AS sourceBatchId,
+          st.transfer_quantity AS transferQuantity,
+          st.shipping_cost AS shippingCost,
+          st.status,
+          st.ai_recommendation_note AS aiRecommendationNote,
+          st.requested_by AS requestedById,
+          st.approved_by AS approvedById,
+          st.created_at AS createdAt
+        FROM dbo.stock_transfers st
+        WHERE st.id = @newId
+        FOR JSON PATH;
+      END TRY
+      BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+      END CATCH;
     `;
 
-    const rows = await SqlConnection.queryJson(sql);
-    return rows[0] || null;
+    try {
+      const rows = await SqlConnection.queryJson(sql);
+      return rows[0] || null;
+    } catch (sqlErr) {
+      if ((sqlErr.message || '').includes('50003')) {
+        const conflictErr = new Error('Lô hàng nguồn không còn đủ tồn kho khả dụng hoặc đã hết hạn để tạo phiếu điều chuyển!');
+        conflictErr.statusCode = 409;
+        throw conflictErr;
+      }
+      throw sqlErr;
+    }
   }
 
   /**
-   * Cập nhật trạng thái Phiếu điều chuyển theo quy trình 5 bước Khép kín:
-   * PROPOSED -> APPROVED -> IN_TRANSIT -> RECEIVED (hoặc CANCELLED)
+   * Cập nhật trạng thái Phiếu điều chuyển theo quy trình 5 bước Khép kín & Toàn vẹn Tồn kho trong SQL Transaction:
+   * PROPOSED/PENDING -> APPROVED (chưa đụng kho) -> IN_TRANSIT (trừ lô nguồn với UPDLOCK) -> RECEIVED (tạo lô đích kế thừa HSD) / CANCELLED (hoàn lô nguồn nếu đang IN_TRANSIT)
    */
-  async updateTransferStatus({ id, status, userId = 1, userRole = 'ADMIN', notes = '' }) {
+  async updateTransferStatus({ id, status, userId = 1, userRole = 'ADMIN', userStoreId = null, notes = '' }) {
     const transferId = Number(id);
-    const nextStatus = String(status || '').toUpperCase();
+    if (!Number.isInteger(transferId) || transferId <= 0) {
+      const err = new Error(`Mã phiếu điều chuyển '${id}' không hợp lệ!`);
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const nextStatus = String(status || '').trim().toUpperCase();
     const validStatuses = ['PROPOSED', 'PENDING', 'APPROVED', 'IN_TRANSIT', 'RECEIVED', 'CANCELLED'];
 
     if (!validStatuses.includes(nextStatus)) {
@@ -488,15 +663,21 @@ class SqlStockTransferRepository {
       throw err;
     }
 
-    // Kiểm tra phân quyền RBAC: Phê duyệt lệnh điều chuyển (APPROVED) yêu cầu OWNER (ADMIN) hoặc MANAGER (STORE_MANAGER)
-    if (nextStatus === 'APPROVED' && !['ADMIN', 'OWNER', 'STORE_MANAGER', 'MANAGER'].includes(String(userRole).toUpperCase())) {
-      const err = new Error('Vi phạm phân quyền RBAC: Chỉ Chủ chuỗi (OWNER/ADMIN) hoặc Quản lý (STORE_MANAGER) mới được phê duyệt lệnh điều chuyển!');
+    const normRole = String(userRole || '').toUpperCase();
+    const isOwner = normRole === 'ADMIN' || normRole === 'OWNER';
+    const isManager = isOwner || normRole === 'STORE_MANAGER' || normRole === 'MANAGER';
+
+    // Kiểm tra phân quyền RBAC: Gửi chờ duyệt / Phê duyệt / Hủy lệnh điều chuyển yêu cầu OWNER (ADMIN) hoặc STORE_MANAGER
+    if ((nextStatus === 'PENDING' || nextStatus === 'APPROVED' || nextStatus === 'CANCELLED') && !isManager) {
+      const err = new Error(`Vi phạm phân quyền RBAC: Chỉ Chủ chuỗi (OWNER/ADMIN) hoặc Quản lý (STORE_MANAGER) mới được chuyển trạng thái sang ${nextStatus}!`);
       err.statusCode = 403;
+      err.code = 'ERR_UNAUTHORIZED_ROLE';
       throw err;
     }
 
     const existingRows = await SqlConnection.queryJson(`
-      SELECT id, transfer_code AS transferCode, status, source_batch_id AS sourceBatchId, transfer_quantity AS transferQuantity
+      SELECT id, transfer_code AS transferCode, from_store_id AS fromStoreId, to_store_id AS toStoreId,
+             product_id AS productId, status, source_batch_id AS sourceBatchId, transfer_quantity AS transferQuantity
       FROM dbo.stock_transfers
       WHERE id = ${transferId}
     `);
@@ -508,58 +689,278 @@ class SqlStockTransferRepository {
     }
 
     const current = existingRows[0];
+
+    if (!isOwner) {
+      const sid = Number(userStoreId);
+      const fromSid = Number(current.fromStoreId);
+      const toSid = Number(current.toStoreId);
+      if (!Number.isInteger(sid) || sid <= 0 || (sid !== fromSid && sid !== toSid)) {
+        const err = new Error(`Từ chối truy cập liên chi nhánh (403 Forbidden): Phiếu điều chuyển #${transferId} thuộc Store #${fromSid} -> Store #${toSid}, không thuộc Chi nhánh #${userStoreId}!`);
+        err.statusCode = 403;
+        err.code = 'ERR_STORE_SCOPE_FORBIDDEN';
+        throw err;
+      }
+      if ((nextStatus === 'APPROVED' || nextStatus === 'IN_TRANSIT') && sid !== fromSid) {
+        const err = new Error(`Chỉ Chi nhánh xuất hàng (#${fromSid}) hoặc Chủ chuỗi mới được xác nhận trạng thái ${nextStatus}!`);
+        err.statusCode = 403;
+        err.code = 'ERR_STORE_SCOPE_FORBIDDEN';
+        throw err;
+      }
+      if (nextStatus === 'RECEIVED' && sid !== toSid) {
+        const err = new Error(`Chỉ Chi nhánh nhận hàng (#${toSid}) hoặc Chủ chuỗi mới được xác nhận đã nhận hàng (RECEIVED)!`);
+        err.statusCode = 403;
+        err.code = 'ERR_STORE_SCOPE_FORBIDDEN';
+        throw err;
+      }
+    }
+
+    const ALLOWED_TRANSITIONS = {
+      PROPOSED: ['PENDING', 'APPROVED', 'CANCELLED'],
+      PENDING: ['APPROVED', 'CANCELLED'],
+      APPROVED: ['IN_TRANSIT', 'CANCELLED'],
+      IN_TRANSIT: ['RECEIVED', 'CANCELLED'],
+      RECEIVED: [],
+      CANCELLED: []
+    };
+    const curStatusUpper = String(current.status || '').trim().toUpperCase();
+    if (!(ALLOWED_TRANSITIONS[curStatusUpper] || []).includes(nextStatus)) {
+      const err = new Error(
+        `Không thể chuyển phiếu ${current.transferCode} từ trạng thái [${curStatusUpper}] sang [${nextStatus}]. Chu trình hợp lệ: PROPOSED -> PENDING -> APPROVED -> IN_TRANSIT -> RECEIVED (hoặc CANCELLED).`
+      );
+      err.statusCode = 409;
+      err.code = 'ERR_INVALID_TRANSFER_TRANSITION';
+      throw err;
+    }
+
     const safeUserId = Number(userId || 1);
     const safeNotes = SqlConnection.escapeSql(notes || `Chuyển trạng thái sang ${nextStatus}`);
+    const safeNextStatus = SqlConnection.escapeSql(nextStatus);
+
+    let transitionInventorySql = '';
+    if (nextStatus === 'PENDING') {
+      transitionInventorySql = `
+        IF @curStatus <> N'PROPOSED'
+          THROW 50002, N'Xung đột trạng thái: Chỉ phiếu PROPOSED mới được chuyển sang Chờ duyệt (PENDING)!', 1;
+      `;
+    } else if (nextStatus === 'APPROVED') {
+      transitionInventorySql = `
+        IF @curStatus NOT IN (N'PROPOSED', N'PENDING')
+          THROW 50002, N'Xung đột trạng thái: Chỉ phiếu PROPOSED hoặc PENDING mới được phê duyệt (APPROVED)!', 1;
+
+        IF NOT EXISTS (
+          SELECT 1 FROM dbo.batches WITH (UPDLOCK, ROWLOCK)
+          WHERE id = @sourceBatchId
+            AND ISNULL(store_id, 1) = @fromStoreId
+            AND product_id = @productId
+            AND status IN ('ACTIVE', 'WARNING')
+            AND expiry_date > CAST(GETDATE() AS DATE)
+            AND current_quantity >= @qty
+        )
+          THROW 50003, N'Không thể phê duyệt: Lô hàng nguồn không còn đủ tồn kho khả dụng hoặc đã hết hạn!', 1;
+      `;
+    } else if (nextStatus === 'IN_TRANSIT') {
+      transitionInventorySql = `
+        IF @curStatus <> N'APPROVED'
+          THROW 50002, N'Xung đột trạng thái: Phiếu phải ở trạng thái APPROVED mới được xuất kho vận chuyển (IN_TRANSIT)!', 1;
+
+        DECLARE @srcCode NVARCHAR(50), @srcRemain INT;
+        SELECT @srcCode = batch_code
+        FROM dbo.batches WITH (UPDLOCK, ROWLOCK)
+        WHERE id = @sourceBatchId;
+
+        UPDATE dbo.batches WITH (UPDLOCK, ROWLOCK)
+        SET current_quantity = current_quantity - @qty
+        WHERE id = @sourceBatchId
+          AND ISNULL(store_id, 1) = @fromStoreId
+          AND product_id = @productId
+          AND status IN ('ACTIVE', 'WARNING')
+          AND expiry_date > CAST(GETDATE() AS DATE)
+          AND current_quantity >= @qty;
+
+        IF @@ROWCOUNT = 0
+          THROW 50003, N'Không thể xuất kho điều chuyển: Lô nguồn không còn đủ tồn kho khả dụng, sai chi nhánh hoặc đã hết hạn (Rule 3 & Rule 5)!', 1;
+
+        SELECT @srcRemain = current_quantity FROM dbo.batches WHERE id = @sourceBatchId;
+        SET @auditExtra = N' | Xuất kho CN #' + CAST(@fromStoreId AS NVARCHAR(10)) + N': -' + CAST(@qty AS NVARCHAR(10)) + N' ĐV từ lô ' + ISNULL(@srcCode, N'') + N' (còn ' + CAST(@srcRemain AS NVARCHAR(10)) + N' ĐV)';
+      `;
+    } else if (nextStatus === 'RECEIVED') {
+      transitionInventorySql = `
+        IF @curStatus <> N'IN_TRANSIT'
+          THROW 50002, N'Xung đột trạng thái: Phiếu phải ở trạng thái IN_TRANSIT mới được xác nhận đã nhận hàng (RECEIVED)!', 1;
+
+        DECLARE @srcBatchCode NVARCHAR(50),
+                @mfgDate DATE,
+                @expDate DATE,
+                @impPrice DECIMAL(18, 2),
+                @discPct INT,
+                @daysLeft INT,
+                @warnDays INT,
+                @destStatus NVARCHAR(20);
+
+        SELECT
+          @srcBatchCode = b.batch_code,
+          @mfgDate = b.manufacture_date,
+          @expDate = b.expiry_date,
+          @impPrice = b.import_price,
+          @discPct = ISNULL(b.discount_percent, 0),
+          @daysLeft = DATEDIFF(day, CAST(GETDATE() AS DATE), b.expiry_date),
+          @warnDays = COALESCE(p.custom_warning_days, c.default_warning_days, 7)
+        FROM dbo.batches b WITH (UPDLOCK, ROWLOCK)
+        INNER JOIN dbo.products p ON b.product_id = p.id
+        INNER JOIN dbo.categories c ON p.category_id = c.id
+        WHERE b.id = @sourceBatchId;
+
+        IF @srcBatchCode IS NULL
+          THROW 50004, N'Không tìm thấy lô hàng nguồn để tạo lô nhập kho tại chi nhánh đích!', 1;
+
+        IF @daysLeft <= 0
+          SET @destStatus = N'EXPIRED';
+        ELSE IF @discPct > 0 OR @daysLeft <= @warnDays
+          SET @destStatus = N'WARNING';
+        ELSE
+          SET @destStatus = N'ACTIVE';
+
+        SET @destBatchCode = LEFT(@transferCode + N'-' + @srcBatchCode, 50);
+        IF EXISTS (SELECT 1 FROM dbo.batches WHERE batch_code = @destBatchCode)
+          SET @destBatchCode = LEFT(N'B' + CAST(@transferId AS NVARCHAR(10)) + N'-' + @transferCode, 50);
+
+        DECLARE @insDest TABLE (id INT);
+        INSERT INTO dbo.batches (
+          receipt_id, store_id, batch_code, product_id,
+          import_date, manufacture_date, expiry_date,
+          initial_quantity, current_quantity, import_price,
+          discount_percent, status, is_shelf_rotated, created_at
+        )
+        OUTPUT INSERTED.id INTO @insDest
+        VALUES (
+          NULL, @toStoreId, @destBatchCode, @productId,
+          CAST(GETDATE() AS DATE), @mfgDate, @expDate,
+          @qty, @qty, @impPrice,
+          @discPct, @destStatus, 0, GETDATE()
+        );
+
+        SELECT TOP 1 @destBatchId = id FROM @insDest;
+        SET @auditExtra = N' | Nhập kho CN #' + CAST(@toStoreId AS NVARCHAR(10)) + N': +' + CAST(@qty AS NVARCHAR(10)) + N' ĐV vào lô mới ' + @destBatchCode + N' (ID=' + CAST(@destBatchId AS NVARCHAR(10)) + N', HSD=' + CONVERT(VARCHAR(10), @expDate, 23) + N')';
+      `;
+    } else if (nextStatus === 'CANCELLED') {
+      transitionInventorySql = `
+        IF @curStatus NOT IN (N'PROPOSED', N'PENDING', N'APPROVED', N'IN_TRANSIT')
+          THROW 50002, N'Xung đột trạng thái: Không thể hủy phiếu điều chuyển đã kết thúc!', 1;
+
+        IF @curStatus = N'IN_TRANSIT'
+        BEGIN
+          UPDATE dbo.batches WITH (UPDLOCK, ROWLOCK)
+          SET current_quantity = current_quantity + @qty
+          WHERE id = @sourceBatchId
+            AND ISNULL(store_id, 1) = @fromStoreId
+            AND current_quantity + @qty <= initial_quantity;
+
+          IF @@ROWCOUNT = 0
+            THROW 50003, N'Không thể hoàn trả tồn kho cho lô nguồn khi hủy phiếu đang vận chuyển!', 1;
+
+          SET @auditExtra = N' | Hoàn trả +' + CAST(@qty AS NVARCHAR(10)) + N' ĐV về lô nguồn #' + CAST(@sourceBatchId AS NVARCHAR(10));
+        END
+      `;
+    }
 
     const sql = `
       BEGIN TRANSACTION;
       BEGIN TRY
+        DECLARE @transferId INT = ${transferId},
+                @curStatus NVARCHAR(30),
+                @fromStoreId INT,
+                @toStoreId INT,
+                @productId INT,
+                @sourceBatchId INT,
+                @qty INT,
+                @transferCode NVARCHAR(50),
+                @destBatchId INT = NULL,
+                @destBatchCode NVARCHAR(50) = NULL,
+                @auditExtra NVARCHAR(500) = N'';
+
+        SELECT
+          @curStatus = UPPER(LTRIM(RTRIM(status))),
+          @fromStoreId = from_store_id,
+          @toStoreId = to_store_id,
+          @productId = product_id,
+          @sourceBatchId = source_batch_id,
+          @qty = transfer_quantity,
+          @transferCode = transfer_code
+        FROM dbo.stock_transfers WITH (UPDLOCK, ROWLOCK)
+        WHERE id = ${transferId};
+
+        IF @curStatus IS NULL
+          THROW 50004, N'Không tìm thấy phiếu điều chuyển!', 1;
+
+        ${transitionInventorySql}
+
         UPDATE dbo.stock_transfers WITH (UPDLOCK, ROWLOCK)
         SET 
-          status = ${SqlConnection.escapeSql(nextStatus)},
-          approved_by = CASE WHEN ${SqlConnection.escapeSql(nextStatus)} = N'APPROVED' THEN ${safeUserId} ELSE approved_by END,
-          received_at = CASE WHEN ${SqlConnection.escapeSql(nextStatus)} = N'RECEIVED' THEN GETDATE() ELSE received_at END
+          status = ${safeNextStatus},
+          approved_by = CASE WHEN ${safeNextStatus} = N'APPROVED' THEN ${safeUserId} ELSE approved_by END,
+          received_at = CASE WHEN ${safeNextStatus} = N'RECEIVED' THEN GETDATE() ELSE received_at END
         WHERE id = ${transferId};
 
         INSERT INTO dbo.system_audit_logs (user_id, action_type, entity_name, entity_id, description, ip_address, created_at)
         VALUES (
           ${safeUserId},
-          N'STOCK_TRANSFER_' + ${SqlConnection.escapeSql(nextStatus)},
+          N'STOCK_TRANSFER_' + ${safeNextStatus},
           N'StockTransfer',
-          N'${current.transferCode}',
-          N'Cập nhật phiếu điều chuyển ${current.transferCode} sang trạng thái ${nextStatus}. Ghi chú: ' + ${safeNotes},
+          @transferCode,
+          N'Cập nhật phiếu điều chuyển ' + @transferCode + N' từ ' + @curStatus + N' sang ' + ${safeNextStatus} + @auditExtra + N'. Ghi chú: ' + ${safeNotes},
           N'127.0.0.1',
           GETDATE()
         );
 
         COMMIT TRANSACTION;
+
+        SELECT 
+          st.id,
+          st.transfer_code AS transferCode,
+          st.from_store_id AS fromStoreId,
+          st.to_store_id AS toStoreId,
+          st.product_id AS productId,
+          st.source_batch_id AS sourceBatchId,
+          st.transfer_quantity AS transferQuantity,
+          st.shipping_cost AS shippingCost,
+          st.status,
+          st.ai_recommendation_note AS aiRecommendationNote,
+          st.approved_by AS approvedById,
+          st.created_at AS createdAt,
+          st.received_at AS receivedAt,
+          @destBatchId AS destinationBatchId,
+          @destBatchCode AS destinationBatchCode
+        FROM dbo.stock_transfers st
+        WHERE st.id = ${transferId}
+        FOR JSON PATH;
       END TRY
       BEGIN CATCH
         IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
         THROW;
       END CATCH;
-
-      SELECT 
-        st.id,
-        st.transfer_code AS transferCode,
-        st.from_store_id AS fromStoreId,
-        st.to_store_id AS toStoreId,
-        st.product_id AS productId,
-        st.source_batch_id AS sourceBatchId,
-        st.transfer_quantity AS transferQuantity,
-        st.shipping_cost AS shippingCost,
-        st.status,
-        st.ai_recommendation_note AS aiRecommendationNote,
-        st.approved_by AS approvedById,
-        st.created_at AS createdAt,
-        st.received_at AS receivedAt
-      FROM dbo.stock_transfers st
-      WHERE st.id = ${transferId}
-      FOR JSON PATH;
     `;
 
-    const updated = await SqlConnection.queryJson(sql);
-    return updated[0] || null;
+    try {
+      const updated = await SqlConnection.queryJson(sql);
+      return updated[0] || null;
+    } catch (sqlErr) {
+      const msg = sqlErr.message || '';
+      if (msg.includes('50002') || msg.includes('50003')) {
+        const cleanMsg = msg.includes('50002')
+          ? 'Xung đột trạng thái phiếu điều chuyển hoặc đã được cập nhật đồng thời!'
+          : 'Tồn kho lô nguồn không đủ khả dụng, đã hết hạn hoặc sai ràng buộc để thực hiện thao tác điều chuyển!';
+        const conflictErr = new Error(cleanMsg);
+        conflictErr.statusCode = 409;
+        conflictErr.code = msg.includes('50002') ? 'ERR_INVALID_TRANSFER_TRANSITION' : 'ERR_INSUFFICIENT_TRANSFER_STOCK';
+        throw conflictErr;
+      }
+      if (msg.includes('50004')) {
+        const notFoundErr = new Error('Không tìm thấy phiếu điều chuyển hoặc lô hàng nguồn!');
+        notFoundErr.statusCode = 404;
+        throw notFoundErr;
+      }
+      throw sqlErr;
+    }
   }
 }
 

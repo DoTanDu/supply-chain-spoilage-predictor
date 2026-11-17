@@ -1,6 +1,11 @@
 // src/domain/entities/User.js
+const {
+  normalizePagePermissions,
+  computeEffectivePages
+} = require('../constants/pagePermissions');
+
 class User {
-  constructor({ id, username, fullName, email, phone, roleId, roleCode, storeId = null, isActive = true, lastLogin, createdAt, updatedAt }) {
+  constructor({ id, username, fullName, email, phone, roleId, roleCode, storeId = null, pagePermissions = null, isActive = true, lastLogin, createdAt, updatedAt }) {
     this.id = id;
     this.username = username;
     this.fullName = fullName;
@@ -9,6 +14,8 @@ class User {
     this.roleId = roleId;
     this.roleCode = roleCode; // 'ADMIN', 'STORE_MANAGER', 'CASHIER'
     this.storeId = storeId;
+    this.pagePermissions = normalizePagePermissions(pagePermissions, roleCode);
+    this.effectivePages = computeEffectivePages(roleCode, this.pagePermissions);
     this.isActive = Boolean(isActive);
     this.lastLogin = lastLogin;
     this.createdAt = createdAt || new Date();
@@ -32,6 +39,8 @@ class User {
       roleId: this.roleId,
       roleCode: this.roleCode,
       storeId: this.storeId,
+      pagePermissions: this.pagePermissions,
+      effectivePages: this.effectivePages,
       isActive: this.isActive,
       lastLogin: this.lastLogin
     };

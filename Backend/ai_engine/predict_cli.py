@@ -1,70 +1,79 @@
 # -*- coding: utf-8 -*-
 """
-CLI Inference Script - Loads Pre-trained LightGBM/HistGradientBoosting Model (.pkl)
-and runs live inference on sample_retail_dataset.csv.
+CLI Inference Script - Chay mo hinh Pre-trained (.pkl) tren du lieu thuc te
+duoc truy van tu SQL Server (retail_spoilage_db) ket hop thoi tiet Open-Meteo (stdin JSON).
 """
 
 import os
 import sys
 import json
 import pickle
-import csv
 import numpy as np
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PKL_PATH = os.path.join(BASE_DIR, "pretrained_lgbm_model.pkl")
-DATASET_CSV_PATH = os.path.join(BASE_DIR, "sample_retail_dataset.csv")
 
 
-def run_benchmark_test(limit=12):
+def run_live_sql_inference(payload):
     with open(MODEL_PKL_PATH, "rb") as f:
         bundle = pickle.load(f)
 
     model = bundle["model"]
     feature_cols = bundle["feature_cols"]
-    metrics = bundle["metrics"]
-
-    with open(DATASET_CSV_PATH, mode="r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        all_rows = list(reader)
-
-    # Pick latest rows across different stores and products
-    step = max(1, len(all_rows) // limit)
-    sample_rows = [all_rows[i] for i in range(len(all_rows) - 1, -1, -step)][:limit]
+    rows = payload.get("rows") or []
 
     results = []
-    for r in sample_rows:
-        feat = np.array([[float(r[c]) for c in feature_cols]])
-        pred_daily = float(max(1.0, model.predict(feat)[0]))
-        actual_daily = float(r["actual_demand"])
+    abs_errors = []
+    sq_errors = []
+    pct_errors = []
+
+    for r in rows:
+        feat = np.array([[float(r.get(c, 0)) for c in feature_cols]])
+        pred_daily = float(max(0.0, model.predict(feat)[0]))
+        actual_daily = float(r.get("actual_demand", 0))
         abs_err = abs(actual_daily - pred_daily)
+        abs_errors.append(abs_err)
+        sq_errors.append(abs_err ** 2)
+        if actual_daily > 0:
+            pct_errors.append(abs_err / actual_daily * 100.0)
 
         results.append({
-            "storeId": int(r["store_id"]),
-            "storeCode": r["store_code"],
-            "productId": int(r["product_id"]),
-            "sku": r["sku"],
-            "temperatureC": float(r["temperature_c"]),
-            "discountPct": int(r["discount_pct"]),
-            "shelfLifeDays": int(r["shelf_life_days"]),
-            "rollingMean14d": float(r["rolling_mean_14d"]),
+            "storeId": int(r.get("store_id", 1)),
+            "storeCode": r.get("store_code", "RETAIL-STORE-01"),
+            "productId": int(r.get("product_id", 0)),
+            "sku": r.get("sku", ""),
+            "productName": r.get("product_name", ""),
+            "temperatureC": round(float(r.get("temperature_c", 0)), 1),
+            "discountPct": int(r.get("discount_pct", 0)),
+            "shelfLifeDays": int(r.get("shelf_life_days", 0)),
+            "rollingMean14d": round(float(r.get("rolling_mean_14d", 0)), 2),
             "actualDailyDemand": round(actual_daily, 2),
             "predictedDailyDemand": round(pred_daily, 2),
             "predictedDemand7d": round(pred_daily * 7.0, 1),
-            "absError": round(abs_err, 2)
+            "absError": round(abs_err, 2),
         })
+
+    real_metrics = {
+        "mae": round(float(np.mean(abs_errors)), 2) if abs_errors else None,
+        "rmse": round(float(np.sqrt(np.mean(sq_errors))), 2) if sq_errors else None,
+        "mape_pct": round(float(np.mean(pct_errors)), 2) if pct_errors else None,
+    }
 
     output = {
         "success": True,
-        "modelName": "LightGBM-HistGBT-v2.1-Pretrained (.pkl Live Inference)",
-        "datasetPath": "Backend/ai_engine/sample_retail_dataset.csv",
-        "totalDatasetRows": len(all_rows),
-        "metrics": metrics,
-        "testPredictions": results
+        "modelName": "LightGBM-HistGBT (.pkl SQL Server + Open-Meteo Live)",
+        "datasetPath": "SQL Server dbo.sales_history + Open-Meteo Live",
+        "totalDatasetRows": len(rows),
+        "metrics": real_metrics,
+        "testPredictions": results,
     }
     print(json.dumps(output, ensure_ascii=False))
 
 
 if __name__ == "__main__":
-    lim = int(sys.argv[1]) if len(sys.argv) > 1 else 12
-    run_benchmark_test(lim)
+    raw_stdin = sys.stdin.read()
+    if not raw_stdin.strip():
+        print(json.dumps({"success": False, "message": "Khong co du lieu thuc te tu SQL Server de suy luan."}))
+        sys.exit(1)
+    payload_data = json.loads(raw_stdin)
+    run_live_sql_inference(payload_data)

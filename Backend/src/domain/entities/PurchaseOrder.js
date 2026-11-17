@@ -9,6 +9,7 @@ class PurchaseOrder {
   constructor({
     id = null,
     orderCode = null,
+    storeId = 1,
     supplierId,
     createdBy,
     approvedBy = null,
@@ -31,6 +32,7 @@ class PurchaseOrder {
 
     this.id = id;
     this.orderCode = orderCode || this.generateOrderCode();
+    this.storeId = Number(storeId || 1);
     this.supplierId = Number(supplierId);
     this.createdBy = Number(createdBy);
     this.approvedBy = approvedBy ? Number(approvedBy) : null;

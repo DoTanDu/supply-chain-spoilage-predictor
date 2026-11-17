@@ -1,4 +1,6 @@
 // src/presentation/controllers/SalesController.js
+const { resolveStoreScope, assertStoreOwnership } = require('../middlewares/storeScope');
+
 class SalesController {
   constructor({ processFefoSaleUseCase, getSalesHistoryUseCase, getSaleReceiptUseCase, saleRepository, auditLogRepository }) {
     this.processFefoSaleUseCase = processFefoSaleUseCase;
@@ -10,9 +12,25 @@ class SalesController {
 
   async processSale(req, res, next) {
     try {
-      const { items, weather, isHoliday } = req.body;
+      const scope = resolveStoreScope(req, req.body?.storeId, { allowAll: false, adminDefault: 1 });
+      if (!scope.ok) {
+        return res.status(scope.statusCode).json(scope.error);
+      }
+
+      const { items, weather, isHoliday, saleDate, transactionCode } = req.body;
+      if (Array.isArray(items)) {
+        for (const item of items) {
+          if (item && item.storeId !== undefined && item.storeId !== null) {
+            const itemScope = resolveStoreScope(req, item.storeId, { allowAll: false, adminDefault: scope.storeId });
+            if (!itemScope.ok) {
+              return res.status(itemScope.statusCode).json(itemScope.error);
+            }
+          }
+        }
+      }
+
       const cashierId = req.user ? req.user.id : (req.body.cashierId || 3);
-      const cashierName = req.user ? req.user.fullName : (req.body.cashierName || 'Thu ngân quầy POS');
+      const cashierName = req.user ? req.user.fullName : (req.body.cashierName || 'Nhân viên cửa hàng');
 
       const weatherCondition = typeof weather === 'object' && weather !== null
         ? (weather.condition || 'NORMAL')
@@ -23,6 +41,9 @@ class SalesController {
 
       const result = await this.processFefoSaleUseCase.execute({
         items,
+        storeId: scope.storeId,
+        saleDate: saleDate || null,
+        transactionCode: transactionCode || null,
         weather: weatherCondition,
         isHoliday: holidayFlag,
         cashierId,
@@ -38,24 +59,12 @@ class SalesController {
   async getHistory(req, res, next) {
     try {
       const limit = Number(req.query.limit || 50);
-      const requestedStoreId = req.query.storeId || null;
-      const userRole = String(req.user?.roleCode || '').toUpperCase();
-      const userStoreId = Number(req.user?.storeId || 1);
-
-      if (requestedStoreId && userRole && userRole !== 'ADMIN' && userRole !== 'OWNER') {
-        if (String(requestedStoreId).toUpperCase() === 'ALL' || Number(requestedStoreId) !== userStoreId) {
-          return res.status(403).json({
-            success: false,
-            errorCode: 'ERR_STORE_SCOPE_FORBIDDEN',
-            message: `Phạm vi dữ liệu bị từ chối: Bạn chỉ được phép truy cập lịch sử bán hàng của Chi nhánh #${userStoreId}!`
-          });
-        }
+      const scope = resolveStoreScope(req, req.query.storeId || null, { adminDefault: 'ALL' });
+      if (!scope.ok) {
+        return res.status(scope.statusCode).json(scope.error);
       }
-      const effectiveStoreId = (userRole === 'ADMIN' || userRole === 'OWNER')
-        ? (requestedStoreId || 'ALL')
-        : (requestedStoreId || userStoreId);
 
-      const result = await this.getSalesHistoryUseCase.execute({ limit, storeId: effectiveStoreId });
+      const result = await this.getSalesHistoryUseCase.execute({ limit, storeId: scope.storeId });
       res.json(result);
     } catch (err) {
       next(err);
@@ -64,11 +73,16 @@ class SalesController {
 
   async importSales(req, res, next) {
     try {
+      const scope = resolveStoreScope(req, req.body?.storeId, { allowAll: false, adminDefault: 1 });
+      if (!scope.ok) {
+        return res.status(scope.statusCode).json(scope.error);
+      }
+
       const rows = Array.isArray(req.body?.rows) ? req.body.rows : (Array.isArray(req.body) ? req.body : []);
       const userId = req.user ? req.user.id : 1;
       const userName = req.user ? (req.user.fullName || req.user.username) : 'Quản trị viên';
 
-      const result = await this.saleRepository.importPosSalesRows(rows, userId);
+      const result = await this.saleRepository.importPosSalesRows(rows, userId, scope.isOwner ? null : scope.storeId);
 
       if (this.auditLogRepository) {
         await this.auditLogRepository.log({
@@ -97,6 +111,10 @@ class SalesController {
       const result = await this.getSaleReceiptUseCase.execute({ transactionCode: txnCode });
       if (!result.success) {
         return res.status(result.statusCode || 404).json(result);
+      }
+      const ownership = assertStoreOwnership(req.user, result.data?.storeId, `hóa đơn [${txnCode}]`);
+      if (!ownership.ok) {
+        return res.status(ownership.statusCode).json(ownership.error);
       }
       res.json(result);
     } catch (err) {

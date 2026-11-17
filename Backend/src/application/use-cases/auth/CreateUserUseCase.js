@@ -7,7 +7,7 @@ class CreateUserUseCase {
     this.auditLogRepository = auditLogRepository;
   }
 
-  async execute({ username, password, fullName, email, phone, roleCode = 'CASHIER', roleId, performedBy, ipAddress = '127.0.0.1' }) {
+  async execute({ username, password, fullName, email, phone, roleCode = 'CASHIER', roleId, storeId = 1, performedBy, ipAddress = '127.0.0.1' }) {
     // 1. Kiểm tra username
     if (!username || typeof username !== 'string' || !username.trim()) {
       throw new Error('Vui lòng nhập tên đăng nhập cho nhân sự mới.');
@@ -43,10 +43,24 @@ class CreateUserUseCase {
       throw new Error('Vai trò người dùng không hợp lệ. Chỉ chấp nhận ADMIN, STORE_MANAGER hoặc CASHIER.');
     }
 
-    // 5. Băm mật khẩu bằng bcrypt
+    // 5. Kiểm tra storeId hợp lệ cho nhân sự gắn chi nhánh
+    let resolvedStoreId = null;
+    if (targetRoleCode !== 'ADMIN') {
+      if (storeId !== undefined && storeId !== null && String(storeId).trim() !== '') {
+        const parsedStoreId = Number(storeId);
+        if (!Number.isInteger(parsedStoreId) || parsedStoreId <= 0) {
+          throw new Error(`Mã chi nhánh (storeId) không hợp lệ: [${storeId}].`);
+        }
+        resolvedStoreId = parsedStoreId;
+      } else {
+        resolvedStoreId = 1;
+      }
+    }
+
+    // 6. Băm mật khẩu bằng bcrypt
     const passwordHash = await PasswordHasher.hash(password);
 
-    // 6. Lưu vào cơ sở dữ liệu qua UserRepository
+    // 7. Lưu vào cơ sở dữ liệu qua UserRepository
     const createdUser = await this.userRepository.create({
       username: cleanUsername,
       passwordHash,
@@ -55,6 +69,7 @@ class CreateUserUseCase {
       phone: phone ? phone.trim() : null,
       roleCode: targetRoleCode,
       roleId,
+      storeId: resolvedStoreId,
       isActive: true
     });
 

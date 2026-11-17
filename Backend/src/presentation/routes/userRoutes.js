@@ -17,6 +17,9 @@ const router = express.Router();
 // GET /api/users - Danh sách người dùng (Chỉ ADMIN & STORE_MANAGER)
 router.get('/', authMiddleware, roleMiddleware(['ADMIN', 'STORE_MANAGER']), AuthController.getUsers);
 
+// GET /api/users/page-catalog - Danh mục các trang có thể bật/tắt phân quyền (Chỉ ADMIN)
+router.get('/page-catalog', authMiddleware, roleMiddleware(['ADMIN']), AuthController.getPageCatalog);
+
 // GET /api/users/:id - Chi tiết 1 người dùng (Chỉ ADMIN & STORE_MANAGER)
 router.get('/:id', authMiddleware, roleMiddleware(['ADMIN', 'STORE_MANAGER']), AuthController.getUserById);
 

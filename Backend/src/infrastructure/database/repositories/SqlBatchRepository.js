@@ -1,12 +1,13 @@
 // src/infrastructure/database/repositories/SqlBatchRepository.js
 const SqlConnection = require('../sqlConnection');
+const ensureSmartSupplySchema = require('../ensureSmartSupplySchema');
 const IBatchRepository = require('../../../domain/interfaces/IBatchRepository');
 
 class SqlBatchRepository extends IBatchRepository {
   async findById(id) {
     const sql = `
       SELECT TOP 1 
-        id, receipt_id AS receiptId, batch_code AS batchCode, product_id AS productId,
+        id, receipt_id AS receiptId, ISNULL(store_id, 1) AS storeId, batch_code AS batchCode, product_id AS productId,
         import_date AS importDate, manufacture_date AS manufactureDate, expiry_date AS expiryDate,
         initial_quantity AS initialQuantity, current_quantity AS currentQuantity,
         import_price AS importPrice, discount_percent AS discountPercent,
@@ -37,10 +38,13 @@ class SqlBatchRepository extends IBatchRepository {
   /**
    * Truy vấn toàn bộ danh sách các lô của một sản phẩm (kể cả lô đã hết hạn hoặc hết hàng)
    */
-  async findByProductId(productId) {
+  async findByProductId(productId, storeId = null) {
+    const storeFilter = storeId && String(storeId).toUpperCase() !== 'ALL'
+      ? `AND ISNULL(store_id, 1) = ${Number(storeId)}`
+      : '';
     const sql = `
       SELECT 
-        id, batch_code AS batchCode, product_id AS productId,
+        id, ISNULL(store_id, 1) AS storeId, batch_code AS batchCode, product_id AS productId,
         import_date AS importDate, manufacture_date AS manufactureDate, expiry_date AS expiryDate,
         initial_quantity AS initialQuantity, current_quantity AS currentQuantity,
         import_price AS importPrice, discount_percent AS discountPercent,
@@ -48,6 +52,7 @@ class SqlBatchRepository extends IBatchRepository {
         DATEDIFF(day, CAST(GETDATE() AS DATE), expiry_date) AS daysLeft
       FROM batches
       WHERE product_id = ${Number(productId)}
+        ${storeFilter}
       ORDER BY expiry_date ASC, id ASC;
     `;
     return await SqlConnection.queryJson(sql);
@@ -56,10 +61,13 @@ class SqlBatchRepository extends IBatchRepository {
   /**
    * Truy vấn các lô hàng khả dụng theo chuẩn FEFO (Rule 2: ExpiryDate ASC, id ASC)
    */
-  async findAvailableByProductIdFefo(productId) {
+  async findAvailableByProductIdFefo(productId, storeId = null) {
+    const storeFilter = storeId && String(storeId).toUpperCase() !== 'ALL'
+      ? `AND ISNULL(store_id, 1) = ${Number(storeId)}`
+      : '';
     const sql = `
       SELECT 
-        id, batch_code AS batchCode, product_id AS productId,
+        id, ISNULL(store_id, 1) AS storeId, batch_code AS batchCode, product_id AS productId,
         import_date AS importDate, manufacture_date AS manufactureDate, expiry_date AS expiryDate,
         initial_quantity AS initialQuantity, current_quantity AS currentQuantity,
         import_price AS importPrice, discount_percent AS discountPercent,
@@ -67,6 +75,7 @@ class SqlBatchRepository extends IBatchRepository {
         DATEDIFF(day, CAST(GETDATE() AS DATE), expiry_date) AS daysLeft
       FROM batches WITH (INDEX(IX_Batches_FEFO))
       WHERE product_id = ${Number(productId)}
+        ${storeFilter}
         AND status IN ('ACTIVE', 'WARNING')
         AND current_quantity > 0
         AND expiry_date >= CAST(GETDATE() AS DATE)
@@ -325,6 +334,144 @@ class SqlBatchRepository extends IBatchRepository {
     `;
     await SqlConnection.executeSql(sql);
     return true;
+  }
+
+  /**
+   * Kiểm kê tồn kho hoặc Xuất kho thủ công trong SQL Transaction (UPDLOCK, ROWLOCK)
+   */
+  async recordAdjustment({
+    batchId,
+    adjustmentType = 'STOCKTAKE',
+    actualQuantity = null,
+    outboundQuantity = null,
+    reason = '',
+    performedBy = null
+  }) {
+    await ensureSmartSupplySchema();
+    const safeBatchId = Number(batchId);
+    const normType = String(adjustmentType || 'STOCKTAKE').toUpperCase().trim();
+    if (!['STOCKTAKE', 'STOCK_OUT'].includes(normType)) {
+      const err = new Error('Loại điều chỉnh chỉ chấp nhận STOCKTAKE hoặc STOCK_OUT.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const prefix = normType === 'STOCKTAKE' ? 'STK' : 'OUT';
+    const adjCode = `${prefix}-${Date.now().toString().slice(-8)}`;
+    const safeReason = SqlConnection.escapeSql(reason || (normType === 'STOCKTAKE' ? 'Kiểm kê thực tế tại kho' : 'Xuất kho sử dụng/nội bộ'));
+    const safeUser = performedBy ? Number(performedBy) : 'NULL';
+
+    const txSql = `
+      SET XACT_ABORT ON;
+      BEGIN TRANSACTION;
+
+      DECLARE @storeId INT, @prodId INT, @sysQty INT, @curStatus NVARCHAR(30), @expDate DATE, @newQty INT, @delta INT;
+      SELECT
+        @storeId = ISNULL(store_id, 1),
+        @prodId = product_id,
+        @sysQty = current_quantity,
+        @curStatus = status,
+        @expDate = expiry_date
+      FROM dbo.batches WITH (UPDLOCK, ROWLOCK)
+      WHERE id = ${safeBatchId};
+
+      IF @prodId IS NULL
+      BEGIN
+        ROLLBACK TRANSACTION;
+        THROW 50001, N'Không tìm thấy lô hàng cần kiểm kê/xuất kho!', 1;
+      END
+
+      ${normType === 'STOCKTAKE'
+        ? `SET @newQty = ${Number(actualQuantity)};`
+        : `SET @newQty = @sysQty - ${Number(outboundQuantity)};`
+      }
+
+      IF @newQty < 0
+      BEGIN
+        ROLLBACK TRANSACTION;
+        THROW 50002, N'Số lượng tồn sau điều chỉnh không được âm (< 0)!', 1;
+      END
+
+      SET @delta = @newQty - @sysQty;
+
+      UPDATE dbo.batches
+      SET current_quantity = @newQty,
+          status = CASE
+            WHEN @newQty = 0 THEN 'DISPOSED'
+            WHEN @expDate <= CAST(GETDATE() AS DATE) THEN 'EXPIRED'
+            WHEN @curStatus = 'DISPOSED' AND @newQty > 0 THEN 'ACTIVE'
+            ELSE @curStatus
+          END
+      WHERE id = ${safeBatchId};
+
+      INSERT INTO dbo.inventory_adjustments (
+        adjustment_code, store_id, batch_id, product_id, adjustment_type,
+        system_quantity, actual_quantity, quantity_delta, reason, performed_by, created_at
+      ) VALUES (
+        ${SqlConnection.escapeSql(adjCode)}, @storeId, ${safeBatchId}, @prodId, ${SqlConnection.escapeSql(normType)},
+        @sysQty, @newQty, @delta, ${safeReason}, ${safeUser}, GETDATE()
+      );
+
+      COMMIT TRANSACTION;
+
+      SELECT TOP 1
+        ia.id,
+        ia.adjustment_code AS adjustmentCode,
+        ia.store_id AS storeId,
+        ia.batch_id AS batchId,
+        ia.product_id AS productId,
+        ia.adjustment_type AS adjustmentType,
+        ia.system_quantity AS systemQuantity,
+        ia.actual_quantity AS actualQuantity,
+        ia.quantity_delta AS quantityDelta,
+        ia.reason,
+        ia.created_at AS createdAt
+      FROM dbo.inventory_adjustments ia
+      WHERE ia.adjustment_code = ${SqlConnection.escapeSql(adjCode)}
+      ORDER BY ia.id DESC
+      FOR JSON PATH;
+    `;
+
+    const rows = await SqlConnection.queryJson(txSql);
+    return rows && rows.length > 0 ? rows[0] : null;
+  }
+
+  async findAdjustments({ storeId = 'ALL', limit = 60 } = {}) {
+    await ensureSmartSupplySchema();
+    const safeLimit = Math.max(1, Math.min(200, Number(limit) || 60));
+    const storeWhere = storeId && String(storeId).toUpperCase() !== 'ALL'
+      ? `ia.store_id = ${Number(storeId)}`
+      : '1=1';
+
+    const sql = `
+      SELECT TOP (${safeLimit})
+        ia.id,
+        ia.adjustment_code AS adjustmentCode,
+        ia.store_id AS storeId,
+        sp.store_code AS storeCode,
+        sp.store_name AS storeName,
+        ia.batch_id AS batchId,
+        b.batch_code AS batchCode,
+        ia.product_id AS productId,
+        p.sku AS productSku,
+        p.name AS productName,
+        p.unit,
+        ia.adjustment_type AS adjustmentType,
+        ia.system_quantity AS systemQuantity,
+        ia.actual_quantity AS actualQuantity,
+        ia.quantity_delta AS quantityDelta,
+        ia.reason,
+        u.full_name AS performedByName,
+        ia.created_at AS createdAt
+      FROM dbo.inventory_adjustments ia
+      LEFT JOIN dbo.store_profile sp ON ia.store_id = sp.id
+      LEFT JOIN dbo.batches b ON ia.batch_id = b.id
+      LEFT JOIN dbo.products p ON ia.product_id = p.id
+      LEFT JOIN dbo.users u ON ia.performed_by = u.id
+      WHERE ${storeWhere}
+      ORDER BY ia.id DESC;
+    `;
+    return await SqlConnection.queryJson(sql);
   }
 }
 

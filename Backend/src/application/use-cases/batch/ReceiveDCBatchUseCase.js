@@ -16,6 +16,7 @@ class ReceiveDCBatchUseCase {
 
   async execute({
     supplierId = 1,
+    storeId = 1,
     receivedBy,
     receivedByName = 'Nhân viên kho',
     receiptDate = new Date(),
@@ -30,8 +31,29 @@ class ReceiveDCBatchUseCase {
       throw new Error('ID nhân viên nhận hàng (receivedBy) là bắt buộc!');
     }
 
-    // Lấy cấu hình ngưỡng RSL tối thiểu của cửa hàng (mặc định 70%)
-    const storeProfile = await this.storeProfileRepository.getProfile();
+    const targetStoreId = Number(storeId) || 1;
+    // Nếu gắn đơn đặt hàng PO, kiểm tra đơn hợp lệ và sản phẩm nhập phải thuộc đúng đơn PO đó
+    let linkedPo = null;
+    if (purchaseOrderId && this.purchaseOrderRepository?.findById) {
+      linkedPo = await this.purchaseOrderRepository.findById(Number(purchaseOrderId));
+      if (!linkedPo) {
+        const err = new Error(`Đơn đặt hàng PO #${purchaseOrderId} không tồn tại!`);
+        err.statusCode = 404;
+        throw err;
+      }
+      const poSt = String(linkedPo.status || '').toUpperCase();
+      if (!['APPROVED', 'SUBMITTED', 'SHIPPING'].includes(poSt)) {
+        const err = new Error(`Đơn đặt hàng [${linkedPo.orderCode}] đang ở trạng thái ${poSt}, chỉ được nhập kho theo đơn đã duyệt hoặc đang giao!`);
+        err.statusCode = 400;
+        throw err;
+      }
+    }
+    const poAllowedProductIds = linkedPo && Array.isArray(linkedPo.items) && linkedPo.items.length > 0
+      ? new Set(linkedPo.items.map(it => Number(it.productId)))
+      : null;
+
+    // Lấy cấu hình ngưỡng RSL tối thiểu của đúng chi nhánh nhận hàng (mặc định 70%)
+    const storeProfile = await this.storeProfileRepository.getProfile(targetStoreId);
     const minRslPercent = storeProfile ? Number(storeProfile.minInboundRslPercent || 70.0) : 70.0;
 
     const validatedBatches = [];
@@ -42,6 +64,12 @@ class ReceiveDCBatchUseCase {
       const prod = await this.productRepository.findById(b.productId);
       if (!prod) {
         throw new Error(`Sản phẩm với ID [${b.productId}] không tồn tại trong danh mục hệ thống!`);
+      }
+      if (poAllowedProductIds && !poAllowedProductIds.has(Number(prod.id))) {
+        const err = new Error(`Sản phẩm "${prod.name}" không thuộc đơn đặt hàng [${linkedPo.orderCode}]!`);
+        err.statusCode = 400;
+        err.code = 'ERR_PO_PRODUCT_MISMATCH';
+        throw err;
       }
 
       const mfgRaw = b.manufactureDate || b.manufacturingDate;
@@ -62,13 +90,23 @@ class ReceiveDCBatchUseCase {
         throw new Error(`Lô hàng ${b.batchCode || prod.name}: Định dạng ngày sản xuất hoặc ngày hết hạn không hợp lệ!`);
       }
 
-      // 1. Kiểm tra ngày hết hạn bắt buộc phải lớn hơn ngày sản xuất
-      if (exp <= mfg) {
-        throw new Error(`Lô hàng ${b.batchCode || prod.name}: Hạn sử dụng (${expRaw}) phải lớn hơn Ngày sản xuất (${mfgRaw})!`);
+      // 1. Kiểm tra ngày hết hạn bắt buộc phải lớn hơn ngày sản xuất và ngày sản xuất không sau ngày nhận
+      const toUtcDayMs = (d) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+      if (toUtcDayMs(exp) <= toUtcDayMs(mfg)) {
+        const err = new Error(`Lô hàng ${b.batchCode || prod.name}: Hạn sử dụng (${expRaw}) phải lớn hơn Ngày sản xuất (${mfgRaw})!`);
+        err.statusCode = 400;
+        err.code = 'ERR_INVALID_DATES';
+        throw err;
+      }
+      if (toUtcDayMs(mfg) > toUtcDayMs(imp)) {
+        const err = new Error(`Lô hàng ${b.batchCode || prod.name}: Ngày sản xuất (${mfgRaw}) không thể lớn hơn Ngày nhận hàng (${imp.toISOString().slice(0, 10)})!`);
+        err.statusCode = 400;
+        err.code = 'ERR_INVALID_DATES';
+        throw err;
       }
 
       // 1.1 Khóa cứng hàng đã hết hạn trước hoặc ngay thời điểm tiếp nhận (Rule 5 & Rule 7 SSOT)
-      if (exp <= imp) {
+      if (toUtcDayMs(exp) <= toUtcDayMs(imp)) {
         throw new Error(
           `TỪ CHỐI NHẬN HÀNG (RULE 5 & RULE 7): Lô hàng "${prod.name}" đã hết hạn sử dụng tại thời điểm giao hàng ` +
           `(HSD: ${expRaw} <= Ngày nhận: ${imp.toISOString().slice(0, 10)}). Nghiêm cấm nhập hàng hết hạn vào cửa hàng!`
@@ -106,6 +144,7 @@ class ReceiveDCBatchUseCase {
 
       validatedBatches.push({
         productId: prod.id,
+        storeId: targetStoreId,
         productName: prod.name,
         productSku: prod.sku,
         batchCode: finalBatchCode,
@@ -123,6 +162,7 @@ class ReceiveDCBatchUseCase {
     const receiptResult = await this.goodsReceiptRepository.createReceiptWithBatches({
       receiptNumber,
       supplierId: Number(supplierId),
+      storeId: targetStoreId,
       receivedBy: Number(receivedBy),
       receiptDate: new Date(receiptDate),
       totalCost: Math.round(calculatedTotalCost),

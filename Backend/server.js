@@ -22,18 +22,21 @@ const stockTransferRoutes = require('./src/presentation/routes/stockTransferRout
 // Import DI Container
 const { auditLogRepository } = require('./src/container');
 const SqlConnection = require('./src/infrastructure/database/sqlConnection');
+const ensureSmartSupplySchema = require('./src/infrastructure/database/ensureSmartSupplySchema');
 
 // Import Middlewares
 const errorHandler = require('./src/presentation/middlewares/errorHandler');
 const authMiddleware = require('./src/presentation/middlewares/authMiddleware');
 const roleMiddleware = require('./src/presentation/middlewares/roleMiddleware');
+const { resolveStoreScope } = require('./src/presentation/middlewares/storeScope');
+const { buildCorsOptions } = require('./src/presentation/middlewares/corsConfig');
 const TokenService = require('./src/infrastructure/security/TokenService');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Global Middlewares
-app.use(cors());
+app.use(cors(buildCorsOptions()));
 app.use(express.json({ limit: '10mb' }));
 
 // Global Optional JWT Context Hydrator (phục vụ Data Scoping theo store_id trên các GET endpoints)
@@ -54,24 +57,52 @@ app.use((req, _res, next) => {
   next();
 });
 
+// Deny-by-default: mọi route dưới /api đều yêu cầu Bearer token hợp lệ (đồng thời kiểm tra tài khoản còn hoạt động),
+// trừ các route công khai liệt kê dưới đây. (OWASP API2:2023 / API5:2023)
+const PUBLIC_API_ROUTES = Object.freeze([
+  { method: 'GET', path: '/health' },
+  { method: 'POST', path: '/auth/login' },
+  { method: 'POST', path: '/auth/logout' }
+]);
+
+app.use('/api', (req, res, next) => {
+  const requestPath = req.path.length > 1 ? req.path.replace(/\/+$/, '') : req.path;
+  const isPublic = PUBLIC_API_ROUTES.some(
+    (route) => route.method === req.method && route.path === requestPath
+  );
+  if (isPublic) return next();
+  return authMiddleware(req, res, next);
+});
+
+// Chuẩn hóa tham số limit: số nguyên dương, có trần, tránh nội suy giá trị tùy ý vào câu lệnh SQL TOP
+function parseLimit(raw, fallback = 50, max = 500) {
+  const n = Number.parseInt(raw, 10);
+  return Number.isInteger(n) && n > 0 ? Math.min(n, max) : fallback;
+}
+
 // 1. Health Check Endpoint
 app.get('/api/health', (req, res) => {
   res.json({
     success: true,
     statusCode: 200,
-    message: 'Supply Chain Spoilage Predictor API is operational (Clean Architecture)',
+    message: 'SmartSupply AI API is operational (Clean Architecture)',
     database: 'Microsoft SQL Server LocalDB (retail_spoilage_db)',
     storeCode: 'RETAIL-STORE-01',
-    storeName: 'LHU Mart - Co.op Smile Liên kết ĐH Lạc Hồng',
+    storeName: 'SmartSupply AI Retail Chain',
     timestamp: new Date().toISOString()
   });
 });
 
-// 2. Audit Logs Endpoint
-app.get('/api/audit-logs', async (req, res, next) => {
+// 2. Audit Logs Endpoint (Chỉ ADMIN & STORE_MANAGER hoặc tài khoản được cấp quyền Settings & Integration)
+app.get('/api/audit-logs', roleMiddleware(['ADMIN', 'STORE_MANAGER'], { pageKey: 'settings-integration', grantUnlocksRole: true }), async (req, res, next) => {
   try {
-    const limit = Number(req.query.limit || 50);
-    const logs = await auditLogRepository.findRecent(limit);
+    const scope = resolveStoreScope(req, req.query?.storeId, { adminDefault: 'ALL' });
+    if (!scope.ok) {
+      return res.status(scope.statusCode).json(scope.error);
+    }
+
+    const limit = parseLimit(req.query.limit);
+    const logs = await auditLogRepository.findRecent(limit, scope.storeId);
     res.json({
       success: true,
       count: logs.length,
@@ -82,13 +113,20 @@ app.get('/api/audit-logs', async (req, res, next) => {
   }
 });
 
-// 2.2 Goods Receipts Endpoint (Mục 17.7 SSOT - Lịch sử Tiếp nhận Hàng DC)
-app.get('/api/goods-receipts', async (req, res, next) => {
+// 2.2 Goods Receipts Endpoint (Lịch sử Nhập kho theo chi nhánh)
+app.get('/api/goods-receipts', roleMiddleware(['ADMIN', 'STORE_MANAGER', 'CASHIER'], { pageKey: 'inventory-management' }), async (req, res, next) => {
   try {
-    const limit = Number(req.query.limit || 50);
+    const scope = resolveStoreScope(req, req.query?.storeId, { adminDefault: 'ALL' });
+    if (!scope.ok) {
+      return res.status(scope.statusCode).json(scope.error);
+    }
+
+    const limit = parseLimit(req.query.limit);
+    const storeWhere = scope.storeId === 'ALL' ? '1=1' : `ISNULL(gr.store_id, 1) = ${Number(scope.storeId)}`;
     const sql = `
       SELECT TOP (${limit})
         gr.id,
+        ISNULL(gr.store_id, 1) AS storeId,
         gr.receipt_number AS receiptNumber,
         gr.supplier_id AS supplierId,
         sup.name AS supplierName,
@@ -103,6 +141,7 @@ app.get('/api/goods-receipts', async (req, res, next) => {
       FROM goods_receipts gr
       LEFT JOIN suppliers sup ON gr.supplier_id = sup.id
       LEFT JOIN users u ON gr.received_by = u.id
+      WHERE ${storeWhere}
       ORDER BY gr.id DESC;
     `;
     const data = await SqlConnection.queryJson(sql);
@@ -141,24 +180,17 @@ app.use(errorHandler);
 
 // Start HTTP Server
 if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`[SERVER] API running on http://localhost:${PORT}`);
-    console.log(`[DATABASE] Microsoft SQL Server LocalDB (retail_spoilage_db)`);
-    console.log(`[ROUTING] Clean Architecture endpoints ready:`);
-    console.log(`  - POST /api/auth/login`);
-    console.log(`  - GET  /api/store-profile`);
-    console.log(`  - GET  /api/catalog/products`);
-    console.log(`  - GET  /api/suppliers`);
-    console.log(`  - GET  /api/batches (vw_Batches_ShelfLife_Alerts)`);
-    console.log(`  - POST /api/batches/receive-inbound (RSL >= 70%)`);
-    console.log(`  - PATCH /api/batches/:id/discount (Quick Markdown 15%-50%)`);
-    console.log(`  - PATCH /api/batches/:id/rotate (FEFO SOP Đảo kệ)`);
-    console.log(`  - POST /api/sales (FEFO Split Order Deduct)`);
-    console.log(`  - POST /api/spoilage (Disposal & Sổ Hao hụt)`);
-    console.log(`  - GET  /api/forecast/rop (Weather & Holiday Factors)`);
-    console.log(`  - POST /api/forecast/purchase-orders (PO gửi DC)`);
-    console.log(`  - GET  /api/dashboard/overview (6 KPI & Action Board)`);
-  });
+  ensureSmartSupplySchema()
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`[SERVER] SmartSupply AI API running on http://localhost:${PORT}`);
+        console.log(`[DATABASE] Microsoft SQL Server LocalDB (retail_spoilage_db)`);
+      });
+    })
+    .catch((err) => {
+      console.error('[SCHEMA INIT ERROR]', err);
+      process.exit(1);
+    });
 }
 
 module.exports = app;

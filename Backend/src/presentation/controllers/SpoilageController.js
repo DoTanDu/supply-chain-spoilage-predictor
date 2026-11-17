@@ -1,15 +1,125 @@
 // src/presentation/controllers/SpoilageController.js
+const { resolveStoreScope, assertStoreOwnership } = require('../middlewares/storeScope');
+
 class SpoilageController {
-  constructor({ disposeSpoiledGoodsUseCase, getSpoilageLedgerUseCase, spoilageRepository, auditLogRepository }) {
+  constructor({ disposeSpoiledGoodsUseCase, getSpoilageLedgerUseCase, spoilageRepository, batchRepository, auditLogRepository }) {
     this.disposeSpoiledGoodsUseCase = disposeSpoiledGoodsUseCase;
     this.getSpoilageLedgerUseCase = getSpoilageLedgerUseCase;
     this.spoilageRepository = spoilageRepository;
+    this.batchRepository = batchRepository || disposeSpoiledGoodsUseCase?.batchRepository;
     this.auditLogRepository = auditLogRepository;
+  }
+
+  _getBatchRepository() {
+    if (!this.batchRepository && this.disposeSpoiledGoodsUseCase?.batchRepository) {
+      this.batchRepository = this.disposeSpoiledGoodsUseCase.batchRepository;
+    }
+    return this.batchRepository;
+  }
+
+  async recordBulkDisposal(req, res, next) {
+    try {
+      const { items, reason = 'EXP_SPOILAGE', notes = '' } = req.body;
+      if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({
+          success: false,
+          errorCode: 'ERR_EMPTY_ITEMS',
+          message: 'Danh sách lô hàng cần tiêu hủy không được rỗng!'
+        });
+      }
+
+      const scope = resolveStoreScope(req, req.body?.storeId, { allowAll: false, adminDefault: 1 });
+      if (!scope.ok) {
+        return res.status(scope.statusCode).json(scope.error);
+      }
+
+      const batchRepo = this._getBatchRepository();
+      if (batchRepo) {
+        for (const item of items) {
+          const batchId = item.batchId || item.id;
+          if (!batchId) continue;
+          const batch = await batchRepo.findById(batchId);
+          if (batch) {
+            const ownership = assertStoreOwnership(req.user, batch.storeId, `lô hàng #${batchId}`);
+            if (!ownership.ok) {
+              return res.status(ownership.statusCode).json(ownership.error);
+            }
+          }
+        }
+      }
+
+      const performedBy = req.user ? req.user.id : (req.body.performedBy || 3);
+      const performedByName = req.user ? (req.user.fullName || req.user.username) : (req.body.performedByName || 'Nhân viên ca trực');
+      const userRole = req.user ? req.user.roleCode : '';
+      const canAutoApprove = userRole === 'ADMIN' || userRole === 'STORE_MANAGER';
+      const approvedBy = canAutoApprove ? (req.user ? req.user.id : (req.body.approvedBy || 2)) : null;
+      const approvedByName = canAutoApprove ? (req.user ? (req.user.fullName || req.user.username) : 'Cửa hàng trưởng LHU Mart') : null;
+
+      const records = [];
+      let totalLoss = 0;
+      let totalQuantity = 0;
+
+      for (const item of items) {
+        const batchId = item.batchId || item.id;
+        const qty = Number(item.quantityDisposed !== undefined ? item.quantityDisposed : item.quantity);
+        if (!batchId || isNaN(qty) || qty <= 0) continue;
+
+        const itemReason = item.reason || reason;
+        const itemNotes = item.notes !== undefined && item.notes !== '' ? item.notes : notes;
+
+        const record = await this.disposeSpoiledGoodsUseCase.execute({
+          batchId,
+          quantityDisposed: qty,
+          reason: itemReason,
+          notes: itemNotes,
+          performedBy,
+          performedByName,
+          approvedBy,
+          approvedByName
+        });
+        records.push(record);
+        totalLoss += Number(record.costLoss || (qty * Number(record.importPrice || 0)));
+        totalQuantity += qty;
+      }
+
+      res.status(201).json({
+        success: true,
+        message: `Đã lập ${canAutoApprove ? 'và duyệt tiêu hủy' : 'đề xuất tiêu hủy'} thành công ${records.length} lô hàng! Tổng tổn thất: ${totalLoss.toLocaleString('vi-VN')} đ`,
+        data: {
+          records,
+          totalLoss,
+          totalQuantity,
+          isAutoApproved: canAutoApprove
+        }
+      });
+    } catch (err) {
+      next(err);
+    }
   }
 
   async recordDisposal(req, res, next) {
     try {
+      if (Array.isArray(req.body.items) && req.body.items.length > 0) {
+        return await this.recordBulkDisposal(req, res, next);
+      }
+
+      const scope = resolveStoreScope(req, req.body?.storeId, { allowAll: false, adminDefault: 1 });
+      if (!scope.ok) {
+        return res.status(scope.statusCode).json(scope.error);
+      }
+
       const { batchId, quantityDisposed, quantity, reason, notes } = req.body;
+      const batchRepo = this._getBatchRepository();
+      if (batchId && batchRepo) {
+        const batch = await batchRepo.findById(batchId);
+        if (batch) {
+          const ownership = assertStoreOwnership(req.user, batch.storeId, `lô hàng #${batchId}`);
+          if (!ownership.ok) {
+            return res.status(ownership.statusCode).json(ownership.error);
+          }
+        }
+      }
+
       const finalQty = quantityDisposed !== undefined ? quantityDisposed : quantity;
       const performedBy = req.user ? req.user.id : (req.body.performedBy || 3);
       const performedByName = req.user ? (req.user.fullName || req.user.username) : (req.body.performedByName || 'Nhân viên ca trực');
@@ -52,6 +162,20 @@ class SpoilageController {
         this.auditLogRepository = this.disposeSpoiledGoodsUseCase.auditLogRepository;
       }
 
+      if (typeof this.spoilageRepository.findRecordByIdOrCode === 'function') {
+        const existing = await this.spoilageRepository.findRecordByIdOrCode(id);
+        if (!existing) {
+          return res.status(404).json({
+            success: false,
+            message: `Không tìm thấy biên bản tiêu hủy [${id}] để phê duyệt.`
+          });
+        }
+        const ownership = assertStoreOwnership(req.user, existing.storeId, `biên bản tiêu hủy [${id}]`);
+        if (!ownership.ok) {
+          return res.status(ownership.statusCode).json(ownership.error);
+        }
+      }
+
       const updated = await this.spoilageRepository.approveRecord(id, approverId);
       if (!updated) {
         return res.status(404).json({
@@ -85,27 +209,16 @@ class SpoilageController {
     try {
       const limit = Number(req.query.limit || 50);
       const { startDate, endDate, storeId: requestedStoreId } = req.query;
-      const userRole = String(req.user?.roleCode || '').toUpperCase();
-      const userStoreId = Number(req.user?.storeId || 1);
-
-      if (requestedStoreId && userRole && userRole !== 'ADMIN' && userRole !== 'OWNER') {
-        if (String(requestedStoreId).toUpperCase() === 'ALL' || Number(requestedStoreId) !== userStoreId) {
-          return res.status(403).json({
-            success: false,
-            errorCode: 'ERR_STORE_SCOPE_FORBIDDEN',
-            message: `Phạm vi dữ liệu bị từ chối: Bạn chỉ được phép truy cập dữ liệu của Chi nhánh #${userStoreId}!`
-          });
-        }
+      const scope = resolveStoreScope(req, requestedStoreId, { adminDefault: 'ALL' });
+      if (!scope.ok) {
+        return res.status(scope.statusCode).json(scope.error);
       }
-      const effectiveStoreId = (userRole === 'ADMIN' || userRole === 'OWNER')
-        ? (requestedStoreId || 'ALL')
-        : (requestedStoreId || userStoreId);
 
       const result = await this.getSpoilageLedgerUseCase.execute({
         limit,
         startDate: startDate || null,
         endDate: endDate || null,
-        storeId: effectiveStoreId
+        storeId: scope.storeId
       });
 
       res.json(result);
@@ -116,10 +229,20 @@ class SpoilageController {
 
   async getLossSummary(req, res, next) {
     try {
+      const scope = resolveStoreScope(req, req.query?.storeId, { adminDefault: 'ALL' });
+      if (!scope.ok) {
+        return res.status(scope.statusCode).json(scope.error);
+      }
+
       if (!this.spoilageRepository && this.getSpoilageLedgerUseCase?.spoilageRepository) {
         this.spoilageRepository = this.getSpoilageLedgerUseCase.spoilageRepository;
       }
-      const summary = await this.spoilageRepository.getLossSummary();
+      const { startDate, endDate } = req.query;
+      const summary = await this.spoilageRepository.getLossSummary(
+        startDate || null,
+        endDate || null,
+        scope.storeId
+      );
       res.json({
         success: true,
         data: summary

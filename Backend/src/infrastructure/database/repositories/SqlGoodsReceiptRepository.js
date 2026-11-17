@@ -10,6 +10,7 @@ class SqlGoodsReceiptRepository extends IGoodsReceiptRepository {
     const rc = params.goodsReceipt || params;
     const receiptNumber = rc.receiptNumber;
     const supplierId = rc.supplierId;
+    const storeId = Number(rc.storeId || params.storeId || 1);
     const receivedBy = rc.receivedBy;
     const receiptDate = rc.receiptDate || new Date();
     const totalCost = rc.totalCost || 0;
@@ -23,6 +24,20 @@ class SqlGoodsReceiptRepository extends IGoodsReceiptRepository {
     const cost = Number(totalCost);
     const noteStr = SqlConnection.escapeSql(notes || '');
 
+    // Kiểm tra trùng mã lô trước khi INSERT để trả thông báo nghiệp vụ rõ ràng thay vì lỗi SQL 2627
+    const batchCodesSql = batches.map(b => SqlConnection.escapeSql(b.batchCode)).join(', ');
+    if (batchCodesSql) {
+      const dupRows = await SqlConnection.queryJson(`
+        SELECT TOP 1 batch_code AS batchCode FROM batches WHERE batch_code IN (${batchCodesSql});
+      `);
+      if (dupRows && dupRows.length > 0) {
+        const err = new Error(`Mã lô hàng [${dupRows[0].batchCode}] đã tồn tại trong kho. Vui lòng đổi mã lô khác!`);
+        err.statusCode = 409;
+        err.code = 'ERR_DUPLICATE_BATCH_CODE';
+        throw err;
+      }
+    }
+
     // Tạo các câu SQL cho batches và cập nhật giá vốn sản phẩm
     const batchInserts = [];
     const productCostUpdates = [];
@@ -30,6 +45,7 @@ class SqlGoodsReceiptRepository extends IGoodsReceiptRepository {
     for (const b of batches) {
       const code = SqlConnection.escapeSql(b.batchCode);
       const pId = Number(b.productId);
+      const bStoreId = Number(b.storeId || storeId || 1);
       const impD = SqlConnection.escapeSql(new Date(b.importDate).toISOString().slice(0, 10));
       const mfgD = SqlConnection.escapeSql(new Date(b.manufactureDate).toISOString().slice(0, 10));
       const expD = SqlConnection.escapeSql(new Date(b.expiryDate).toISOString().slice(0, 10));
@@ -38,11 +54,11 @@ class SqlGoodsReceiptRepository extends IGoodsReceiptRepository {
 
       batchInserts.push(`
         INSERT INTO batches (
-          receipt_id, batch_code, product_id, import_date, manufacture_date,
+          receipt_id, batch_code, product_id, store_id, import_date, manufacture_date,
           expiry_date, initial_quantity, current_quantity, import_price,
           discount_percent, status, is_shelf_rotated, created_at
         ) VALUES (
-          @NewReceiptId, ${code}, ${pId}, ${impD}, ${mfgD},
+          @NewReceiptId, ${code}, ${pId}, ${bStoreId}, ${impD}, ${mfgD},
           ${expD}, ${qty}, ${qty}, ${prc},
           0, 'ACTIVE', 0, GETDATE()
         );
@@ -59,10 +75,10 @@ class SqlGoodsReceiptRepository extends IGoodsReceiptRepository {
         DECLARE @NewReceiptId INT;
 
         INSERT INTO goods_receipts (
-          receipt_number, supplier_id, received_by, receipt_date,
+          receipt_number, supplier_id, store_id, received_by, receipt_date,
           total_cost, status, notes, created_at
         ) VALUES (
-          ${num}, ${supId}, ${recBy}, ${recDate},
+          ${num}, ${supId}, ${storeId}, ${recBy}, ${recDate},
           ${cost}, 'COMPLETED', ${noteStr}, GETDATE()
         );
 

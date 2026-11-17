@@ -12,6 +12,7 @@ class CreatePurchaseOrderUseCase {
   }
 
   async execute({
+    storeId = 1,
     supplierId = 1,
     createdBy,
     createdByName = 'Cửa hàng trưởng',
@@ -28,6 +29,7 @@ class CreatePurchaseOrderUseCase {
 
     // Khởi tạo Entity PurchaseOrder
     const po = new PurchaseOrder({
+      storeId: Number(storeId || 1),
       supplierId: Number(supplierId),
       createdBy: Number(createdBy),
       expectedDeliveryDate,

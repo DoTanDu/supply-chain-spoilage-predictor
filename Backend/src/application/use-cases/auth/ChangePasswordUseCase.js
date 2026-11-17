@@ -1,5 +1,6 @@
 // src/application/use-cases/auth/ChangePasswordUseCase.js
 const PasswordHasher = require('../../../infrastructure/security/PasswordHasher');
+const DemoPasswordPolicy = require('../../../infrastructure/security/DemoPasswordPolicy');
 
 class ChangePasswordUseCase {
   constructor(userRepository, auditLogRepository) {
@@ -39,10 +40,7 @@ class ChangePasswordUseCase {
 
     // Kiểm tra mật khẩu hiện tại (hỗ trợ cả bcrypt và seed fallback)
     const isMatch = await PasswordHasher.compare(oldPassword, user.passwordHash);
-    const isFallbackMatch = !isMatch && (
-      oldPassword === user.passwordHash || 
-      (user.passwordHash && (oldPassword === 'admin' || oldPassword === 'Password123@' || oldPassword === '123456'))
-    );
+    const isFallbackMatch = !isMatch && DemoPasswordPolicy.matches(oldPassword, user.passwordHash);
 
     if (!isMatch && !isFallbackMatch) {
       throw new Error('Mật khẩu hiện tại không chính xác.');

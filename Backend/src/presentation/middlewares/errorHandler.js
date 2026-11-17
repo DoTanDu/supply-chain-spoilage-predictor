@@ -3,7 +3,9 @@ function errorHandler(err, req, res, next) {
   console.error('[API Error]', err.stack || err.message);
 
   const lowerMsg = (err.message || '').toLowerCase();
+  const isUniqueViolation = lowerMsg.includes('unique key constraint') || lowerMsg.includes('cannot insert duplicate key') || lowerMsg.includes('msg 2627');
   const isBusinessError = err.statusCode || 
+    isUniqueViolation ||
     lowerMsg.includes('từ chối') || 
     lowerMsg.includes('không đủ tồn kho') || 
     lowerMsg.includes('không hợp lệ') || 
@@ -27,12 +29,22 @@ function errorHandler(err, req, res, next) {
     lowerMsg.includes('quá hạn') ||
     lowerMsg.includes('hết hạn') ||
     lowerMsg.includes('hết hàng');
-  const statusCode = err.statusCode || (lowerMsg.includes('50003') ? 404 : (isBusinessError ? 400 : 500));
+  const statusCode = err.statusCode || (isUniqueViolation ? 409 : (lowerMsg.includes('50003') ? 404 : (isBusinessError ? 400 : 500)));
+
+  let safeMessage = err.message || 'Đã xảy ra lỗi máy chủ nội bộ.';
+  if (!err.statusCode && isUniqueViolation) {
+    const dupMatch = /duplicate key value is \(([^)]+)\)/i.exec(err.message || '');
+    safeMessage = dupMatch
+      ? `Mã dữ liệu [${dupMatch[1]}] đã tồn tại trong hệ thống. Vui lòng nhập mã khác!`
+      : 'Dữ liệu bị trùng khóa duy nhất trong hệ thống. Vui lòng kiểm tra lại mã!';
+  }
 
   // Suy diễn fallback error code nếu use case chưa gắn kèm
   let code = err.code;
   if (!code && err.message) {
-    if (lowerMsg.includes('kiểm kê định kỳ') || lowerMsg.includes('inventory')) {
+    if (isUniqueViolation) {
+      code = 'ERR_DUPLICATE_KEY';
+    } else if (lowerMsg.includes('kiểm kê định kỳ') || lowerMsg.includes('inventory')) {
       code = 'ERR_STORE_INVENTORY';
     } else if (lowerMsg.includes('cửa hàng') && (lowerMsg.includes('closed') || lowerMsg.includes('trạng thái'))) {
       code = 'ERR_STORE_CLOSED';
@@ -62,7 +74,7 @@ function errorHandler(err, req, res, next) {
     statusCode,
     ...(code ? { code } : {}),
     ...(err.details ? { details: err.details } : {}),
-    message: err.message || 'Đã xảy ra lỗi máy chủ nội bộ.',
+    message: safeMessage,
     timestamp: new Date().toISOString()
   });
 }

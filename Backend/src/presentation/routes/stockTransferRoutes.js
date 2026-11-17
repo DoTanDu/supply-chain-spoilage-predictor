@@ -3,15 +3,33 @@ const express = require('express');
 const stockTransferRepo = require('../../infrastructure/database/repositories/SqlStockTransferRepository');
 const authMiddleware = require('../middlewares/authMiddleware');
 const roleMiddleware = require('../middlewares/roleMiddleware');
+const { resolveStoreScope } = require('../middlewares/storeScope');
 
 const router = express.Router();
+const transferReadGuard = roleMiddleware(['ADMIN', 'STORE_MANAGER', 'CASHIER'], { pageKey: 'stock-transfer' });
+const transferManageGuard = roleMiddleware(['ADMIN', 'STORE_MANAGER'], { pageKey: 'stock-transfer' });
 
-// GET /api/stock-transfers/ai-matrix - Ma trận Cân bằng Cung-Cầu 3 Chi nhánh (Pre-trained LightGBM + OR-Tools MILP)
-router.get('/ai-matrix', async (req, res, next) => {
+// GET /api/stock-transfers/ai-matrix - Ma trận Cân bằng Cung-Cầu từ SQL Server + Thời tiết & Lịch lễ thực tế
+router.get('/ai-matrix', transferReadGuard, async (req, res, next) => {
   try {
-    const weather = req.query.weather || 'NORMAL';
-    const isHoliday = req.query.isHoliday === 'true' || req.query.isHoliday === '1';
+    const scope = resolveStoreScope(req, req.query?.storeId, { adminDefault: 'ALL' });
+    if (!scope.ok) {
+      return res.status(scope.statusCode).json(scope.error);
+    }
+
+    const weather = req.query.weather || 'AUTO';
+    const isHoliday = (req.query.isHoliday === undefined || req.query.isHoliday === 'auto')
+      ? 'auto'
+      : (req.query.isHoliday === 'true' || req.query.isHoliday === '1');
     const data = await stockTransferRepo.getAiSupplyChainMatrix({ weather, isHoliday });
+
+    if (!scope.isOwner && data && Array.isArray(data.orToolsTransferProposals)) {
+      const myStore = Number(scope.storeId);
+      data.orToolsTransferProposals = data.orToolsTransferProposals.filter(
+        p => Number(p.fromStoreId) === myStore || Number(p.toStoreId) === myStore
+      );
+    }
+
     res.json({
       success: true,
       data
@@ -21,10 +39,12 @@ router.get('/ai-matrix', async (req, res, next) => {
   }
 });
 
-// POST /api/stock-transfers/ai-inference - Kiểm thử trực tiếp Pre-trained Model (.pkl) trên tập sample_retail_dataset.csv
-router.post('/ai-inference', async (req, res, next) => {
+// POST /api/stock-transfers/ai-inference - Kiểm thử trực tiếp Model (.pkl) trên dữ liệu SQL Server + thời tiết Open-Meteo
+// Spawn tiến trình Python nên chỉ ADMIN & STORE_MANAGER được gọi; limit là số nguyên dương có trần.
+router.post('/ai-inference', transferManageGuard, async (req, res, next) => {
   try {
-    const limit = Number(req.body?.limit || req.query?.limit || 10);
+    const parsedLimit = Number.parseInt(req.body?.limit ?? req.query?.limit ?? 10, 10);
+    const limit = Number.isInteger(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 50) : 10;
     const result = await stockTransferRepo.runLivePklInference(limit);
     res.json({
       success: true,
@@ -36,10 +56,16 @@ router.post('/ai-inference', async (req, res, next) => {
 });
 
 // GET /api/stock-transfers - Danh sách phiếu điều chuyển liên cửa hàng (dbo.stock_transfers)
-router.get('/', async (req, res, next) => {
+router.get('/', transferReadGuard, async (req, res, next) => {
   try {
-    const { status, storeId } = req.query;
-    const transfers = await stockTransferRepo.getAllTransfers({ status, storeId });
+    const scope = resolveStoreScope(req, req.query?.storeId, { adminDefault: 'ALL' });
+    if (!scope.ok) {
+      return res.status(scope.statusCode).json(scope.error);
+    }
+
+    const { status } = req.query;
+    const effectiveStoreId = scope.isOwner && scope.storeId === 'ALL' ? null : scope.storeId;
+    const transfers = await stockTransferRepo.getAllTransfers({ status, storeId: effectiveStoreId });
     res.json({
       success: true,
       count: transfers.length,
@@ -54,14 +80,20 @@ router.get('/', async (req, res, next) => {
 router.post(
   '/',
   authMiddleware,
-  roleMiddleware(['ADMIN', 'STORE_MANAGER']),
+  transferManageGuard,
   async (req, res, next) => {
     try {
+      const scope = resolveStoreScope(req, req.body?.fromStoreId, { allowAll: false, adminDefault: 1 });
+      if (!scope.ok) {
+        return res.status(scope.statusCode).json(scope.error);
+      }
+
       const userId = req.user?.id || 2;
-      const userRole = req.user?.roleCode || req.user?.role || 'STORE_MANAGER';
-      const autoApprove = req.body.autoApprove === true && userRole === 'ADMIN';
+      const userRole = String(req.user?.roleCode || req.user?.role || 'STORE_MANAGER').toUpperCase();
+      const autoApprove = req.body.autoApprove === true && (userRole === 'ADMIN' || userRole === 'OWNER');
       const created = await stockTransferRepo.createTransfer({
         ...req.body,
+        fromStoreId: req.body?.fromStoreId !== undefined ? Number(req.body.fromStoreId) : scope.storeId,
         requestedBy: userId,
         autoApprove
       });
@@ -80,18 +112,21 @@ router.post(
 router.patch(
   '/:id/status',
   authMiddleware,
+  transferReadGuard,
   async (req, res, next) => {
     try {
       const id = Number(req.params.id);
       const { status, notes } = req.body;
       const userId = req.user?.id || 1;
-      const userRole = req.user?.roleCode || req.user?.role || 'STAFF';
+      const userRole = req.user?.roleCode || req.user?.role || 'CASHIER';
+      const userStoreId = req.user?.storeId || null;
 
       const updated = await stockTransferRepo.updateTransferStatus({
         id,
         status,
         userId,
         userRole,
+        userStoreId,
         notes
       });
       res.json({

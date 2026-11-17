@@ -8,6 +8,7 @@
  */
 
 const BASE_URL = 'http://127.0.0.1:5000';
+const SqlConnection = require('./src/infrastructure/database/sqlConnection');
 let adminToken = null;
 let managerToken = null;
 let cashierToken = null;
@@ -93,6 +94,15 @@ async function runMasterTestSuite() {
     }
   }
   assert(lockedTriggered, `Cơ chế tự động khóa tài khoản "${tempUser}" sau 5 lần đăng nhập sai mật khẩu hoạt động chuẩn xác`);
+
+  // Dọn dẹp tài khoản test để không lưu rác vào CSDL thực tế
+  try {
+    await SqlConnection.executeSql(`
+      DELETE FROM dbo.audit_logs WHERE description LIKE '%${tempUser}%';
+      DELETE FROM dbo.system_audit_logs WHERE description LIKE '%${tempUser}%';
+      DELETE FROM dbo.users WHERE username = '${tempUser}';
+    `);
+  } catch (cleanErr) {}
 
   // ==========================================================================================
   // SECTION 1: RULE 1 - CỬA HÀNG BÁN LẺ DUY NHẤT (RETAIL-STORE-01)
@@ -296,6 +306,14 @@ async function runMasterTestSuite() {
 
     const submitPo = await request('PATCH', `/api/forecast/purchase-orders/${poId}/status`, { status: 'SUBMITTED' }, managerToken);
     assert(submitPo.status === 200, `Chuyển trạng thái PO #${poId} sang SUBMITTED (Đã gửi xe DC) thành công`);
+
+    // Dọn dẹp đơn PO test để không tích lũy đơn trùng lặp vào CSDL
+    try {
+      await SqlConnection.executeSql(`
+        DELETE FROM dbo.purchase_order_items WHERE order_id = ${poId};
+        DELETE FROM dbo.purchase_orders WHERE id = ${poId};
+      `);
+    } catch (cleanPoErr) {}
   }
 
   // ==========================================================================================

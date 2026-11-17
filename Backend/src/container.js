@@ -31,6 +31,7 @@ const CreatePurchaseOrderUseCase = require('./application/use-cases/forecast/Cre
 const UpdatePurchaseOrderStatusUseCase = require('./application/use-cases/forecast/UpdatePurchaseOrderStatusUseCase');
 
 const GetDashboardOverviewUseCase = require('./application/use-cases/dashboard/GetDashboardOverviewUseCase');
+const GetReportsAnalyticsUseCase = require('./application/use-cases/dashboard/GetReportsAnalyticsUseCase');
 const ChangePasswordUseCase = require('./application/use-cases/auth/ChangePasswordUseCase');
 const CreateUserUseCase = require('./application/use-cases/auth/CreateUserUseCase');
 
@@ -129,6 +130,10 @@ const getDashboardOverviewUseCase = new GetDashboardOverviewUseCase({
   categoryRepository
 });
 
+const getReportsAnalyticsUseCase = new GetReportsAnalyticsUseCase({
+  storeProfileRepository
+});
+
 const changePasswordUseCase = new ChangePasswordUseCase(userRepository, auditLogRepository);
 const createUserUseCase = new CreateUserUseCase(userRepository, auditLogRepository);
 
@@ -156,6 +161,7 @@ const spoilageController = new SpoilageController({
   disposeSpoiledGoodsUseCase,
   getSpoilageLedgerUseCase,
   spoilageRepository,
+  batchRepository,
   auditLogRepository
 });
 
@@ -167,7 +173,9 @@ const forecastController = new ForecastController({
 });
 
 const dashboardController = new DashboardController({
-  getDashboardOverviewUseCase
+  getDashboardOverviewUseCase,
+  getReportsAnalyticsUseCase,
+  getReportsAnalyticsUseCase
 });
 
 module.exports = {
@@ -197,6 +205,7 @@ module.exports = {
   createPurchaseOrderUseCase,
   updatePurchaseOrderStatusUseCase,
   getDashboardOverviewUseCase,
+  getReportsAnalyticsUseCase,
   changePasswordUseCase,
   createUserUseCase,
 

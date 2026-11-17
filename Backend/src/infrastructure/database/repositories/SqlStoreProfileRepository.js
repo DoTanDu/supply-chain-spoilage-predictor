@@ -46,15 +46,32 @@ class SqlStoreProfileRepository extends IStoreProfileRepository {
         AND u.is_active = 1
       ORDER BY u.id ASC
     `;
-    const [res, managers] = await Promise.all([
+    const countSql = `
+      SELECT COUNT(*) AS activeCount
+      FROM store_profile
+      WHERE ISNULL(status, 'OPEN') <> 'SUSPENDED'
+    `;
+    const [res, managers, countRows] = await Promise.all([
       SqlConnection.queryJson(sql),
-      SqlConnection.queryJson(managersSql).catch(() => [])
+      SqlConnection.queryJson(managersSql).catch(() => []),
+      SqlConnection.queryJson(countSql).catch(() => [{ activeCount: 1 }])
     ]);
     if (!res || !res.length) return null;
+    const chainStoreCount = Number(countRows?.[0]?.activeCount ?? 1);
     return new StoreProfile({
       ...res[0],
+      chainStoreCount,
       availableManagers: Array.isArray(managers) ? managers : []
     });
+  }
+
+  async getActiveStoreCount() {
+    const rows = await SqlConnection.queryJson(`
+      SELECT COUNT(*) AS activeCount
+      FROM store_profile
+      WHERE ISNULL(status, 'OPEN') <> 'SUSPENDED'
+    `);
+    return rows?.[0]?.activeCount !== undefined ? Number(rows[0].activeCount) : 1;
   }
 
   async getAllStores() {
@@ -85,6 +102,57 @@ class SqlStoreProfileRepository extends IStoreProfileRepository {
       ORDER BY s.id ASC
     `;
     return await SqlConnection.queryJson(sql);
+  }
+
+  async findByCode(storeCode) {
+    const safeCode = SqlConnection.escapeSql(String(storeCode || '').trim().toUpperCase());
+    const sql = `
+      SELECT TOP 1 id, store_code AS storeCode, store_name AS storeName
+      FROM store_profile
+      WHERE UPPER(LTRIM(RTRIM(store_code))) = ${safeCode};
+    `;
+    const rows = await SqlConnection.queryJson(sql);
+    return rows && rows.length > 0 ? rows[0] : null;
+  }
+
+  async createProfile(data) {
+    const safeCode = SqlConnection.escapeSql(String(data.storeCode || '').trim().toUpperCase());
+    const safeName = SqlConnection.escapeSql(String(data.storeName || '').trim());
+    const safeAddr = SqlConnection.escapeSql(String(data.address || '').trim());
+    const safePhone = data.phone ? SqlConnection.escapeSql(String(data.phone).trim()) : 'NULL';
+    const safeManagerId = data.managerId ? Number(data.managerId) : 'NULL';
+    const safeDcSupplierId = data.defaultDcSupplierId ? Number(data.defaultDcSupplierId) : 1;
+    const safeLeadTime = Number(data.defaultLeadTimeDays || 1);
+    const safeMinRsl = Number(data.minInboundRslPercent || 70);
+    const safeWarnDays = Number(data.defaultWarningDays || 7);
+    const safeCritDays = Number(data.criticalWarningDays || 3);
+    const safeOpenTime = SqlConnection.escapeSql(data.openTime || '06:00');
+    const safeCloseTime = SqlConnection.escapeSql(data.closeTime || '22:00');
+    const safeSkus = Number(data.shelfCapacitySkus || 1200);
+    const safeUnits = Number(data.shelfCapacityUnits || 4000);
+    const safeStatus = SqlConnection.escapeSql(data.status || 'OPEN');
+
+    const sql = `
+      DECLARE @Inserted TABLE (id INT);
+      INSERT INTO store_profile (
+        store_code, store_name, address, phone, manager_id, default_dc_supplier_id,
+        default_lead_time_days, min_inbound_rsl_percent, default_warning_days, critical_warning_days,
+        status, open_time, close_time, shelf_capacity_skus, shelf_capacity_units, created_at, updated_at
+      )
+      OUTPUT INSERTED.id INTO @Inserted
+      VALUES (
+        ${safeCode}, ${safeName}, ${safeAddr}, ${safePhone}, ${safeManagerId}, ${safeDcSupplierId},
+        ${safeLeadTime}, ${safeMinRsl}, ${safeWarnDays}, ${safeCritDays},
+        ${safeStatus}, ${safeOpenTime}, ${safeCloseTime}, ${safeSkus}, ${safeUnits}, GETDATE(), GETDATE()
+      );
+      SELECT TOP 1 id FROM @Inserted FOR JSON PATH;
+    `;
+    const rows = await SqlConnection.queryJson(sql);
+    const newId = rows?.[0]?.id;
+    if (!newId) {
+      throw new Error('Không thể khởi tạo chi nhánh mới trong SQL Server.');
+    }
+    return await this.getProfile(newId);
   }
 
   async updateProfile(data) {

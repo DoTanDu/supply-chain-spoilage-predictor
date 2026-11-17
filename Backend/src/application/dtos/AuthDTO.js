@@ -1,6 +1,15 @@
 // src/application/dtos/AuthDTO.js
+const {
+  normalizePagePermissions,
+  computeEffectivePages
+} = require('../../domain/constants/pagePermissions');
+
 class AuthDTO {
   static toResponse(user, token) {
+    const pagePermissions = user.pagePermissions || normalizePagePermissions(null, user.roleCode);
+    const effectivePages = Array.isArray(user.effectivePages)
+      ? user.effectivePages
+      : computeEffectivePages(user.roleCode, pagePermissions);
     return {
       token,
       user: {
@@ -13,6 +22,8 @@ class AuthDTO {
         actorCode: AuthDTO.getActorCode(user.roleCode),
         roleName: AuthDTO.getRoleName(user.roleCode),
         storeId: user.storeId || null,
+        pagePermissions,
+        effectivePages,
         isActive: user.isActive
       }
     };

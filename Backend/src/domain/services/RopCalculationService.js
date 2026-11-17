@@ -32,6 +32,7 @@ class RopCalculationService {
     maxStockLevel = 150,
     leadTimeDays = 1,
     salesHistory14Days = [],
+    historyDaysCount = null,
     weather = 'NORMAL',
     isHoliday = false,
     earliestBatchDaysLeft = null
@@ -41,48 +42,52 @@ class RopCalculationService {
     const maxStock = Math.max(ss, Number(maxStockLevel));
     const lt = Math.max(1, Number(leadTimeDays));
 
-    // 1. Tính tốc độ bán bình quân 14 ngày (d_base)
+    // 1. Tính tốc độ bán bình quân 14 ngày thực tế (KHÔNG tự ý bịa số bán khi 0 giao dịch)
     let totalSales14 = 0;
     let d_base = 0;
+    const actualHistoryDays = historyDaysCount !== null && historyDaysCount !== undefined
+      ? Math.max(0, Number(historyDaysCount))
+      : (Array.isArray(salesHistory14Days) ? salesHistory14Days.length : 0);
+
     if (Array.isArray(salesHistory14Days) && salesHistory14Days.length > 0) {
       totalSales14 = salesHistory14Days.reduce((sum, q) => sum + Math.max(0, Number(q)), 0);
-      const daysCount = Math.max(1, salesHistory14Days.length);
-      d_base = Number((totalSales14 / daysCount).toFixed(2));
+      d_base = Number((totalSales14 / 14).toFixed(2));
     }
-    if (d_base <= 0) {
-      // Định mức tiêu thụ cơ sở nếu mặt hàng chưa phát sinh giao dịch trong 14 ngày qua
-      d_base = Math.max(1.5, Number((ss * 0.25).toFixed(2)));
-    }
+    const hasActualSales = d_base > 0 && actualHistoryDays > 0;
+    const demandSource = hasActualSales ? 'ACTUAL_SALES' : 'NO_SALES_14D';
+    const hasSufficientHistory = actualHistoryDays >= 7;
 
     // 2. Xác định các hệ số ngoại cảnh
     const weatherObj = new WeatherCondition(weather);
     const w_factor = weatherObj.getDemandFactor(categoryCode);
-    const h_factor = isHoliday ? 1.30 : 1.00; // Ngày lễ nhu cầu tăng 30%
+    const h_factor = isHoliday ? 1.30 : 1.00; // Ngày lễ hoặc cuối tuần: nhu cầu tăng 30%
 
     // 3. Tốc độ bán điều chỉnh ngoại cảnh (d_adjusted)
-    const d_adjusted = Math.max(0.1, Number((d_base * w_factor * h_factor).toFixed(2)));
+    const d_adjusted = hasActualSales
+      ? Number((d_base * w_factor * h_factor).toFixed(2))
+      : 0;
 
     // 4. Tính Điểm đặt hàng: ROP = (d_adjusted * LeadTime) + SafetyStock
     const rop = Math.ceil((d_adjusted * lt) + ss);
 
-    // 5. Tính Ngày tồn kho ước tính (Days of Supply - DOS)
-    // DOS = Tồn hiện tại / Tốc độ bán điều chỉnh ngày
-    const dos = d_adjusted > 0 ? Number((stock / d_adjusted).toFixed(1)) : 999;
+    // 5. Tính Ngày tồn kho ước tính (Days of Supply - DOS) — null nếu chưa phát sinh sức mua
+    const dos = d_adjusted > 0 ? Number((stock / d_adjusted).toFixed(1)) : null;
 
-    // 6. Đánh giá rủi ro ứ đọng quá hạn (DOS > DUE)
-    // DUE: Số ngày còn lại của lô có HSD ngắn nhất
+    // 6. Đánh giá rủi ro ứ đọng quá hạn (DOS > DUE hoặc còn <= 7 ngày HSD nhưng 0 sức mua)
     let isRiskOfSpoilage = false;
     let spoilageWarningMessage = null;
 
     if (earliestBatchDaysLeft !== null && earliestBatchDaysLeft > 0) {
       const due = Number(earliestBatchDaysLeft);
-      if (dos > due) {
+      if (dos !== null && dos > due) {
         isRiskOfSpoilage = true;
         spoilageWarningMessage = (
           `CẢNH BÁO NGUY CƠ Ứ ĐỌNG (DOS > DUE): Với tốc độ bán hiện tại (${d_adjusted} SP/ngày), ` +
-          `cần ${dos} ngày để tiêu thụ hết lượng tồn (${stock} SP), trong khi lô cận date chỉ còn ${due} ngày! ` +
-          `Nguy cơ hàng bị quá hạn trước khi bán hết.`
+          `cần ${dos} ngày để tiêu thụ hết lượng tồn (${stock} SP), trong khi lô cận date chỉ còn ${due} ngày.`
         );
+      } else if (dos === null && stock > 0 && due <= 7) {
+        isRiskOfSpoilage = true;
+        spoilageWarningMessage = `Lô cận date còn ${due} ngày (tồn ${stock} SP) nhưng chưa phát sinh lượt bán trong 14 ngày qua.`;
       }
     }
 
@@ -91,22 +96,24 @@ class RopCalculationService {
     let suggestedQuantity = 0;
 
     if (isReorderNeeded) {
-      // Đề xuất đặt bù đủ đến MaxStockLevel
-      suggestedQuantity = Math.max(ss, maxStock - stock);
-
-      // Nếu đang có nguy cơ ứ đọng date, giảm số lượng đặt hàng đề xuất để tránh tích tụ tồn kho
+      suggestedQuantity = Math.max(0, maxStock - stock);
       if (isRiskOfSpoilage) {
-        suggestedQuantity = Math.max(ss, Math.round(suggestedQuantity * 0.5));
+        suggestedQuantity = Math.max(0, Math.round(suggestedQuantity * 0.5));
       }
     }
 
-    // 8. Giải thích minh bạch quyết định AI/ROP (theo định hướng SmartSupply AI)
-    const weatherLabel = weatherObj.toString() === 'SUNNY' ? 'Nắng nóng' : (weatherObj.toString() === 'RAINY' ? 'Mưa bão' : 'Bình thường');
-    const aiExplanation = isReorderNeeded
-      ? `Tồn kho (${stock}) <= ROP (${rop}). Tốc độ chuẩn d_base=${d_base}/ngày × Thời tiết ${weatherLabel} (W=${w_factor}) × Lễ (H=${h_factor}) => d_adj=${d_adjusted}/ngày. Đề xuất đặt bù +${suggestedQuantity} đơn vị từ DC Biên Hòa (LeadTime=${lt} ngày).`
+    // 8. Giải thích minh bạch quyết định ROP
+    const weatherLabel = weatherObj.toString() === 'SUNNY' ? 'Nắng nóng' : (weatherObj.toString() === 'RAINY' ? 'Mưa' : 'Bình thường');
+    const historyNote = !hasSufficientHistory
+      ? ` [Dữ liệu lịch sử: ${actualHistoryDays}/14 ngày bán gần nhất]`
+      : '';
+    const aiExplanation = (isReorderNeeded
+      ? (hasActualSales
+        ? `Tồn (${stock}) <= ROP (${rop}). d_base=${d_base}/ngày × Thời tiết ${weatherLabel} (${w_factor}) × Lịch (${h_factor}) => d_adj=${d_adjusted}/ngày.`
+        : `Tồn (${stock}) <= Tồn tối thiểu (${ss}). Chưa có giao dịch bán trong 14 ngày gần nhất.`)
       : isRiskOfSpoilage
-        ? `Cảnh báo ứ đọng: Số ngày bán hết tồn DOS (${dos} ngày) > Hạn lô gần nhất DUE (${earliestBatchDaysLeft} ngày). Tạm dừng đặt mới, ưu tiên giảm giá Quick Markdown để kích cầu.`
-        : `Tồn kho an toàn (${stock} > ROP ${rop}), DOS (${dos} ngày) <= DUE (${earliestBatchDaysLeft ?? '—'} ngày). Chưa cần đặt hàng bổ sung.`;
+        ? `Nguy cơ ứ đọng: ${spoilageWarningMessage}`
+        : `Tồn kho an toàn (${stock} > ROP ${rop})${dos !== null ? `, DOS ${dos} ngày` : ''}.`) + historyNote;
 
     return {
       productId: Number(productId),
@@ -117,6 +124,9 @@ class RopCalculationService {
       maxStockLevel: maxStock,
       leadTimeDays: lt,
       averageDailyDemandBase: d_base,
+      historyDaysCount: actualHistoryDays,
+      demandSource,
+      hasSufficientHistory,
       weatherFactor: w_factor,
       holidayFactor: h_factor,
       adjustedDailyDemand: d_adjusted,

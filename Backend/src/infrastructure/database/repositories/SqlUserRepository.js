@@ -2,9 +2,26 @@
 const SqlConnection = require('../sqlConnection');
 const User = require('../../../domain/entities/User');
 const IUserRepository = require('../../../domain/interfaces/IUserRepository');
+const { serializePagePermissions } = require('../../../domain/constants/pagePermissions');
+
+let ensureSchemaPromise = null;
 
 class SqlUserRepository extends IUserRepository {
+  async ensurePagePermissionsColumn() {
+    if (!ensureSchemaPromise) {
+      ensureSchemaPromise = SqlConnection.executeSql(`
+        IF COL_LENGTH('dbo.users', 'page_permissions') IS NULL
+          ALTER TABLE dbo.users ADD page_permissions NVARCHAR(MAX) NULL;
+      `).catch((err) => {
+        ensureSchemaPromise = null;
+        throw err;
+      });
+    }
+    return ensureSchemaPromise;
+  }
+
   async findById(id) {
+    await this.ensurePagePermissionsColumn();
     const sql = `
       SELECT 
         u.id, 
@@ -16,6 +33,7 @@ class SqlUserRepository extends IUserRepository {
         u.role_id AS roleId, 
         r.code AS roleCode, 
         u.store_id AS storeId,
+        u.page_permissions AS pagePermissions,
         u.is_active AS isActive, 
         u.last_login AS lastLogin, 
         u.created_at AS createdAt, 
@@ -32,6 +50,7 @@ class SqlUserRepository extends IUserRepository {
   }
 
   async findByUsername(username) {
+    await this.ensurePagePermissionsColumn();
     const safeUser = SqlConnection.escapeSql(username);
     const sql = `
       SELECT 
@@ -44,6 +63,7 @@ class SqlUserRepository extends IUserRepository {
         u.role_id AS roleId, 
         r.code AS roleCode, 
         u.store_id AS storeId,
+        u.page_permissions AS pagePermissions,
         u.is_active AS isActive, 
         u.last_login AS lastLogin, 
         u.created_at AS createdAt, 
@@ -60,7 +80,12 @@ class SqlUserRepository extends IUserRepository {
     return entity;
   }
 
-  async findAll() {
+  async findAll(storeId = null) {
+    await this.ensurePagePermissionsColumn();
+    let storeWhere = '';
+    if (storeId && String(storeId).toUpperCase() !== 'ALL' && !isNaN(Number(storeId))) {
+      storeWhere = `AND u.store_id = ${Number(storeId)}`;
+    }
     const sql = `
       SELECT 
         u.id, 
@@ -71,6 +96,7 @@ class SqlUserRepository extends IUserRepository {
         u.role_id AS roleId, 
         r.code AS roleCode, 
         u.store_id AS storeId,
+        u.page_permissions AS pagePermissions,
         u.is_active AS isActive, 
         u.last_login AS lastLogin, 
         u.created_at AS createdAt
@@ -78,6 +104,7 @@ class SqlUserRepository extends IUserRepository {
       LEFT JOIN roles r ON u.role_id = r.id
       WHERE u.username NOT LIKE 'test_%'
         AND u.username NOT IN ('warehouse', 'dotandu', 'doanminhquan', 'cashier2', 'cashier_ca2')
+        ${storeWhere}
       ORDER BY u.id ASC
     `;
     const res = await SqlConnection.queryJson(sql);
@@ -154,7 +181,8 @@ class SqlUserRepository extends IUserRepository {
     return await this.findById(id);
   }
 
-  async updateProfile(id, { fullName, email, phone, roleId, roleCode, storeId }) {
+  async updateProfile(id, { fullName, email, phone, roleId, roleCode, storeId, pagePermissions }) {
+    await this.ensurePagePermissionsColumn();
     const roleMap = {
       'ADMIN': 1,
       'OWNER': 1,
@@ -180,14 +208,27 @@ class SqlUserRepository extends IUserRepository {
       updates.push(`phone = ${SqlConnection.escapeSql(phone && phone.trim() ? phone.trim() : null)}`);
     }
 
+    let resolvedRoleCode = roleCode ? roleCode.toUpperCase() : null;
     if (roleCode || roleId) {
       const finalRoleCode = (roleCode || (roleId ? codeMap[Number(roleId)] : 'CASHIER')).toUpperCase();
       const finalRoleId = Number(roleId) || roleMap[finalRoleCode] || 3;
+      resolvedRoleCode = codeMap[finalRoleId] || finalRoleCode;
       updates.push(`role_id = ${finalRoleId}`);
     }
 
     if (storeId !== undefined) {
       updates.push(`store_id = ${storeId ? Number(storeId) : 'NULL'}`);
+    }
+
+    if (pagePermissions !== undefined) {
+      if (!resolvedRoleCode) {
+        const existing = await this.findById(id);
+        resolvedRoleCode = existing?.roleCode || 'CASHIER';
+      }
+      const serialized = serializePagePermissions(pagePermissions, resolvedRoleCode);
+      updates.push(`page_permissions = ${SqlConnection.escapeSql(serialized)}`);
+    } else if (resolvedRoleCode === 'ADMIN') {
+      updates.push('page_permissions = NULL');
     }
 
     if (updates.length === 0) {

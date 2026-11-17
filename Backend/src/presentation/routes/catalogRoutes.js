@@ -5,12 +5,13 @@ const authMiddleware = require('../middlewares/authMiddleware');
 const roleMiddleware = require('../middlewares/roleMiddleware');
 
 const router = express.Router();
+const catalogManageGuard = roleMiddleware(['ADMIN', 'STORE_MANAGER'], { pageKey: 'inventory-management' });
 
 // Categories
 router.get('/categories', CatalogController.getCategories);
-router.post('/categories', authMiddleware, roleMiddleware(['ADMIN', 'STORE_MANAGER']), CatalogController.createCategory);
-router.put('/categories/:id', authMiddleware, roleMiddleware(['ADMIN', 'STORE_MANAGER']), CatalogController.updateCategory);
-router.delete('/categories/:id', authMiddleware, roleMiddleware(['ADMIN', 'STORE_MANAGER']), CatalogController.deleteCategory);
+router.post('/categories', authMiddleware, catalogManageGuard, CatalogController.createCategory);
+router.put('/categories/:id', authMiddleware, catalogManageGuard, CatalogController.updateCategory);
+router.delete('/categories/:id', authMiddleware, catalogManageGuard, CatalogController.deleteCategory);
 
 // Products (hỗ trợ cả GET / và GET /products)
 router.get('/products', CatalogController.getProducts);
@@ -19,15 +20,15 @@ router.get('/:id', CatalogController.getProductById);
 router.get('/', CatalogController.getProducts);
 
 // POST /api/products (Thêm sản phẩm mới kèm chống trùng lặp, chỉ ADMIN & STORE_MANAGER)
-router.post('/products', authMiddleware, roleMiddleware(['ADMIN', 'STORE_MANAGER']), CatalogController.createProduct);
-router.post('/', authMiddleware, roleMiddleware(['ADMIN', 'STORE_MANAGER']), CatalogController.createProduct);
+router.post('/products', authMiddleware, catalogManageGuard, CatalogController.createProduct);
+router.post('/', authMiddleware, catalogManageGuard, CatalogController.createProduct);
 
 // PUT /api/products/:id (Cập nhật thông tin sản phẩm, giá vốn/giá bán, chỉ ADMIN & STORE_MANAGER)
-router.put('/:id', authMiddleware, roleMiddleware(['ADMIN', 'STORE_MANAGER']), CatalogController.updateProduct);
-router.put('/products/:id', authMiddleware, roleMiddleware(['ADMIN', 'STORE_MANAGER']), CatalogController.updateProduct);
+router.put('/:id', authMiddleware, catalogManageGuard, CatalogController.updateProduct);
+router.put('/products/:id', authMiddleware, catalogManageGuard, CatalogController.updateProduct);
 
 // DELETE /api/products/:id (Ngừng kinh doanh sản phẩm, chỉ ADMIN & STORE_MANAGER)
-router.delete('/:id', authMiddleware, roleMiddleware(['ADMIN', 'STORE_MANAGER']), CatalogController.deleteProduct);
-router.delete('/products/:id', authMiddleware, roleMiddleware(['ADMIN', 'STORE_MANAGER']), CatalogController.deleteProduct);
+router.delete('/:id', authMiddleware, catalogManageGuard, CatalogController.deleteProduct);
+router.delete('/products/:id', authMiddleware, catalogManageGuard, CatalogController.deleteProduct);
 
 module.exports = router;

@@ -1,6 +1,6 @@
 // src/presentation/controllers/BatchController.js
 const ShelfLife = require('../../domain/value-objects/ShelfLife');
-const TokenService = require('../../infrastructure/security/TokenService');
+const { resolveStoreScope, assertStoreOwnership } = require('../middlewares/storeScope');
 
 class BatchController {
   constructor({
@@ -27,40 +27,23 @@ class BatchController {
     if (req.user) {
       return { roleCode: req.user.roleCode, storeId: req.user.storeId };
     }
-    const authHeader = req.headers && req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.split(' ')[1];
-      const decoded = TokenService.verifyToken(token);
-      if (decoded) {
-        return { roleCode: decoded.roleCode, storeId: decoded.storeId };
-      }
-    }
     return { roleCode: null, storeId: null };
   }
 
   async getAllWithAlerts(req, res, next) {
     try {
       const { alertColor, status, categoryCode, search, storeId } = req.query;
-      const { roleCode, storeId: userStoreId } = this._extractUserContext(req);
-      const isOwner = roleCode === 'ADMIN' || roleCode === 'OWNER';
-
-      if (!isOwner && userStoreId && storeId && String(storeId).toUpperCase() !== 'ALL' && Number(storeId) !== Number(userStoreId)) {
-        return res.status(403).json({
-          success: false,
-          statusCode: 403,
-          code: 'ERR_STORE_SCOPE_FORBIDDEN',
-          message: `Từ chối truy cập dữ liệu liên chi nhánh (403 Forbidden). Bạn thuộc Chi nhánh #${userStoreId}, không được xem kho của Chi nhánh #${storeId}.`
-        });
+      const scope = resolveStoreScope(req, storeId, { adminDefault: 'ALL' });
+      if (!scope.ok) {
+        return res.status(scope.statusCode).json(scope.error);
       }
-
-      const effectiveStoreId = isOwner ? (storeId || 'ALL') : (storeId || userStoreId || 1);
 
       const result = await this.getBatchAlertsUseCase.execute({
         alertColor,
         status,
         categoryCode,
         search,
-        storeId: effectiveStoreId
+        storeId: scope.storeId
       });
       res.json(result);
     } catch (err) {
@@ -75,6 +58,10 @@ class BatchController {
       if (!batch) {
         return res.status(404).json({ success: false, message: `Lô hàng ID ${id} không tồn tại!` });
       }
+      const ownership = assertStoreOwnership(req.user, batch.storeId, `lô hàng #${id}`);
+      if (!ownership.ok) {
+        return res.status(ownership.statusCode).json(ownership.error);
+      }
       res.json({ success: true, data: batch });
     } catch (err) {
       next(err);
@@ -83,6 +70,11 @@ class BatchController {
 
   async receiveInboundDC(req, res, next) {
     try {
+      const scope = resolveStoreScope(req, req.body?.storeId, { allowAll: false, adminDefault: 1 });
+      if (!scope.ok) {
+        return res.status(scope.statusCode).json(scope.error);
+      }
+
       const { supplierId, notes, purchaseOrderId } = req.body;
       const receiptDate = req.body.receiptDate || req.body.importDate || new Date();
       const batches = Array.isArray(req.body.batches)
@@ -94,6 +86,7 @@ class BatchController {
 
       const result = await this.receiveDCBatchUseCase.execute({
         supplierId,
+        storeId: scope.storeId,
         receivedBy,
         receivedByName,
         receiptDate,
@@ -134,10 +127,17 @@ class BatchController {
       const exp = new Date(expiryDate);
       const imp = new Date(importDate);
 
-      if (isNaN(mfg.getTime()) || isNaN(exp.getTime()) || exp <= mfg) {
+      const toUtcDayMs = (d) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+      if (isNaN(mfg.getTime()) || isNaN(exp.getTime()) || isNaN(imp.getTime()) || toUtcDayMs(exp) <= toUtcDayMs(mfg)) {
         return res.status(400).json({
           success: false,
           message: 'Hạn sử dụng phải lớn hơn Ngày sản xuất!'
+        });
+      }
+      if (toUtcDayMs(mfg) > toUtcDayMs(imp)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Ngày sản xuất không thể lớn hơn Ngày giao hàng!'
         });
       }
 
@@ -151,7 +151,12 @@ class BatchController {
         }
       }
 
-      const storeProfile = this.storeProfileRepository ? await this.storeProfileRepository.getProfile() : null;
+      const scope = resolveStoreScope(req, req.body?.storeId, { allowAll: false, adminDefault: 1 });
+      if (!scope.ok) {
+        return res.status(scope.statusCode).json(scope.error);
+      }
+
+      const storeProfile = this.storeProfileRepository ? await this.storeProfileRepository.getProfile(scope.storeId) : null;
       const minRslPercent = storeProfile ? Number(storeProfile.minInboundRslPercent || 70) : 70;
 
       const shelfLife = new ShelfLife(mfg, exp);
@@ -207,6 +212,14 @@ class BatchController {
   async applyMarkdown(req, res, next) {
     try {
       const { id } = req.params;
+      const existingBatch = await this.batchRepository.findById(id);
+      if (existingBatch) {
+        const ownership = assertStoreOwnership(req.user, existingBatch.storeId, `lô hàng #${id}`);
+        if (!ownership.ok) {
+          return res.status(ownership.statusCode).json(ownership.error);
+        }
+      }
+
       const percent = req.body.percent !== undefined ? req.body.percent : req.body.discountPercent;
       const managerId = req.user ? req.user.id : (req.body.managerId || null);
       const managerName = req.user ? req.user.fullName : (req.body.managerName || 'Cửa hàng trưởng');
@@ -226,6 +239,14 @@ class BatchController {
   async confirmRotation(req, res, next) {
     try {
       const { id } = req.params;
+      const existingBatch = await this.batchRepository.findById(id);
+      if (existingBatch) {
+        const ownership = assertStoreOwnership(req.user, existingBatch.storeId, `lô hàng #${id}`);
+        if (!ownership.ok) {
+          return res.status(ownership.statusCode).json(ownership.error);
+        }
+      }
+
       const staffId = req.user ? req.user.id : (req.body.staffId || null);
       const staffName = req.user ? req.user.fullName : (req.body.staffName || 'Nhân viên kho');
 
@@ -235,6 +256,110 @@ class BatchController {
         staffName
       });
       res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async getAdjustments(req, res, next) {
+    try {
+      const scope = resolveStoreScope(req, req.query?.storeId, { adminDefault: 'ALL' });
+      if (!scope.ok) {
+        return res.status(scope.statusCode).json(scope.error);
+      }
+      const list = await this.batchRepository.findAdjustments({
+        storeId: scope.storeId,
+        limit: Number(req.query?.limit || 60)
+      });
+      res.json({ success: true, count: list.length, data: list });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async recordStocktake(req, res, next) {
+    try {
+      const batchId = Number(req.params.id);
+      const batch = await this.batchRepository.findById(batchId);
+      if (!batch) {
+        return res.status(404).json({ success: false, message: `Không tìm thấy lô hàng #${batchId}.` });
+      }
+      const ownership = assertStoreOwnership(req.user, batch.storeId, `lô hàng #${batchId}`);
+      if (!ownership.ok) {
+        return res.status(ownership.statusCode).json(ownership.error);
+      }
+
+      const adjustmentType = String(req.body?.adjustmentType || 'STOCKTAKE').toUpperCase().trim();
+      const reason = String(req.body?.reason || '').trim();
+
+      if (adjustmentType === 'STOCKTAKE') {
+        const actualQty = Number(req.body?.actualQuantity);
+        if (!Number.isInteger(actualQty) || actualQty < 0) {
+          return res.status(400).json({ success: false, message: 'Số lượng thực tế kiểm kê phải là số nguyên >= 0.' });
+        }
+        const adj = await this.batchRepository.recordAdjustment({
+          batchId,
+          adjustmentType: 'STOCKTAKE',
+          actualQuantity: actualQty,
+          reason: reason || 'Kiểm kê tồn thực tế theo lô',
+          performedBy: req.user?.id || null
+        });
+        if (this.auditLogRepository && adj) {
+          try {
+            await this.auditLogRepository.log({
+              userId: req.user?.id || null,
+              userName: req.user?.fullName || req.user?.username || 'Nhân viên kho',
+              action: 'STOCKTAKE_ADJUST',
+              entityName: 'BATCHES',
+              entityId: String(batchId),
+              description: `Kiểm kê lô ${batch.batchCode}: Sổ ${adj.systemQuantity} -> Thực tế ${adj.actualQuantity} (Chênh lệch ${adj.quantityDelta >= 0 ? '+' : ''}${adj.quantityDelta}). Lý do: ${adj.reason}`,
+              ipAddress: req.ip || '127.0.0.1'
+            });
+          } catch {}
+        }
+        return res.status(201).json({
+          success: true,
+          message: `Đã ghi nhận kiểm kê lô ${batch.batchCode} (${adj.systemQuantity} → ${adj.actualQuantity}).`,
+          data: adj
+        });
+      }
+
+      if (adjustmentType === 'STOCK_OUT') {
+        const outQty = Number(req.body?.quantity);
+        if (!Number.isInteger(outQty) || outQty <= 0) {
+          return res.status(400).json({ success: false, message: 'Số lượng xuất kho phải là số nguyên dương (> 0).' });
+        }
+        if (outQty > Number(batch.currentQuantity)) {
+          return res.status(400).json({ success: false, message: `Số lượng xuất (${outQty}) vượt quá tồn lô (${batch.currentQuantity}).` });
+        }
+        const adj = await this.batchRepository.recordAdjustment({
+          batchId,
+          adjustmentType: 'STOCK_OUT',
+          outboundQuantity: outQty,
+          reason: reason || 'Xuất kho nội bộ',
+          performedBy: req.user?.id || null
+        });
+        if (this.auditLogRepository && adj) {
+          try {
+            await this.auditLogRepository.log({
+              userId: req.user?.id || null,
+              userName: req.user?.fullName || req.user?.username || 'Nhân viên kho',
+              action: 'STOCK_OUT_BATCH',
+              entityName: 'BATCHES',
+              entityId: String(batchId),
+              description: `Xuất kho lô ${batch.batchCode}: -${outQty} (Còn ${adj.actualQuantity}). Lý do: ${adj.reason}`,
+              ipAddress: req.ip || '127.0.0.1'
+            });
+          } catch {}
+        }
+        return res.status(201).json({
+          success: true,
+          message: `Đã xuất ${outQty} từ lô ${batch.batchCode} (còn ${adj.actualQuantity}).`,
+          data: adj
+        });
+      }
+
+      return res.status(400).json({ success: false, message: 'Loại nghiệp vụ phải là STOCKTAKE hoặc STOCK_OUT.' });
     } catch (err) {
       next(err);
     }

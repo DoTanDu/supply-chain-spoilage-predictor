@@ -19,6 +19,7 @@ class StoreProfile {
     shelfCapacitySkus = 1500,
     shelfCapacityUnits = 5000,
     status = 'OPEN',
+    chainStoreCount = 1,
     availableManagers = [],
     updatedAt
   }) {
@@ -40,6 +41,8 @@ class StoreProfile {
     this.shelfCapacitySkus = Number(shelfCapacitySkus) || 1500;
     this.shelfCapacityUnits = Number(shelfCapacityUnits) || 5000;
     this.status = status; // 'OPEN', 'CLOSED', 'INVENTORY', 'SUSPENDED'
+    this.chainStoreCount = Number(chainStoreCount) || 1;
+    this.isSingleStore = this.chainStoreCount <= 1;
     this.availableManagers = Array.isArray(availableManagers) ? availableManagers : [];
     this.updatedAt = updatedAt || new Date();
   }

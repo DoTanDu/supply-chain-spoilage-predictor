@@ -54,6 +54,7 @@ class CreateProductUseCase {
       costPrice: cost,
       sellingPrice: price,
       standardShelfLifeDays: shelfLife,
+      packSize: Math.max(1, Number(productData.packSize || 1)),
       minStockLevel: Number(productData.minStockLevel || productData.reorderPoint || 15),
       maxStockLevel: Number(productData.maxStockLevel || 150),
       customWarningDays: productData.customWarningDays !== undefined ? productData.customWarningDays : null,

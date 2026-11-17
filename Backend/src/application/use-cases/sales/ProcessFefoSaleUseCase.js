@@ -26,36 +26,40 @@ class ProcessFefoSaleUseCase {
 
   async execute({
     items = [],
+    storeId = 1,
+    saleDate = null,
+    transactionCode = null,
     weather = 'NORMAL',
     isHoliday = false,
     cashierId = null,
-    cashierName = 'Thu ngân quầy POS'
+    cashierName = 'Nhân viên cửa hàng'
   }) {
     if (!Array.isArray(items) || items.length === 0) {
-      const err = new Error('Giỏ hàng bán lẻ rỗng! Vui lòng quét ít nhất một sản phẩm.');
+      const err = new Error('Danh sách sản phẩm xuất bán rỗng! Vui lòng chọn ít nhất một sản phẩm.');
       err.statusCode = 400;
       err.code = 'ERR_INVALID_QUANTITY';
       throw err;
     }
 
-    // 1. Kiểm tra trạng thái cửa hàng LHU Mart (Rule 1 & Mục 10.1)
-    const storeProfile = await this.storeProfileRepository.getProfile();
+    const targetStoreId = Number(storeId || 1);
+    const storeProfile = await this.storeProfileRepository.getProfile(targetStoreId);
     if (storeProfile && !storeProfile.isOpenForSales()) {
       const isInventory = storeProfile.status === 'INVENTORY_AUDIT' || storeProfile.status === 'INVENTORY';
       const code = isInventory ? 'ERR_STORE_INVENTORY' : 'ERR_STORE_CLOSED';
       const msg = isInventory
-        ? `Cửa hàng đang trong phiên kiểm kê định kỳ [${storeProfile.status}]. Tạm khóa chức năng bán lẻ tại quầy POS!`
-        : `Cửa hàng LHU Mart hiện đang ở trạng thái [${storeProfile.status}]. Quầy thu ngân tạm khóa chức năng thanh toán để phục vụ kiểm kê hoặc ngoài giờ hoạt động!`;
+        ? `Chi nhánh đang trong phiên kiểm kê [${storeProfile.status}]. Tạm khóa ghi nhận bán hàng!`
+        : `Chi nhánh hiện đang ở trạng thái [${storeProfile.status}], tạm khóa xuất bán hàng!`;
       const err = new Error(msg);
       err.statusCode = 400;
       err.code = code;
       throw err;
     }
 
-    // 2. Khởi tạo SaleOrder
     const saleOrder = new SaleOrder({
+      transactionCode: transactionCode || null,
+      storeId: targetStoreId,
       cashierId,
-      saleDate: new Date(),
+      saleDate: saleDate ? new Date(saleDate) : new Date(),
       weather,
       isHoliday
     });
@@ -93,9 +97,9 @@ class ProcessFefoSaleUseCase {
         throw err;
       }
 
-      // Lấy toàn bộ các lô của sản phẩm để kiểm tra hạn dùng (Rule 5 & Điều kiện 4 Mục 10)
+      // Lấy toàn bộ các lô của sản phẩm tại ĐÚNG chi nhánh
       const allBatches = (typeof this.batchRepository.findByProductId === 'function')
-        ? await this.batchRepository.findByProductId(pId)
+        ? await this.batchRepository.findByProductId(pId, targetStoreId)
         : [];
 
       // Nếu chỉ định đích danh mã lô mà lô đó đã hết hạn -> Chặn ngay
@@ -115,8 +119,8 @@ class ProcessFefoSaleUseCase {
         }
       }
 
-      // Lấy danh sách các lô khả dụng theo chuẩn FEFO (ExpiryDate ASC, id ASC)
-      const availableBatches = await this.batchRepository.findAvailableByProductIdFefo(pId);
+      // Lấy danh sách các lô khả dụng theo chuẩn FEFO tại ĐÚNG chi nhánh
+      const availableBatches = await this.batchRepository.findAvailableByProductIdFefo(pId, targetStoreId);
       if (!availableBatches || availableBatches.length === 0) {
         // Kiểm tra xem sản phẩm có lô nào còn tồn nhưng đã hết hạn sử dụng không (Rule 5)
         const hasExpiredBatches = allBatches.some(b => 
@@ -225,9 +229,9 @@ class ProcessFefoSaleUseCase {
       fefoDetails,
       allocationsSummary: detailedAllocationsSummary,
       receiptDetails: {
-        storeName: storeProfile ? storeProfile.storeName : 'Cửa hàng Bán lẻ LHU Mart',
+        storeName: storeProfile ? storeProfile.storeName : 'SmartSupply Store',
         cashier: cashierName,
-        message: 'Cảm ơn quý khách đã mua sắm tại LHU Mart!'
+        message: 'Đã ghi nhận xuất bán FEFO thành công.'
       }
     };
   }

@@ -12,18 +12,19 @@ const authMiddleware = require('../middlewares/authMiddleware');
 const roleMiddleware = require('../middlewares/roleMiddleware');
 
 const router = express.Router();
+const catalogManageGuard = roleMiddleware(['ADMIN', 'STORE_MANAGER'], { pageKey: 'inventory-management' });
 
 // GET /api/categories
 router.get('/', CatalogController.getCategories);
 
 // POST /api/categories
-router.post('/', authMiddleware, roleMiddleware(['ADMIN', 'STORE_MANAGER']), CatalogController.createCategory);
+router.post('/', authMiddleware, catalogManageGuard, CatalogController.createCategory);
 
 // PUT /api/categories/:id
-router.put('/:id', authMiddleware, roleMiddleware(['ADMIN', 'STORE_MANAGER']), CatalogController.updateCategory);
+router.put('/:id', authMiddleware, catalogManageGuard, CatalogController.updateCategory);
 
 // DELETE /api/categories/:id
-router.delete('/:id', authMiddleware, roleMiddleware(['ADMIN', 'STORE_MANAGER']), CatalogController.deleteCategory);
+router.delete('/:id', authMiddleware, catalogManageGuard, CatalogController.deleteCategory);
 
 module.exports = router;
 

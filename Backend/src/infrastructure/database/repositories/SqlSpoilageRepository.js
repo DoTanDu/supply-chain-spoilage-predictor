@@ -120,6 +120,30 @@ class SqlSpoilageRepository extends ISpoilageRepository {
   }
 
   /**
+   * Tra cứu biên bản tiêu hủy kèm store_id của lô hàng để kiểm tra phân quyền chi nhánh (BOLA/IDOR)
+   */
+  async findRecordByIdOrCode(idOrCode) {
+    const isNumeric = !isNaN(Number(idOrCode)) && !String(idOrCode).toUpperCase().startsWith('SPOIL');
+    const whereClause = isNumeric
+      ? `sr.id = ${Number(idOrCode)}`
+      : `sr.record_code = ${SqlConnection.escapeSql(String(idOrCode))}`;
+
+    const sql = `
+      SELECT TOP 1
+        sr.id AS dbId,
+        sr.record_code AS recordCode,
+        sr.batch_id AS batchId,
+        ISNULL(b.store_id, 1) AS storeId,
+        sr.approved_by AS approvedBy
+      FROM spoilage_records sr
+      INNER JOIN batches b ON sr.batch_id = b.id
+      WHERE ${whereClause};
+    `;
+    const rows = await SqlConnection.queryJson(sql);
+    return rows && rows.length > 0 ? rows[0] : null;
+  }
+
+  /**
    * Phê duyệt biên bản tiêu hủy đang chờ duyệt & Chốt sổ hao hụt tài chính (Pha 2 - Rule 6 & SoD Mục 14.3 SSOT)
    * Thực thi Transaction nguyên tử có khóa UPDLOCK, ROWLOCK:
    * - Khấu trừ tồn kho batches

@@ -22,6 +22,8 @@ class StoreProfileDTO {
       shelfCapacityUnits: profile.shelfCapacityUnits || 5000,
       status: profile.status,
       isOpen: profile.isOpenForSales(),
+      chainStoreCount: Number(profile.chainStoreCount || 1),
+      isSingleStore: Number(profile.chainStoreCount || 1) <= 1,
       availableManagers: profile.availableManagers || [],
       updatedAt: profile.updatedAt
     };
