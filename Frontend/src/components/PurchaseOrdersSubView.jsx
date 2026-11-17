@@ -5,7 +5,6 @@ import {
   RotateCw, 
   Eye, 
   Truck, 
-  CheckCircle2, 
   Clock, 
   AlertCircle, 
   Printer, 
@@ -30,8 +29,9 @@ export default function PurchaseOrdersSubView({
   onRefresh,
   onUpdateStatus,
   isAdmin = false,
+  isOwner = false,
+  managerApprovalLimit = 5000000,
   onRequestAdminLogin,
-  onNavigateToIntake,
   storeProfile = null
 }) {
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -139,13 +139,14 @@ export default function PurchaseOrdersSubView({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, minHeight: 0, overflow: 'hidden' }}>
 
       {/* 4 CARDS KPI VÒNG ĐỜI ĐƠN PO */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-        gap: '14px'
+        gap: '10px',
+        flexShrink: 0
       }}>
         {/* Card 1: Tổng đơn PO */}
         <div style={{
@@ -365,14 +366,18 @@ export default function PurchaseOrdersSubView({
 
       {/* BẢNG DANH SÁCH ĐƠN ĐẶT HÀNG PO */}
       <div className="glass-panel" style={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
         borderRadius: '10px',
         overflow: 'hidden',
+        minHeight: 0,
         border: '1px solid var(--border-subtle)',
         background: 'var(--bg-surface)'
       }}>
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
           <table className="modern-table" style={{ margin: 0, width: '100%' }}>
-            <thead style={{ background: 'var(--bg-subtle)' }}>
+            <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-subtle)' }}>
               <tr>
                 <th style={{ width: '160px', padding: '10px 14px' }}>Mã Đơn PO</th>
                 <th style={{ padding: '10px 14px' }}>Chi Tiết Mặt Hàng Đặt</th>
@@ -403,8 +408,13 @@ export default function PurchaseOrdersSubView({
                           {po.orderCode}
                         </div>
                         <div style={{ fontSize: '0.675rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                          <span style={{ color: 'var(--primary)', fontWeight: 600 }}>{storeProfile?.storeCode || 'RETAIL-STORE-01'}</span> → {po.supplierName || storeProfile?.defaultDcSupplierName || 'Kho Tổng DC Biên Hòa'}
+                          <span style={{ color: 'var(--primary)', fontWeight: 600 }}>{storeProfile?.storeCode || 'STORE'}</span> → {po.supplierName || storeProfile?.defaultDcSupplierName || 'Kho tổng / NCC'}
                         </div>
+                        {!isOwner && Number(po.totalEstimatedCost || 0) > managerApprovalLimit && ['DRAFT', 'PENDING'].includes(String(po.status).toUpperCase()) && (
+                          <div style={{ fontSize: '0.67rem', color: 'var(--warning-yellow-light)', fontWeight: 700, marginTop: '2px' }}>
+                            Vượt hạn mức Manager — Cần OWNER duyệt
+                          </div>
+                        )}
                       </td>
 
                       {/* Chi tiết mặt hàng */}
@@ -536,45 +546,13 @@ export default function PurchaseOrdersSubView({
                                 alignItems: 'center',
                                 gap: '4px'
                               }}
-                              title="Gửi đơn đặt hàng về Kho tổng DC Biên Hòa"
+                              title="Gửi đơn đặt hàng về Kho tổng / Nhà cung cấp"
                             >
                               <Truck size={12} />
                               <span>Gửi DC</span>
                             </button>
                           )}
 
-                          {/* Nếu xe đang giao -> Chuyển sang tiếp nhận DC */}
-                          {(po.status === 'SHIPPING' || po.status === 'SUBMITTED') && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (onNavigateToIntake) {
-                                   onNavigateToIntake(po);
-                                } else {
-                                  handleActionClick(po.id, 'DELIVERED');
-                                }
-                              }}
-                              disabled={isUpdating}
-                              style={{
-                                padding: '5px 10px',
-                                borderRadius: '6px',
-                                border: 'none',
-                                background: 'var(--safe-green)',
-                                color: '#ffffff',
-                                fontSize: '0.725rem',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                boxShadow: 'var(--shadow-sm)'
-                              }}
-                              title="Mở màn hình tiếp nhận hàng DC để nhập lô"
-                            >
-                              <CheckCircle2 size={12} />
-                              <span>Nhận Hàng DC</span>
-                            </button>
-                          )}
                         </div>
                       </td>
                     </tr>
@@ -664,15 +642,15 @@ export default function PurchaseOrdersSubView({
               }}>
                 <div>
                   <span style={{ color: 'var(--text-muted)' }}>Cơ sở đặt hàng: </span>
-                  <strong style={{ color: 'var(--text-main)' }}>{storeProfile?.storeName || 'LHU Mart'} ({storeProfile?.storeCode || 'RETAIL-STORE-01'})</strong>
+                  <strong style={{ color: 'var(--text-main)' }}>{storeProfile?.storeName || 'Cửa hàng'} ({storeProfile?.storeCode || 'STORE'})</strong>
                 </div>
                 <div>
-                  <span style={{ color: 'var(--text-muted)' }}>Kho cung cấp: </span>
-                  <strong style={{ color: 'var(--text-main)' }}>{selectedPo.supplierName || storeProfile?.defaultDcSupplierName || 'Kho Tổng DC Biên Hòa'}</strong>
+                  <span style={{ color: 'var(--text-muted)' }}>Nhà cung cấp / Kho: </span>
+                  <strong style={{ color: 'var(--text-main)' }}>{selectedPo.supplierName || storeProfile?.defaultDcSupplierName || 'Kho trung tâm'}</strong>
                 </div>
                 <div>
                   <span style={{ color: 'var(--text-muted)' }}>Địa chỉ nhận: </span>
-                  <strong style={{ color: 'var(--text-main)' }}>{storeProfile?.address || 'Khu phố 6, P. Trung Dũng, TP. Biên Hòa'}</strong>
+                  <strong style={{ color: 'var(--text-main)' }}>{storeProfile?.address || 'Theo địa chỉ chi nhánh'}</strong>
                 </div>
                 <div>
                   <span style={{ color: 'var(--text-muted)' }}>Trạng thái: </span>
@@ -715,10 +693,10 @@ export default function PurchaseOrdersSubView({
                               {it.approvedQuantity || it.suggestedQuantity} {it.unit || 'hộp'}
                             </td>
                             <td style={{ textAlign: 'right', padding: '8px 10px', color: 'var(--text-secondary)' }}>
-                              {(it.unitCost || 25000).toLocaleString('vi-VN')} đ
+                              {Number(it.unitCost ?? 0).toLocaleString('vi-VN')} đ
                             </td>
                             <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--primary)', padding: '8px 10px' }}>
-                              {Number(it.totalLineCost || ((it.approvedQuantity || it.suggestedQuantity) * (it.unitCost || 25000))).toLocaleString('vi-VN')} đ
+                              {Number(it.totalLineCost || ((it.approvedQuantity || it.suggestedQuantity) * Number(it.unitCost ?? 0))).toLocaleString('vi-VN')} đ
                             </td>
                           </tr>
                         ))

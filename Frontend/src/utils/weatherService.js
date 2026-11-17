@@ -1,71 +1,75 @@
+// src/utils/weatherService.js
 /**
- * Dịch vụ đồng bộ thời tiết thời gian thực tại TP. Biên Hòa, Tỉnh Đồng Nai (Mục 26.2 SSOT)
- * Sử dụng Open-Meteo API (Miễn phí, không cần API Key, hỗ trợ CORS trình duyệt).
- * Tọa độ TP. Biên Hòa: Vĩ độ 10.9574 N, Kinh độ 106.8427 E.
+ * Dịch vụ đồng bộ thời tiết & lịch lễ thực tế theo thời gian thực (Open-Meteo + Nager.Date VN)
+ * Không sử dụng bất kỳ nhiệt độ hoặc trạng thái giả lập nào khi mất kết nối.
  */
 
-export async function fetchRealtimeWeatherBienHoa() {
-  const LAT = 10.9574;
-  const LON = 106.8427;
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current_weather=true`;
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 
+export async function fetchRealtimeEnvironment({ storeId = null, lat = null, lon = null, locationName = '' } = {}) {
   try {
-    const res = await fetch(url, { cache: 'no-cache' });
-    if (!res.ok) {
-      throw new Error(`Open-Meteo API trả về mã lỗi HTTP ${res.status}`);
+    const params = new URLSearchParams();
+    if (storeId && String(storeId).toUpperCase() !== 'ALL') {
+      params.set('storeId', String(storeId));
     }
-    const data = await res.json();
-    const current = data.current_weather;
-
-    if (!current) {
-      throw new Error('Không tìm thấy dữ liệu current_weather từ API!');
+    if (lat !== null && lon !== null && Number.isFinite(Number(lat)) && Number.isFinite(Number(lon))) {
+      params.set('lat', String(lat));
+      params.set('lon', String(lon));
+    }
+    if (locationName) {
+      params.set('locationName', locationName);
     }
 
-    const temp = Math.round(current.temperature);
-    const code = Number(current.weathercode);
-
-    // Ánh xạ mã WMO Weather Code sang 3 trạng thái của mô hình SSOT
-    // 0: Trời quang đãng, 1: Nắng/Ít mây
-    // 2: Mây rải rác, 3: U ám / Nhiều mây
-    // 51-67, 80-82, 95-99: Mưa rào, mưa dông
-    let condition = 'NORMAL';
-    let label = 'Bình thường';
-    let kFactor = 1.0;
-
-    if (code === 0 || code === 1 || temp >= 32) {
-      condition = 'SUNNY';
-      label = 'Nắng nóng';
-      kFactor = 1.4;
-    } else if (code >= 51 && code <= 99) {
-      condition = 'RAINY';
-      label = 'Mưa mát';
-      kFactor = 0.8;
-    } else {
-      condition = 'NORMAL';
-      label = 'Nhiều mây / Dịu mát';
-      kFactor = 1.0;
+    const token = localStorage.getItem('token');
+    const qs = params.toString();
+    const res = await fetch(`${API_BASE}/forecast/environment${qs ? `?${qs}` : ''}`, {
+      cache: 'no-cache',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      }
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data || !data.success || !data.current) {
+      throw new Error(data?.message || `HTTP ${res.status}`);
     }
 
     return {
       success: true,
-      condition,
-      temp,
-      label,
-      kFactor,
-      location: 'TP. Biên Hòa',
-      coordinates: `${LAT}°N, ${LON}°E`,
-      rawCode: code,
-      updatedAt: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+      online: true,
+      source: data.source || 'Open-Meteo Live API',
+      condition: data.current.condition,
+      temp: data.current.temp,
+      apparentTemp: data.current.apparentTemp,
+      humidity: data.current.humidity,
+      precipitation: data.current.precipitation,
+      windSpeed: data.current.windSpeed,
+      weatherCode: data.current.weatherCode,
+      label: data.current.label,
+      location: data.locationName,
+      coordinates: data.coordinates,
+      isHoliday: Boolean(data.calendar?.isHoliday),
+      isPublicHoliday: Boolean(data.calendar?.isPublicHoliday),
+      isWeekend: Boolean(data.calendar?.isWeekend),
+      holidayName: data.calendar?.holidayName || null,
+      calendarLabel: data.calendar?.label || 'Ngày thường',
+      dailyForecast: Array.isArray(data.dailyForecast) ? data.dailyForecast : [],
+      updatedAt: new Date(data.fetchedAt || Date.now()).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
     };
   } catch (err) {
-    console.warn('[Open-Meteo] Lỗi lấy thời tiết thời gian thực:', err.message);
     return {
       success: false,
-      condition: 'NORMAL',
-      temp: 30,
-      label: 'Bình thường (Offline)',
-      kFactor: 1.0,
-      location: 'TP. Biên Hòa',
+      online: false,
+      condition: null,
+      temp: null,
+      apparentTemp: null,
+      humidity: null,
+      precipitation: null,
+      windSpeed: null,
+      label: 'Mất kết nối thời tiết',
+      location: locationName || 'Chưa xác định',
+      isHoliday: false,
+      calendarLabel: 'Ngày thường',
+      dailyForecast: [],
       error: err.message
     };
   }

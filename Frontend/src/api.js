@@ -33,6 +33,12 @@ export async function apiCheckHealth() {
   return await parseJsonSafe(res, true);
 }
 
+// Header xác thực dùng cho các API đọc (Backend yêu cầu Bearer token trên mọi route /api trừ login & health)
+function authHeaders() {
+  const token = localStorage.getItem('token');
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
+}
+
 export async function fetchDashboardStats(storeId = null) {
   const token = localStorage.getItem('token');
   const query = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
@@ -46,7 +52,7 @@ export async function fetchDashboardStats(storeId = null) {
 }
 
 export async function fetchProducts() {
-  const res = await fetch(`${API_BASE}/products`);
+  const res = await fetch(`${API_BASE}/products`, { headers: authHeaders() });
   const json = await parseJsonSafe(res);
   return json.data || [];
 }
@@ -150,6 +156,19 @@ export async function apiCreateDisposal(disposalData) {
   return await parseJsonSafe(res);
 }
 
+export async function apiCreateBulkDisposal(bulkData) {
+  const token = localStorage.getItem('token');
+  const res = await fetch(`${API_BASE}/spoilage/bulk`, {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify(bulkData)
+  });
+  return await parseJsonSafe(res);
+}
+
 export async function apiApproveDisposal(disposalId) {
   const token = localStorage.getItem('token');
   const res = await fetch(`${API_BASE}/spoilage/${encodeURIComponent(disposalId)}/approve`, {
@@ -220,15 +239,28 @@ export async function apiGetMe() {
 // Module 2: Store Profile (Hỗ trợ Chuỗi 3 chi nhánh MVP & Cửa hàng độc lập)
 export async function apiGetStoreProfile(storeId = null) {
   const query = storeId ? `/${storeId}` : '';
-  const res = await fetch(`${API_BASE}/store-profile${query}`);
+  const res = await fetch(`${API_BASE}/store-profile${query}`, { headers: authHeaders() });
   const json = await parseJsonSafe(res);
   return json.data;
 }
 
 export async function apiGetAllStores() {
-  const res = await fetch(`${API_BASE}/store-profile/all`);
+  const res = await fetch(`${API_BASE}/store-profile/all`, { headers: authHeaders() });
   const json = await parseJsonSafe(res);
   return json.data || [];
+}
+
+export async function apiCreateStoreProfile(data) {
+  const token = localStorage.getItem('token');
+  const res = await fetch(`${API_BASE}/store-profile`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify(data)
+  });
+  return await parseJsonSafe(res);
 }
 
 export async function apiUpdateStoreProfile(data, storeId = null) {
@@ -248,7 +280,7 @@ export async function apiUpdateStoreProfile(data, storeId = null) {
 
 // Module 3: Categories FMCG
 export async function apiGetCategories() {
-  const res = await fetch(`${API_BASE}/catalog/categories`);
+  const res = await fetch(`${API_BASE}/catalog/categories`, { headers: authHeaders() });
   const json = await parseJsonSafe(res);
   return json.data || [];
 }
@@ -306,7 +338,20 @@ export async function fetchDashboardOverview(storeId = null) {
   return await parseJsonSafe(res);
 }
 
-// Module 5: Tiếp nhận xe tải DC Biên Hòa (Kiểm soát RSL >= 70%)
+export async function fetchReportsAnalytics(storeId = null, days = 30) {
+  const token = localStorage.getItem('token');
+  const params = new URLSearchParams();
+  if (storeId) params.set('storeId', storeId);
+  if (days) params.set('days', String(days));
+  const res = await fetch(`${API_BASE}/dashboard/reports?${params.toString()}`, {
+    headers: {
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    }
+  });
+  return await parseJsonSafe(res);
+}
+
+// Module 5: Tiếp nhận hàng nhập kho (Kiểm soát RSL >= 70%)
 export async function apiReceiveDCInbound(payload) {
   const token = localStorage.getItem('token');
   const res = await fetch(`${API_BASE}/batches/receive-inbound`, {
@@ -333,8 +378,8 @@ export async function apiRejectDCInbound(payload) {
   return await parseJsonSafe(res);
 }
 
-// Module 6: Quẹt thẻ thanh toán POS theo FEFO (Bẻ lô trực tiếp)
-export async function apiProcessFefoSale(cartItems, weather = 'NORMAL', isHoliday = false) {
+// Module 6: Ghi nhận xuất bán FEFO & lịch sử bán
+export async function apiProcessFefoSale(cartItems, weather = 'NORMAL', isHoliday = false, options = {}) {
   const token = localStorage.getItem('token');
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const res = await fetch(`${API_BASE}/sales`, {
@@ -345,11 +390,63 @@ export async function apiProcessFefoSale(cartItems, weather = 'NORMAL', isHolida
     },
     body: JSON.stringify({
       items: cartItems,
+      storeId: options?.storeId || user.storeId || 1,
+      saleDate: options?.saleDate || undefined,
+      transactionCode: options?.transactionCode || undefined,
       weather,
       isHoliday,
       cashierId: user.id || 3,
-      cashierName: user.fullName || 'Thu ngân quầy POS'
+      cashierName: user.fullName || 'Nhân viên cửa hàng'
     })
+  });
+  return await parseJsonSafe(res);
+}
+
+// Kiểm kê tồn kho & Xuất kho thủ công theo lô
+export async function apiRecordBatchStocktake(batchId, payload) {
+  const token = localStorage.getItem('token');
+  const res = await fetch(`${API_BASE}/batches/${batchId}/stocktake`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify(payload)
+  });
+  return await parseJsonSafe(res);
+}
+
+export async function fetchBatchAdjustments(storeId = null) {
+  const token = localStorage.getItem('token');
+  const query = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  const res = await fetch(`${API_BASE}/batches/adjustments${query}`, {
+    headers: {
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    }
+  });
+  return await parseJsonSafe(res);
+}
+
+// Cấu hình Doanh nghiệp & Chuỗi (Kho trung tâm / Hạn mức duyệt PO)
+export async function apiGetEnterpriseConfig() {
+  const token = localStorage.getItem('token');
+  const res = await fetch(`${API_BASE}/store-profile/enterprise`, {
+    headers: {
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    }
+  });
+  return await parseJsonSafe(res);
+}
+
+export async function apiUpdateEnterpriseConfig(data) {
+  const token = localStorage.getItem('token');
+  const res = await fetch(`${API_BASE}/store-profile/enterprise`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify(data)
   });
   return await parseJsonSafe(res);
 }
@@ -390,11 +487,20 @@ export async function fetchSpoilageLedger(limit = 50, storeId = null) {
   return await parseJsonSafe(res);
 }
 
-// Module 8: Dự báo ROP Đa biến & Quản lý Đơn đặt hàng DC Biên Hòa
-export async function fetchRopForecast(weather = 'NORMAL', isHoliday = false, storeId = null) {
+// Module 8: Dự báo 7 ngày, ROP & Đơn đặt hàng
+export async function fetchRopForecast(weather = 'AUTO', isHoliday = 'auto', storeId = null, isPromo = false, coords = null) {
   const token = localStorage.getItem('token');
-  const storeParam = storeId ? `&storeId=${encodeURIComponent(storeId)}` : '';
-  const res = await fetch(`${API_BASE}/forecast/rop?weather=${weather}&isHoliday=${isHoliday}${storeParam}`, {
+  const params = new URLSearchParams();
+  if (weather) params.set('weather', weather);
+  if (isHoliday !== undefined && isHoliday !== null) params.set('isHoliday', String(isHoliday));
+  params.set('isPromo', String(Boolean(isPromo)));
+  if (storeId) params.set('storeId', String(storeId));
+  if (coords && Number.isFinite(Number(coords.lat)) && Number.isFinite(Number(coords.lon))) {
+    params.set('lat', String(coords.lat));
+    params.set('lon', String(coords.lon));
+    if (coords.locationName) params.set('locationName', coords.locationName);
+  }
+  const res = await fetch(`${API_BASE}/forecast/rop?${params.toString()}`, {
     headers: {
       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
     }
@@ -402,9 +508,23 @@ export async function fetchRopForecast(weather = 'NORMAL', isHoliday = false, st
   return await parseJsonSafe(res);
 }
 
-export async function fetchPurchaseOrders() {
+export async function apiSaveForecastSnapshot(payload) {
   const token = localStorage.getItem('token');
-  const res = await fetch(`${API_BASE}/forecast/purchase-orders`, {
+  const res = await fetch(`${API_BASE}/forecast/snapshot`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify(payload)
+  });
+  return await parseJsonSafe(res);
+}
+
+export async function fetchPurchaseOrders(storeId = 'ALL') {
+  const token = localStorage.getItem('token');
+  const qs = storeId && storeId !== 'ALL' ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  const res = await fetch(`${API_BASE}/forecast/purchase-orders${qs}`, {
     headers: {
       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
     }
@@ -504,7 +624,7 @@ export async function apiResetUserPassword(userId, newPassword, confirmPassword)
   return await parseJsonSafe(res);
 }
 
-// Module 14: Quản trị viên Cập nhật thông tin và vai trò nhân viên (Chỉ ADMIN - Giai đoạn 3)
+// Module 14: Quản trị viên Cập nhật thông tin, vai trò & phân quyền trang nhân viên (Chỉ ADMIN - Giai đoạn 3)
 export async function apiUpdateUser(userId, userData) {
   const token = localStorage.getItem('token');
   const res = await fetch(`${API_BASE}/auth/users/${userId}`, {
@@ -514,6 +634,16 @@ export async function apiUpdateUser(userId, userData) {
       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
     },
     body: JSON.stringify(userData)
+  });
+  return await parseJsonSafe(res);
+}
+
+export async function apiGetPageCatalog() {
+  const token = localStorage.getItem('token');
+  const res = await fetch(`${API_BASE}/auth/users/page-catalog`, {
+    headers: {
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    }
   });
   return await parseJsonSafe(res);
 }
@@ -610,9 +740,10 @@ export async function apiDeleteSupplier(id) {
 }
 
 // Module 19: Quản lý Phiếu Nhập Kho DC (Goods Receipts - Mục 17.12 & Rule 7 SSOT)
-export async function apiGetGoodsReceipts() {
+export async function apiGetGoodsReceipts(storeId = 'ALL') {
   const token = localStorage.getItem('token');
-  const res = await fetch(`${API_BASE}/goods-receipts`, {
+  const qs = storeId && storeId !== 'ALL' ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  const res = await fetch(`${API_BASE}/goods-receipts${qs}`, {
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
@@ -646,10 +777,11 @@ export async function apiCreateGoodsReceipt(receiptData) {
   return await parseJsonSafe(res);
 }
 
-// Module 20: AI Engine (Pre-trained LightGBM + OR-Tools) & Điều phối Liên cửa hàng (stock_transfers)
-export async function fetchAiSupplyChainMatrix(weather = 'NORMAL', isHoliday = false) {
+// Module 20: AI Engine & Điều phối Liên cửa hàng (stock_transfers)
+export async function fetchAiSupplyChainMatrix(weather = 'AUTO', isHoliday = 'auto') {
   const token = localStorage.getItem('token');
-  const res = await fetch(`${API_BASE}/stock-transfers/ai-matrix?weather=${encodeURIComponent(weather)}&isHoliday=${Boolean(isHoliday)}`, {
+  const holParam = isHoliday === 'auto' ? 'auto' : String(Boolean(isHoliday));
+  const res = await fetch(`${API_BASE}/stock-transfers/ai-matrix?weather=${encodeURIComponent(weather || 'AUTO')}&isHoliday=${holParam}`, {
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { 'Authorization': `Bearer ${token}` } : {})

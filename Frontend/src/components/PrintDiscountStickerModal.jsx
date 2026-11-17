@@ -52,7 +52,7 @@ export default function PrintDiscountStickerModal({
 
   if (!isOpen || !batch) return null;
 
-  const storeName = storeProfile?.storeName || storeProfile?.store_name || 'Cửa hàng Bán lẻ Tiện lợi LHU Mart';
+  const storeName = storeProfile?.storeName || storeProfile?.store_name || 'Cửa hàng Bán lẻ SmartSupply';
   const batchCode = batch.batchCode || batch.batch_code || `BAT-${batch.id || '01'}`;
   const prodId = batch.productId || batch.product_id;
   

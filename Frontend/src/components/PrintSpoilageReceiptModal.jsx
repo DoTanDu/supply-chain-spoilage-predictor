@@ -90,15 +90,15 @@ export default function PrintSpoilageReceiptModal({
 
   if (!isOpen || !record) return null;
 
-  const storeName = storeProfile?.storeName || storeProfile?.store_name || 'Cửa hàng Bán lẻ Tiện lợi LHU Mart';
+  const storeName = storeProfile?.storeName || storeProfile?.store_name || 'Cửa hàng Bán lẻ SmartSupply';
   const storeCode = storeProfile?.storeCode || storeProfile?.store_code || 'RETAIL-STORE-01';
-  const address = storeProfile?.address || 'Số 10 Huỳnh Văn Nghệ, P. Bửu Long, TP. Biên Hòa, Đồng Nai';
-  const phone = storeProfile?.phone || storeProfile?.hotline || '0251 3952 778';
+  const address = storeProfile?.address || '';
+  const phone = storeProfile?.phone || storeProfile?.hotline || '';
 
   const recordCode = record.recordCode || record.id || `SPOIL-${Date.now().toString().slice(-6)}`;
   const dateStr = record.disposedDate || record.date || new Date().toISOString().slice(0, 10);
   const qty = Number(record.quantityDisposed ?? record.quantity ?? 1);
-  const cost = Number(record.importPrice ?? record.costPrice ?? 25000);
+  const cost = Number(record.importPrice ?? record.costPrice ?? 0);
   const totalCostLoss = Number(record.costLoss ?? record.totalLoss ?? (qty * cost));
   const isApproved = record.status === 'APPROVED';
 

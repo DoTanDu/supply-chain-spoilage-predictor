@@ -96,7 +96,7 @@ export default function BarcodeScannerModal({
       }
     } catch (err) {
       console.warn('Không thể mở camera thực tế:', err);
-      setCameraError('Không tìm thấy Camera hoặc chưa cấp quyền truy cập. Bạn có thể sử dụng danh sách mô phỏng quét nhanh bên dưới để thử nghiệm.');
+      setCameraError('Không tìm thấy Camera hoặc chưa cấp quyền truy cập. Bạn có thể chọn nhanh mã SKU từ danh mục bên dưới.');
     }
   };
 
@@ -297,7 +297,7 @@ export default function BarcodeScannerModal({
             </div>
           )}
 
-          {/* Khung Mô Phỏng Quét Nhanh (Phục vụ diễn tập & bảo vệ đồ án trước Hội đồng) */}
+          {/* Khung Chọn Nhanh Mã Vạch Theo Danh Mục Kho */}
           <div style={{
             background: 'var(--bg-subtle, #f8fafc)',
             borderRadius: '8px',
@@ -312,9 +312,9 @@ export default function BarcodeScannerModal({
             }}>
               <div style={{ fontSize: '0.775rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '5px' }}>
                 <Sparkles size={13} color="#4f46e5" />
-                <span>MÔ PHỎNG QUÉT NHANH BẰNG MÃ SKU CÓ TRONG KHO</span>
+                <span>DANH SÁCH MÃ VẠCH SẢN PHẨM TRONG KHO</span>
               </div>
-              <span style={{ fontSize: '0.675rem', color: 'var(--text-muted, #64748b)' }}>1-Click mô phỏng quét camera</span>
+              <span style={{ fontSize: '0.675rem', color: 'var(--text-muted, #64748b)' }}>Chọn mã SKU để quét nhanh</span>
             </div>
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', maxHeight: '130px', overflowY: 'auto' }}>
@@ -344,7 +344,7 @@ export default function BarcodeScannerModal({
                     e.currentTarget.style.borderColor = 'var(--border-color, #cbd5e1)';
                     e.currentTarget.style.background = 'var(--bg-surface, #ffffff)';
                   }}
-                  title={`Bấm để mô phỏng quét mã barcode: ${p.sku}`}
+                  title={`Bấm để quét mã barcode: ${p.sku}`}
                 >
                   <ScanLine size={12} color="#4f46e5" />
                   <span style={{ fontWeight: 600 }}>{p.name.length > 22 ? p.name.slice(0, 22) + '...' : p.name}</span>

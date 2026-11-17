@@ -1,131 +1,107 @@
+// src/App.jsx
 import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
-import DashboardView from './components/DashboardView';
-import FefoMonitorView from './components/FefoMonitorView';
-import PosCheckoutView from './components/PosCheckoutView';
-import DcIntakeView from './components/DcIntakeView';
-import SpoilageDisposalView from './components/SpoilageDisposalView';
-import ReorderPredictorView from './components/ReorderPredictorView';
-import StockTransferView from './components/StockTransferView';
-import AuditLogView from './components/AuditLogView';
 import LoginView from './components/LoginView';
-import ProductCatalogView from './components/ProductCatalogView';
-import UserManagementView from './components/UserManagementView';
-import StoreSettingsView from './components/StoreSettingsView';
+import DashboardView from './components/DashboardView';
+import StoreManagementView from './components/StoreManagementView';
+import InventoryManagementView from './components/InventoryManagementView';
+import AiForecastView from './components/AiForecastView';
+import SmartOrderingView from './components/SmartOrderingView';
+import StockTransferView from './components/StockTransferView';
+import SpoilageAlertsView from './components/SpoilageAlertsView';
+import ReportsAnalyticsView from './components/ReportsAnalyticsView';
+import SettingsIntegrationView from './components/SettingsIntegrationView';
 import AdminLoginModal from './components/AdminLoginModal';
 import ErrorBoundary from './components/ErrorBoundary';
 
 import * as api from './api';
-import { fetchRealtimeWeatherBienHoa } from './utils/weatherService';
-
-const VALID_TABS = [
-  'dashboard',
-  'fefo-monitor',
-  'pos-checkout',
-  'dc-intake',
-  'product-catalog',
-  'spoilage-disposal',
-  'reorder-predictor',
-  'stock-transfer',
-  'audit-log',
-  'store-settings',
-  'user-management'
-];
-
-const TAB_ALLOWED_ROLES = {
-  'dashboard': ['ADMIN', 'STORE_MANAGER'],
-  'pos-checkout': ['ADMIN', 'STORE_MANAGER', 'CASHIER'],
-  'fefo-monitor': ['ADMIN', 'STORE_MANAGER', 'CASHIER'],
-  'dc-intake': ['ADMIN', 'STORE_MANAGER', 'CASHIER'],
-  'product-catalog': ['ADMIN', 'STORE_MANAGER', 'CASHIER'],
-  'spoilage-disposal': ['ADMIN', 'STORE_MANAGER', 'CASHIER'],
-  'reorder-predictor': ['ADMIN', 'STORE_MANAGER', 'CASHIER'],
-  'stock-transfer': ['ADMIN', 'STORE_MANAGER', 'CASHIER'],
-  'audit-log': ['ADMIN', 'STORE_MANAGER'],
-  'store-settings': ['ADMIN', 'STORE_MANAGER'],
-  'user-management': ['ADMIN']
-};
-
-function getDefaultTabForRole(roleCode) {
-  if (roleCode === 'CASHIER' || roleCode === 'STAFF') return 'pos-checkout';
-  return 'dashboard';
-}
-
-function getSafeTabForUser(requestedTab, user) {
-  const role = (user?.roleCode || 'CASHIER').toUpperCase();
-  if (role === 'ADMIN' && VALID_TABS.includes(requestedTab)) {
-    return requestedTab;
-  }
-  const allowed = TAB_ALLOWED_ROLES[requestedTab];
-  if (allowed && allowed.includes(role)) {
-    return requestedTab;
-  }
-  return getDefaultTabForRole(role);
-}
+import { fetchRealtimeEnvironment } from './utils/weatherService';
+import {
+  VALID_TABS,
+  canAccessPage,
+  getDefaultTabForUser,
+  getSafeTabForUser,
+  resolveLegacyRoute,
+  normalizeRole
+} from './utils/pagePermissions';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem('user');
     const token = localStorage.getItem('token');
     if (saved && token) {
-      try { 
+      try {
         return JSON.parse(saved);
-      } catch (e) {}
+      } catch {}
     }
-    return null; // Mặc định vào trang /login (LoginView) nếu chưa có phiên đăng nhập
+    return null;
   });
 
-  // Khóa cố định Giao diện Sáng (100% Light Mode) để trình chiếu rõ nét trên máy chiếu
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', 'light');
-    localStorage.setItem('lhu_mart_theme', 'light');
   }, []);
 
+  const initialRoute = resolveLegacyRoute(window.location.pathname);
+
   const [activeTab, setActiveTab] = useState(() => {
-    const pathSlug = window.location.pathname.replace(/^\/+/, '');
     let savedUserObj = null;
-    const savedUser = localStorage.getItem('user');
-    if (savedUser) {
-      try {
-        savedUserObj = JSON.parse(savedUser);
-      } catch (e) {}
+    try {
+      const savedUser = localStorage.getItem('user');
+      if (savedUser) savedUserObj = JSON.parse(savedUser);
+    } catch {}
+    if (initialRoute.tab) {
+      return savedUserObj ? getSafeTabForUser(initialRoute.tab, savedUserObj) : initialRoute.tab;
     }
-    if (VALID_TABS.includes(pathSlug)) {
-      return savedUserObj ? getSafeTabForUser(pathSlug, savedUserObj) : pathSlug;
-    }
-    if (savedUserObj) {
-      return getDefaultTabForRole(savedUserObj?.roleCode);
-    }
+    if (savedUserObj) return getDefaultTabForUser(savedUserObj);
     return 'dashboard';
   });
-  const isAdmin = currentUser?.roleCode === 'ADMIN' || currentUser?.actorCode === 'OWNER';
+
+  const [routeSubTab, setRouteSubTab] = useState(initialRoute.subTab);
+
+  const roleCode = normalizeRole(currentUser?.roleCode || currentUser?.actorCode);
+  const isAdmin = roleCode === 'ADMIN';
   const currentRole = currentUser?.roleCode || 'GUEST';
+
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [selectedStoreId, setSelectedStoreId] = useState(() => {
-    const role = (currentUser?.roleCode || '').toUpperCase();
-    return (role === 'ADMIN' || role === 'OWNER') ? 'ALL' : String(currentUser?.storeId || 1);
+    const r = normalizeRole(currentUser?.roleCode || currentUser?.actorCode);
+    return r === 'ADMIN' ? 'ALL' : String(currentUser?.storeId || 1);
   });
-  
+  const effectiveSelectedStoreId = isAdmin ? selectedStoreId : String(currentUser?.storeId || 1);
+
   const [products, setProducts] = useState([]);
   const [batches, setBatches] = useState([]);
   const [disposals, setDisposals] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
-  const [recentIntakes, setRecentIntakes] = useState([]);
+  const [storesList, setStoresList] = useState([]);
+  const [pendingTransfersCount, setPendingTransfersCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [liveStats, setLiveStats] = useState(null);
   const [storeProfile, setStoreProfile] = useState(null);
-  const [isConnectedToSql, setIsConnectedToSql] = useState(false);
+  const [enterpriseConfig, setEnterpriseConfig] = useState({
+    enterpriseName: 'SmartSupply AI Retail Chain',
+    hasCentralWarehouse: true,
+    centralWarehouseName: 'Kho trung tâm (DC)',
+    managerPoApprovalLimit: 5000000
+  });
 
-  // Đồng bộ URL trình duyệt với trạng thái đăng nhập (/login), phân hệ đang mở và chốt chặn RBAC
+  const activeStoresCount = storesList.filter(s => String(s.status || 'OPEN').toUpperCase() !== 'SUSPENDED').length;
+  const isSingleStore = Boolean(
+    (storesList.length > 0 && activeStoresCount <= 1) ||
+    storeProfile?.isSingleStore ||
+    (storeProfile?.chainStoreCount !== undefined && Number(storeProfile.chainStoreCount) <= 1)
+  );
+
+  // Đồng bộ URL với trang đang mở (9 trang SmartSupply AI)
   useEffect(() => {
     if (!currentUser) {
       if (window.location.pathname !== '/login') {
         window.history.replaceState(null, '', '/login');
       }
-      document.title = 'Đăng nhập (/login) | LHU Mart - Spoilage Predictor';
+      document.title = 'Đăng nhập | SmartSupply AI';
     } else {
-      const safeTab = getSafeTabForUser(activeTab, currentUser);
+      const safeTab = getSafeTabForUser(activeTab, currentUser, isSingleStore);
       if (safeTab !== activeTab) {
         setActiveTab(safeTab);
         window.history.replaceState(null, '', `/${safeTab}`);
@@ -135,11 +111,10 @@ export default function App() {
       if (window.location.pathname !== targetPath) {
         window.history.pushState(null, '', targetPath);
       }
-      document.title = `LHU Mart (${currentUser.roleCode}) | Quản trị Chuỗi cung ứng Chống lãng phí`;
+      document.title = `SmartSupply AI (${roleCode === 'ADMIN' ? 'OWNER' : roleCode === 'STORE_MANAGER' ? 'MANAGER' : 'STAFF'})`;
     }
-  }, [currentUser, activeTab]);
+  }, [currentUser, activeTab, isSingleStore, roleCode]);
 
-  // Hỗ trợ nút Back/Forward của trình duyệt, truy cập trực tiếp đường dẫn /login và sự kiện hết hạn JWT (401)
   useEffect(() => {
     const handlePopState = () => {
       const slug = window.location.pathname.replace(/^\/+/, '');
@@ -147,14 +122,13 @@ export default function App() {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         setCurrentUser(null);
-      } else if (VALID_TABS.includes(slug)) {
-        setActiveTab(prev => {
-          const safe = currentUser ? getSafeTabForUser(slug, currentUser) : slug;
-          if (safe !== slug) {
-            window.history.replaceState(null, '', `/${safe}`);
-          }
-          return safe;
-        });
+        return;
+      }
+      const resolved = resolveLegacyRoute(slug);
+      if (resolved.tab) {
+        setRouteSubTab(resolved.subTab);
+        const safe = currentUser ? getSafeTabForUser(resolved.tab, currentUser, isSingleStore) : resolved.tab;
+        setActiveTab(safe);
       }
     };
 
@@ -173,9 +147,9 @@ export default function App() {
       window.removeEventListener('popstate', handlePopState);
       window.removeEventListener('auth:expired', handleAuthExpired);
     };
-  }, [currentUser]);
+  }, [currentUser, isSingleStore]);
 
-  // Xác thực lại phiên JWT với máy chủ khi khởi động (Mục 4.0 SSOT)
+  // Kiểm tra phiên JWT khi khởi động
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token || !currentUser) return;
@@ -192,135 +166,124 @@ export default function App() {
           setCurrentUser(null);
         }
       })
-      .catch(() => {
-        // Giữ phiên local nếu Backend đang khởi động
-      });
-    return () => {
-      mounted = false;
-    };
+      .catch(() => {});
+    return () => { mounted = false; };
   }, []);
 
-  const handleLoginSuccess = (user, token) => {
-    if (token) localStorage.setItem('token', token);
-    localStorage.setItem('user', JSON.stringify(user));
-    setCurrentUser(user);
-    const nextStoreScope = (user?.roleCode === 'ADMIN' || user?.actorCode === 'OWNER')
-      ? 'ALL'
-      : String(user?.storeId || 1);
-    setSelectedStoreId(nextStoreScope);
-    
-    // Tự động chuyển tab & URL theo thẩm quyền vai trò (Mục 4 & Mục 16 Đặc tả SSOT)
-    const nextTab = getDefaultTabForRole(user.roleCode);
-    setActiveTab(nextTab);
-    window.history.pushState(null, '', `/${nextTab}`);
-    loadLiveDatabaseData(false, nextStoreScope);
-  };
-
-  const handleLogout = async () => {
-    try {
-      await api.apiLogout();
-    } catch (e) {
-      console.warn('Lỗi gọi API đăng xuất:', e);
-    } finally {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      setCurrentUser(null);
-      window.history.pushState(null, '', '/login');
-    }
-  };
-
-  const handleSwitchUser = async (targetUsername, password) => {
-    try {
-      const res = await api.apiLogin(targetUsername, password);
-      if (res.success && res.data) {
-        handleLoginSuccess(res.data.user, res.data.token);
-        return { success: true };
-      }
-      return { success: false, message: res.message || 'Mật khẩu không chính xác' };
-    } catch (e) {
-      console.error('Lỗi chuyển đổi vai trò:', e);
-      return { success: false, message: e.message || 'Lỗi kết nối máy chủ khi chuyển đổi ca' };
-    }
-  };
-
+  const [gpsCoords, setGpsCoords] = useState(null);
   const [weather, setWeather] = useState({
-    temp: 32,
-    condition: 'SUNNY',
+    temp: null,
+    apparentTemp: null,
+    humidity: null,
+    precipitation: null,
+    windSpeed: null,
+    condition: 'AUTO',
     isHoliday: false,
-    location: 'TP. Biên Hòa',
-    label: 'Nắng nóng (Đồng bộ thời gian thực)'
+    calendarLabel: 'Đang đồng bộ...',
+    location: 'Đang định vị...',
+    label: 'Chưa đồng bộ',
+    dailyForecast: [],
+    online: false,
+    updatedAt: null
   });
   const [isSyncingWeather, setIsSyncingWeather] = useState(false);
-  const [preselectedDisposalBatchId, setPreselectedDisposalBatchId] = useState(null);
 
-  // Đồng bộ thời tiết thời gian thực TP. Biên Hòa qua Open-Meteo API (Mục 26.2 SSOT)
-  const handleSyncRealtimeWeather = async () => {
+  const handleSyncRealtimeWeather = async (overrideGps = gpsCoords) => {
     setIsSyncingWeather(true);
     try {
-      const live = await fetchRealtimeWeatherBienHoa();
+      const targetStore = isAdmin ? selectedStoreId : String(currentUser?.storeId || 1);
+      const live = await fetchRealtimeEnvironment({
+        storeId: targetStore,
+        lat: overrideGps?.lat ?? null,
+        lon: overrideGps?.lon ?? null,
+        locationName: overrideGps?.locationName || ''
+      });
       if (live && live.success) {
+        setWeather({
+          ...live,
+          lat: overrideGps?.lat ?? live.coordinates?.lat ?? null,
+          lon: overrideGps?.lon ?? live.coordinates?.lon ?? null
+        });
+      } else if (live) {
         setWeather(prev => ({
           ...prev,
-          temp: live.temp,
-          condition: live.condition,
-          label: live.label,
-          location: live.location,
-          updatedAt: live.updatedAt
+          online: false,
+          temp: null,
+          label: live.label || 'Mất kết nối thời tiết',
+          error: live.error
         }));
       }
-    } catch (e) {
-      console.warn("Lỗi đồng bộ thời tiết Open-Meteo:", e);
-    } finally {
+    } catch {}
+    finally {
       setIsSyncingWeather(false);
     }
   };
 
-  // Cập nhật trạng thái cửa hàng LHU Mart (OPEN, CLOSED, INVENTORY, SUSPENDED)
-  const handleUpdateStoreStatus = async (newStatus) => {
-    try {
-      const res = await api.apiUpdateStoreProfile({ status: newStatus });
-      if (res && res.success && res.data) {
-        setStoreProfile(res.data);
-        return { success: true, data: res.data };
-      }
-      return { success: false, message: res?.message || 'Không thể cập nhật trạng thái cửa hàng!' };
-    } catch (err) {
-      console.error("Lỗi cập nhật trạng thái cửa hàng:", err);
-      return { success: false, message: err.message };
+  const handleUseDeviceLocation = () => {
+    if (!navigator.geolocation) {
+      setWeather(prev => ({ ...prev, error: 'Trình duyệt không hỗ trợ GPS.' }));
+      return;
     }
+    setIsSyncingWeather(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const coords = {
+          lat: Number(pos.coords.latitude.toFixed(4)),
+          lon: Number(pos.coords.longitude.toFixed(4)),
+          locationName: 'Vị trí hiện tại (GPS)'
+        };
+        setGpsCoords(coords);
+        handleSyncRealtimeWeather(coords);
+      },
+      () => {
+        setIsSyncingWeather(false);
+        setWeather(prev => ({ ...prev, error: 'Không thể truy cập vị trí GPS.' }));
+      },
+      { enableHighAccuracy: false, timeout: 7000 }
+    );
   };
 
-  // Load Real Data from Microsoft SQL Server LocalDB via Backend API
-  const loadLiveDatabaseData = async (forceAudit = false, storeScopeOverride = null) => {
+  const effectivePagesKey = Array.isArray(currentUser?.effectivePages)
+    ? currentUser.effectivePages.join(',')
+    : '';
+
+  const loadLiveDatabaseData = async (storeScopeOverride = null) => {
     try {
       const effectiveStoreScope = storeScopeOverride !== null
         ? storeScopeOverride
         : (isAdmin ? selectedStoreId : String(currentUser?.storeId || 1));
-      const shouldFetchAudit = forceAudit || activeTab === 'audit-log' || isAdmin || currentRole === 'STORE_MANAGER';
-      const [prods, bats, disps, logs, stats, storeProf] = await Promise.all([
-        api.fetchProducts(),
-        api.fetchBatches(effectiveStoreScope),
-        api.fetchDisposals(effectiveStoreScope),
-        shouldFetchAudit ? api.fetchAuditLogs() : Promise.resolve(null),
-        api.fetchDashboardStats(effectiveStoreScope),
-        api.apiGetStoreProfile(effectiveStoreScope === 'ALL' ? null : effectiveStoreScope)
+
+      const canReadDashboard = canAccessPage(currentUser, 'dashboard', isSingleStore);
+      const canReadAudit = isAdmin || roleCode === 'STORE_MANAGER' || canAccessPage(currentUser, 'settings-integration', isSingleStore);
+      const canReadDisposals = canAccessPage(currentUser, 'spoilage-alerts', isSingleStore) || canReadDashboard;
+
+      const [prods, bats, disps, logs, stats, storeProf, allStores, trfRes, entRes] = await Promise.all([
+        api.fetchProducts().catch(() => []),
+        api.fetchBatches(effectiveStoreScope).catch(() => []),
+        canReadDisposals ? api.fetchDisposals(effectiveStoreScope).catch(() => []) : Promise.resolve([]),
+        canReadAudit ? api.fetchAuditLogs().catch(() => []) : Promise.resolve([]),
+        canReadDashboard ? api.fetchDashboardOverview(effectiveStoreScope).catch(() => null) : Promise.resolve(null),
+        api.apiGetStoreProfile(effectiveStoreScope === 'ALL' ? null : effectiveStoreScope).catch(() => null),
+        api.apiGetAllStores().catch(() => []),
+        api.fetchStockTransfers('ALL').catch(() => null),
+        api.apiGetEnterpriseConfig().catch(() => null)
       ]);
 
       if (Array.isArray(prods)) setProducts(prods);
-      if (Array.isArray(bats)) {
-        setBatches(bats);
-        // Sort by id descending so the latest received batches appear first
-        const sortedByRecent = [...bats].sort((a, b) => b.id - a.id);
-        setRecentIntakes(sortedByRecent);
-      }
+      if (Array.isArray(bats)) setBatches(bats);
       if (Array.isArray(disps)) setDisposals(disps);
       if (Array.isArray(logs)) setAuditLogs(logs);
       if (stats) setLiveStats(stats);
       if (storeProf) setStoreProfile(storeProf);
-      setIsConnectedToSql(true);
+      if (Array.isArray(allStores)) setStoresList(allStores);
+      if (entRes && entRes.success && entRes.data) setEnterpriseConfig(entRes.data);
+      if (trfRes && Array.isArray(trfRes.data)) {
+        setPendingTransfersCount(
+          trfRes.data.filter(t => ['PROPOSED', 'PENDING'].includes(String(t.status).toUpperCase())).length
+        );
+      }
     } catch (err) {
-      console.warn("Backend API not reachable:", err);
-      setIsConnectedToSql(false);
+      console.warn('Lỗi tải dữ liệu hệ thống:', err);
     } finally {
       setIsLoading(false);
     }
@@ -337,189 +300,127 @@ export default function App() {
       if (document.visibilityState !== 'hidden') {
         loadLiveDatabaseData();
       }
-    }, 10000);
+    }, 15000);
     return () => clearInterval(interval);
-  }, [currentUser?.id, currentUser?.roleCode, selectedStoreId]);
+  }, [currentUser?.id, currentUser?.roleCode, selectedStoreId, effectivePagesKey]);
 
-  // Calculate critical count
-  const criticalCount = batches.filter(b => (b.status === 'CRITICAL' || b.alertColor === 'RED') && (b.currentQuantity ?? b.quantity ?? 0) > 0).length;
+  const handleLoginSuccess = (user, token) => {
+    if (token) localStorage.setItem('token', token);
+    localStorage.setItem('user', JSON.stringify(user));
+    setCurrentUser(user);
+    const nextStoreScope = normalizeRole(user?.roleCode || user?.actorCode) === 'ADMIN'
+      ? 'ALL'
+      : String(user?.storeId || 1);
+    setSelectedStoreId(nextStoreScope);
+    const nextTab = getDefaultTabForUser(user, isSingleStore);
+    setActiveTab(nextTab);
+    setRouteSubTab(null);
+    window.history.pushState(null, '', `/${nextTab}`);
+    loadLiveDatabaseData(nextStoreScope);
+  };
 
-  // Handler: Process Sale with FEFO Logic (Write directly to SQL Server)
-  const handleProcessSale = async (cart, weatherInfo) => {
+  const handleLogout = async () => {
     try {
-      const weatherCond = weatherInfo?.condition || (typeof weatherInfo === 'string' ? weatherInfo : 'NORMAL');
-      const isHol = weatherInfo?.isHoliday || false;
-      const result = await api.apiProcessFefoSale(cart, weatherCond, isHol);
-      if (result && result.success) {
-        await loadLiveDatabaseData();
-        return result;
+      await api.apiLogout();
+    } catch {}
+    finally {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      setCurrentUser(null);
+      window.history.pushState(null, '', '/login');
+    }
+  };
+
+  const handleSwitchUser = async (targetUsername, password) => {
+    try {
+      const res = await api.apiLogin(targetUsername, password);
+      if (res && res.success && res.data) {
+        handleLoginSuccess(res.data.user, res.data.token);
+        return { success: true };
       }
-      return { 
-        success: false, 
-        code: result?.code,
-        message: result?.message || 'Giao dịch thanh toán POS thất bại từ phía máy chủ!' 
-      };
-    } catch (err) {
-      console.error("Lỗi xuất kho POS:", err);
-      return { 
-        success: false, 
-        code: err.code || 'ERR_POS_CONNECTION',
-        message: err.response?.data?.message || err.message || 'Không thể kết nối đến máy chủ POS!' 
-      };
+      return { success: false, message: res?.message || 'Mật khẩu không chính xác.' };
+    } catch (e) {
+      return { success: false, message: e.message || 'Lỗi kết nối máy chủ.' };
     }
   };
 
-  // Handler: Add new batch from DC Intake (Write to SQL Server)
-  const handleAddBatch = async (newBatch) => {
-    try {
-      const res = await api.apiAddBatch(newBatch);
-      await loadLiveDatabaseData();
-      return res;
-    } catch (err) {
-      console.error("Error adding batch:", err);
-      return { success: false, message: err.message };
-    }
+  const handleNavigate = (tabId, subTab = null) => {
+    setRouteSubTab(subTab);
+    setActiveTab(tabId);
   };
 
-  // Handler: Quick Discount on near-expiry batch (Update in SQL Server)
+  // Handlers CRUD nghiệp vụ
+  const handleAddBatch = async (payload) => {
+    const res = payload?.batches
+      ? await api.apiReceiveDCInbound(payload)
+      : await api.apiAddBatch(payload);
+    if (res && res.success) await loadLiveDatabaseData();
+    return res;
+  };
+
   const handleQuickDiscount = async (batchId, percent = 30) => {
-    try {
-      const res = await api.apiApplyDiscount(batchId, percent);
-      await loadLiveDatabaseData();
-      return res;
-    } catch (err) {
-      console.error("Lỗi áp dụng giảm giá Quick Markdown:", err);
-      return { success: false, message: err.message };
-    }
+    const res = await api.apiApplyDiscount(batchId, percent);
+    if (res && res.success) await loadLiveDatabaseData();
+    return res;
   };
 
-  // Handler: Rotate Shelf (Persist to SQL Server and update UI)
   const handleRotateShelf = async (batchId) => {
-    try {
-      const res = await api.apiRotateShelf(batchId);
-      await loadLiveDatabaseData();
-      return res;
-    } catch (err) {
-      console.error("Lỗi đảo kệ trưng bày:", err);
-      return { success: false, message: err.message };
-    }
+    const res = await api.apiRotateShelf(batchId);
+    if (res && res.success) await loadLiveDatabaseData();
+    return res;
   };
 
-  // Handler: Create Disposal Record (Write to SQL Server)
-  const handleCreateDisposal = async (newRecord) => {
-    try {
-      const res = await api.apiCreateDisposal(newRecord);
-      await loadLiveDatabaseData();
-      return res;
-    } catch (err) {
-      console.error("Lỗi lập phiếu tiêu hủy:", err);
-      return { success: false, message: err.message };
-    }
+  const handleCreateDisposal = async (payload) => {
+    const res = await api.apiCreateDisposal(payload);
+    if (res && res.success) await loadLiveDatabaseData();
+    return res;
   };
 
-  // Handler: Approve Disposal (Write to SQL Server via PATCH /api/spoilage/:id/approve)
+  const handleBulkDisposal = async (payload) => {
+    const res = await api.apiCreateBulkDisposal(payload);
+    if (res && res.success) await loadLiveDatabaseData();
+    return res;
+  };
+
   const handleApproveDisposal = async (disposalId) => {
-    try {
-      const res = await api.apiApproveDisposal(disposalId);
-      await loadLiveDatabaseData();
-      return res;
-    } catch (err) {
-      console.error("Lỗi phê duyệt tiêu hủy:", err);
-      return { success: false, message: err.message };
-    }
+    const res = await api.apiApproveDisposal(disposalId);
+    if (res && res.success) await loadLiveDatabaseData();
+    return res;
   };
 
-  // Handler: Add New Product to System Catalog (Write to SQL Server)
   const handleAddNewProduct = async (productData) => {
-    try {
-      const res = await api.apiCreateProduct(productData);
-      if (res && res.success) {
-        await loadLiveDatabaseData();
-      }
-      return res;
-    } catch (err) {
-      console.error("Failed to create product:", err);
-      return { success: false, message: err.message };
-    }
+    const res = await api.apiCreateProduct(productData);
+    if (res && res.success) await loadLiveDatabaseData();
+    return res;
   };
 
-  // Handler: Update Product in System Catalog (Write to SQL Server)
   const handleUpdateProduct = async (id, productData) => {
-    try {
-      const res = await api.apiUpdateProduct(id, productData);
-      if (res && res.success) {
-        await loadLiveDatabaseData();
-      }
-      return res;
-    } catch (err) {
-      console.error("Failed to update product:", err);
-      return { success: false, message: err.message };
-    }
+    const res = await api.apiUpdateProduct(id, productData);
+    if (res && res.success) await loadLiveDatabaseData();
+    return res;
   };
 
-  // Handler: Soft Delete Product (Set isActive = 0 in SQL Server)
   const handleDeleteProduct = async (id) => {
-    try {
-      const res = await api.apiDeleteProduct(id);
-      if (res && res.success) {
-        await loadLiveDatabaseData();
-      }
-      return res;
-    } catch (err) {
-      console.error("Failed to delete product:", err);
-      return { success: false, message: err.message };
-    }
+    const res = await api.apiDeleteProduct(id);
+    if (res && res.success) await loadLiveDatabaseData();
+    return res;
   };
 
-  // Handler: Gửi Đơn Đặt Hàng PO (Purchase Order) về Kho tổng DC Biên Hòa
-  const handleSendPo = async (product, qty) => {
-    const orderQty = Math.max(1, Number(qty) || 1);
-    const unitCost = Number(product?.costPrice) > 0 ? Number(product.costPrice) : 25000;
-    const expectedDeliveryDate = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+  const criticalCount = batches.filter(
+    b => (b.status === 'CRITICAL' || b.alertColor === 'RED') && (b.currentQuantity ?? b.quantity ?? 0) > 0
+  ).length;
 
-    const poPayload = {
-      supplierId: 1,
-      expectedDeliveryDate,
-      notes: `Đơn đặt hàng bổ sung ROP gửi Kho tổng DC Biên Hòa cho ${product?.name || 'Sản phẩm'} (+${orderQty} ${product?.unit || 'đơn vị'})`,
-      items: [
-        {
-          productId: product.id,
-          currentStockAtOrder: Number(product?.currentStock || 0),
-          suggestedQuantity: orderQty,
-          approvedQuantity: orderQty,
-          unitCost,
-          totalLineCost: orderQty * unitCost
-        }
-      ]
-    };
-
-    try {
-      const res = await api.apiCreatePurchaseOrder(poPayload);
-      await loadLiveDatabaseData();
-      const orderCode = res?.data?.orderCode || res?.orderCode || `PO-DC-${Date.now().toString().slice(-6)}`;
-      return { success: true, orderCode, qty: orderQty, ...res };
-    } catch (err) {
-      console.error("Lỗi khi tạo đơn đặt hàng PO gửi DC:", err);
-      return { success: false, message: err.message };
-    }
-  };
-
-  // Nếu chưa đăng nhập -> Hiển thị Trang Đăng Nhập Riêng (/login)
   if (!currentUser) {
-    return (
-      <LoginView
-        onLoginSuccess={handleLoginSuccess}
-      />
-    );
+    return <LoginView onLoginSuccess={handleLoginSuccess} />;
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)', color: 'var(--text-main)', transition: 'background-color 0.2s ease, color 0.2s ease' }}>
-      
-      {/* Top Header */}
-      <Header 
+    <div className="ss-shell">
+      <Header
         currentUser={currentUser}
         currentRole={currentRole}
+        activeTab={activeTab}
+        onSelectTab={(tab) => handleNavigate(tab)}
         onLogout={handleLogout}
         onSwitchUser={handleSwitchUser}
         criticalCount={criticalCount}
@@ -527,197 +428,210 @@ export default function App() {
         setWeather={setWeather}
         batches={batches}
         storeProfile={storeProfile}
-        onUpdateStoreStatus={handleUpdateStoreStatus}
-        onSyncWeather={handleSyncRealtimeWeather}
+        enterpriseConfig={enterpriseConfig}
+        storesList={storesList}
+        selectedStoreId={effectiveSelectedStoreId}
+        onSelectStore={(val) => {
+          setGpsCoords(null);
+          setSelectedStoreId(val);
+        }}
+        isSingleStore={isSingleStore}
+        onSyncWeather={() => handleSyncRealtimeWeather(gpsCoords)}
+        onUseDeviceLocation={handleUseDeviceLocation}
         isSyncingWeather={isSyncingWeather}
-        onNavigateToFefo={() => setActiveTab('fefo-monitor')}
         onQuickDiscount={handleQuickDiscount}
         onRotateShelf={handleRotateShelf}
-        onNavigateToUserManagement={() => setActiveTab('user-management')}
       />
 
-      {/* Main Container */}
-      <div style={{ display: 'flex', flex: 1 }}>
-        
-        {/* Navigation Sidebar (Tự động lọc menu theo vai trò RBAC) */}
-        <Sidebar 
+      <div className="ss-shell-body">
+        <Sidebar
           activeTab={activeTab}
-          setActiveTab={setActiveTab}
+          setActiveTab={(tab) => handleNavigate(tab)}
           currentRole={currentRole}
           currentUser={currentUser}
           criticalCount={criticalCount}
+          pendingTransferCount={pendingTransfersCount}
+          isSingleStore={isSingleStore}
         />
 
-        {/* Dynamic Workspace */}
-        <main style={{ flex: 1, padding: '16px 24px', overflowY: 'auto', maxHeight: 'calc(100vh - 73px)' }}>
-          <ErrorBoundary>
+        <main className="ss-main">
+          <ErrorBoundary key={activeTab}>
             {isLoading && products.length === 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: '16px' }}>
-                <div style={{ width: '42px', height: '42px', border: '3px solid rgba(16, 185, 129, 0.2)', borderTopColor: 'var(--safe-green)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 600 }}>
-                  Đang nạp dữ liệu từ Microsoft SQL Server LocalDB...
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: '14px' }}>
+                <div style={{ width: '38px', height: '38px', border: '3px solid var(--primary-border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.9s linear infinite' }} />
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.88rem', fontWeight: 600 }}>
+                  Đang nạp dữ liệu SmartSupply AI từ SQL Server...
                 </div>
               </div>
             ) : (
               <>
-              {activeTab === 'dashboard' && (
-                <DashboardView 
-                  batches={batches}
-                  products={products}
-                  disposals={disposals}
-                  liveStats={liveStats}
-                  setActiveTab={setActiveTab}
-                  onQuickDiscount={handleQuickDiscount}
-                  onRotateShelf={handleRotateShelf}
-                  currentUser={currentUser}
-                  currentRole={currentRole}
-                  isAdmin={isAdmin}
-                  selectedStoreId={selectedStoreId}
-                  onSelectStore={setSelectedStoreId}
-                  onRequestAdminLogin={() => setShowAdminModal(true)}
-                />
-              )}
+                {activeTab === 'dashboard' && (
+                  <DashboardView
+                    batches={batches}
+                    products={products}
+                    disposals={disposals}
+                    liveStats={liveStats}
+                    setActiveTab={(tab) => handleNavigate(tab)}
+                    onQuickDiscount={handleQuickDiscount}
+                    onRotateShelf={handleRotateShelf}
+                    currentUser={currentUser}
+                    currentRole={currentRole}
+                    isAdmin={isAdmin}
+                    selectedStoreId={effectiveSelectedStoreId}
+                    onSelectStore={setSelectedStoreId}
+                    storesList={storesList}
+                    weather={weather}
+                    isSingleStore={isSingleStore}
+                  />
+                )}
 
-              {activeTab === 'fefo-monitor' && (
-                <FefoMonitorView 
-                  batches={batches}
-                  products={products}
-                  storeProfile={storeProfile}
-                  currentUser={currentUser}
-                  currentRole={currentRole}
-                  selectedStoreId={selectedStoreId}
-                  onSelectStore={setSelectedStoreId}
-                  onQuickDiscount={handleQuickDiscount}
-                  onRotateShelf={handleRotateShelf}
-                  onOpenDisposalModal={(batch) => {
-                    setPreselectedDisposalBatchId(batch.id);
-                    setActiveTab('spoilage-disposal');
-                  }}
-                  isAdmin={isAdmin}
-                  onRequestAdminLogin={() => setShowAdminModal(true)}
-                />
-              )}
+                {activeTab === 'store-management' && (
+                  <StoreManagementView
+                    currentUser={currentUser}
+                    isAdmin={isAdmin}
+                    liveStats={liveStats}
+                    storesList={storesList}
+                    selectedStoreId={effectiveSelectedStoreId}
+                    onSelectStore={setSelectedStoreId}
+                    onStoresChanged={loadLiveDatabaseData}
+                    setActiveTab={(tab) => handleNavigate(tab)}
+                  />
+                )}
 
-              {activeTab === 'pos-checkout' && (
-                <PosCheckoutView 
-                  products={products}
-                  batches={batches}
-                  onProcessSale={handleProcessSale}
-                  weather={weather}
-                  setWeather={setWeather}
-                  currentUser={currentUser}
-                  storeProfile={storeProfile}
-                />
-              )}
+                {activeTab === 'inventory-management' && (
+                  <InventoryManagementView
+                    products={products}
+                    batches={batches}
+                    storeProfile={storeProfile}
+                    storesList={storesList}
+                    weather={weather}
+                    currentUser={currentUser}
+                    currentRole={currentRole}
+                    isAdmin={isAdmin}
+                    selectedStoreId={effectiveSelectedStoreId}
+                    onAddBatch={handleAddBatch}
+                    onAddNewProduct={handleAddNewProduct}
+                    onUpdateProduct={handleUpdateProduct}
+                    onDeleteProduct={handleDeleteProduct}
+                    onRefreshData={loadLiveDatabaseData}
+                    setActiveTab={(tab) => handleNavigate(tab)}
+                    initialSubTab={routeSubTab || 'batches'}
+                  />
+                )}
 
-              {activeTab === 'dc-intake' && (
-                <DcIntakeView 
-                  products={products}
-                  batches={batches}
-                  onAddBatch={handleAddBatch}
-                  onAddNewProduct={handleAddNewProduct}
-                  recentIntakes={recentIntakes}
-                  isAdmin={isAdmin}
-                  currentRole={currentRole}
-                  currentUser={currentUser}
-                  storeProfile={storeProfile}
-                  onRefreshData={loadLiveDatabaseData}
-                  setActiveTab={setActiveTab}
-                />
-              )}
+                {activeTab === 'ai-forecast' && (
+                  <AiForecastView
+                    products={products}
+                    batches={batches}
+                    currentUser={currentUser}
+                    currentRole={currentRole}
+                    isAdmin={isAdmin}
+                    selectedStoreId={effectiveSelectedStoreId}
+                    onSelectStore={setSelectedStoreId}
+                    storesList={storesList}
+                    weather={weather}
+                    setWeather={setWeather}
+                    onSyncWeather={() => handleSyncRealtimeWeather(gpsCoords)}
+                    onUseDeviceLocation={handleUseDeviceLocation}
+                    isSyncingWeather={isSyncingWeather}
+                    gpsCoords={gpsCoords}
+                    isSingleStore={isSingleStore}
+                    setActiveTab={(tab) => handleNavigate(tab)}
+                  />
+                )}
 
-              {activeTab === 'product-catalog' && (
-                <ProductCatalogView 
-                  products={products}
-                  onAddNewProduct={handleAddNewProduct}
-                  onUpdateProduct={handleUpdateProduct}
-                  onDeleteProduct={handleDeleteProduct}
-                  onRefreshData={loadLiveDatabaseData}
-                  isAdmin={isAdmin}
-                  currentRole={currentRole}
-                />
-              )}
+                {activeTab === 'smart-ordering' && (
+                  <SmartOrderingView
+                    products={products}
+                    batches={batches}
+                    storeProfile={storeProfile}
+                    enterpriseConfig={enterpriseConfig}
+                    currentUser={currentUser}
+                    currentRole={currentRole}
+                    isAdmin={isAdmin}
+                    selectedStoreId={effectiveSelectedStoreId}
+                    onSelectStore={setSelectedStoreId}
+                    storesList={storesList}
+                    weather={weather}
+                    isSingleStore={isSingleStore}
+                    onRequestAdminLogin={() => setShowAdminModal(true)}
+                    onRefreshData={loadLiveDatabaseData}
+                    setActiveTab={(tab) => handleNavigate(tab)}
+                    initialSubTab={routeSubTab || 'proposals'}
+                  />
+                )}
 
-              {activeTab === 'spoilage-disposal' && (
-                <SpoilageDisposalView 
-                  disposals={disposals}
-                  batches={batches}
-                  products={products}
-                  currentUser={currentUser}
-                  currentRole={currentRole}
-                  isAdmin={isAdmin}
-                  storeProfile={storeProfile}
-                  selectedStoreId={selectedStoreId}
-                  onSelectStore={setSelectedStoreId}
-                  onCreateDisposal={handleCreateDisposal}
-                  onApproveDisposal={handleApproveDisposal}
-                  preselectedBatchId={preselectedDisposalBatchId}
-                  onRequestAdminLogin={() => setShowAdminModal(true)}
-                />
-              )}
+                {activeTab === 'stock-transfer' && (
+                  <StockTransferView
+                    currentUser={currentUser}
+                    currentRole={currentRole}
+                    weather={weather}
+                    isSingleStore={isSingleStore}
+                    storesList={storesList}
+                    onRefreshData={loadLiveDatabaseData}
+                  />
+                )}
 
-              {activeTab === 'reorder-predictor' && (
-                <ReorderPredictorView 
-                  products={products}
-                  batches={batches}
-                  storeProfile={storeProfile}
-                  selectedStoreId={selectedStoreId}
-                  onSelectStore={setSelectedStoreId}
-                  onSendPo={handleSendPo}
-                  onQuickDiscount={handleQuickDiscount}
-                  isAdmin={isAdmin}
-                  currentRole={currentRole}
-                  onRequestAdminLogin={() => setShowAdminModal(true)}
-                  setActiveTab={setActiveTab}
-                />
-              )}
+                {activeTab === 'spoilage-alerts' && (
+                  <SpoilageAlertsView
+                    batches={batches}
+                    products={products}
+                    disposals={disposals}
+                    storeProfile={storeProfile}
+                    currentUser={currentUser}
+                    currentRole={currentRole}
+                    isAdmin={isAdmin}
+                    selectedStoreId={effectiveSelectedStoreId}
+                    weather={weather}
+                    isSingleStore={isSingleStore}
+                    onQuickDiscount={handleQuickDiscount}
+                    onRotateShelf={handleRotateShelf}
+                    onCreateDisposal={handleCreateDisposal}
+                    onBulkDisposal={handleBulkDisposal}
+                    onApproveDisposal={handleApproveDisposal}
+                    onRefreshData={loadLiveDatabaseData}
+                    setActiveTab={(tab) => handleNavigate(tab)}
+                    initialSubTab={routeSubTab || 'alerts'}
+                  />
+                )}
 
-              {activeTab === 'stock-transfer' && (
-                <StockTransferView
-                  currentUser={currentUser}
-                  currentRole={currentRole}
-                  weather={weather}
-                  onRefreshData={loadLiveDatabaseData}
-                />
-              )}
+                {activeTab === 'reports-analytics' && (
+                  <ReportsAnalyticsView
+                    isAdmin={isAdmin}
+                    selectedStoreId={effectiveSelectedStoreId}
+                    onSelectStore={setSelectedStoreId}
+                    storesList={storesList}
+                  />
+                )}
 
-              {activeTab === 'audit-log' && (
-                <AuditLogView 
-                  auditLogs={auditLogs}
-                  isAdmin={isAdmin || currentRole === 'STORE_MANAGER'}
-                  onRequestAdminLogin={() => setShowAdminModal(true)}
-                />
-              )}
-
-              {activeTab === 'store-settings' && (
-                <StoreSettingsView 
-                  currentUser={currentUser}
-                  isAdmin={isAdmin}
-                  storeProfile={storeProfile}
-                  products={products}
-                  batches={batches}
-                  onProfileUpdated={(updated) => {
-                    setStoreProfile(updated);
-                    loadLiveDatabaseData();
-                  }}
-                  onNavigateToAuditLog={() => setActiveTab('audit-log')}
-                />
-              )}
-
-              {activeTab === 'user-management' && (
-                <UserManagementView 
-                  currentUser={currentUser}
-                  isAdmin={isAdmin}
-                  onNavigateToAuditLog={() => setActiveTab('audit-log')}
-                />
-              )}
-            </>
-          )}
+                {activeTab === 'settings-integration' && (
+                  <SettingsIntegrationView
+                    currentUser={currentUser}
+                    isAdmin={isAdmin}
+                    storeProfile={storeProfile}
+                    enterpriseConfig={enterpriseConfig}
+                    onEnterpriseUpdated={(cfg) => setEnterpriseConfig(cfg)}
+                    storesList={storesList}
+                    products={products}
+                    auditLogs={auditLogs}
+                    weather={weather}
+                    setWeather={setWeather}
+                    onSyncWeather={() => handleSyncRealtimeWeather(gpsCoords)}
+                    isSyncingWeather={isSyncingWeather}
+                    onProfileUpdated={(updated) => {
+                      setStoreProfile(updated);
+                      loadLiveDatabaseData();
+                    }}
+                    onRefreshData={loadLiveDatabaseData}
+                    initialSubTab={routeSubTab || 'pos-integration'}
+                  />
+                )}
+              </>
+            )}
           </ErrorBoundary>
         </main>
       </div>
 
-      {/* Modal Xác thực Quyền Quản trị viên (Admin Login Override) */}
       {showAdminModal && (
         <AdminLoginModal
           isOpen={showAdminModal}
@@ -728,7 +642,6 @@ export default function App() {
           }}
         />
       )}
-
     </div>
   );
 }

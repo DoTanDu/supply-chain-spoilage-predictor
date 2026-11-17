@@ -28,7 +28,7 @@ export default function PrintBatchLabelModal({
 
   if (!isOpen || !batch) return null;
 
-  const storeName = storeProfile?.storeName || 'Cửa hàng Bán lẻ LHU Mart';
+  const storeName = storeProfile?.storeName || 'Cửa hàng Bán lẻ SmartSupply';
   const batchCode = batch.batchCode || `LOT-DC-${batch.id || '001'}`;
   const productName = batch.productName || batch.name || 'Sản phẩm tiêu chuẩn';
   const sku = batch.sku || batch.productSku || 'SKU-FMCG';
@@ -100,7 +100,7 @@ export default function PrintBatchLabelModal({
             <div>
               <div style={{ fontSize: '0.95rem', fontWeight: 800 }}>IN TEM NHÃN LÔ HÀNG DC</div>
               <div style={{ fontSize: '0.725rem', color: 'var(--text-muted, #64748b)' }}>
-                Tem barcode dán thùng pallet tiếp nhận từ Kho tổng DC Biên Hòa
+                Tem barcode dán thùng hàng nhập kho
               </div>
             </div>
           </div>
@@ -198,7 +198,7 @@ export default function PrintBatchLabelModal({
             }}>
               <div>
                 <div style={{ fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.05em', color: '#475569' }}>
-                  KHO TỔNG DC BIÊN HÒA ➔ {storeName.toUpperCase()}
+                  KHO NHẬP HÀNG ➔ {storeName.toUpperCase()}
                 </div>
                 <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0f172a', marginTop: '2px' }}>
                   {batchCode}
@@ -309,7 +309,7 @@ export default function PrintBatchLabelModal({
               color: '#64748b'
             }}>
               <span>LƯU TRỮ MÁT 2°C - 8°C • XUẤT KHO FEFO</span>
-              <span>LHU MART SCSP</span>
+              <span>SMARTSUPPLY AI</span>
             </div>
           </div>
 

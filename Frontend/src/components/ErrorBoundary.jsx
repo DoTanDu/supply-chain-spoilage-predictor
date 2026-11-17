@@ -76,7 +76,7 @@ export default class ErrorBoundary extends React.Component {
             </h3>
             
             <p style={{ color: 'var(--text-muted, #475569)', fontSize: '0.9rem', marginBottom: '20px', lineHeight: 1.5 }}>
-              Hệ thống đã tự động chặn lỗi và bảo vệ phiên làm việc của bạn. Bạn có thể tải lại trang, quay về Tổng quan điều hành hoặc làm mới phiên đăng nhập.
+              Hệ thống đã tự động chặn lỗi và bảo vệ phiên làm việc của bạn. Bạn có thể tải lại trang, quay về Dashboard hoặc làm mới phiên đăng nhập.
             </p>
 
             {this.state.error && (
@@ -105,7 +105,7 @@ export default class ErrorBoundary extends React.Component {
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '8px',
-                  background: 'var(--safe-green, #059669)',
+                  background: 'var(--primary, #4f46e5)',
                   color: '#ffffff',
                   border: 'none',
                   padding: '10px 18px',

@@ -338,7 +338,7 @@ export default function ResetPasswordModal({
             border: '1px solid var(--border-subtle, #e2e8f0)',
             lineHeight: 1.4
           }}>
-            🛡️ <strong>Nhật ký kiểm toán:</strong> Hành động đặt lại mật khẩu sẽ được hệ thống mã hóa bằng bcrypt (10 rounds) và tự động ghi nhận vào <code>system_audit_logs</code>.
+            <strong>Nhật ký kiểm toán:</strong> Hành động đặt lại mật khẩu sẽ được hệ thống mã hóa bằng bcrypt (10 rounds) và tự động ghi nhận vào <code>system_audit_logs</code>.
           </div>
 
           {/* Thông báo lỗi */}

@@ -18,18 +18,6 @@ function stripVietnamese(str) {
   return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'd').toLowerCase().trim();
 }
 
-function getCategoryIcon(catName) {
-  if (!catName) return '📦';
-  if (catName.includes('Sữa')) return '🥛';
-  if (catName.includes('Bánh')) return '🍞';
-  if (catName.includes('Nước')) return '🥤';
-  if (catName.includes('Thịt') || catName.includes('Cá') || catName.includes('Trứng')) return '🥩';
-  if (catName.includes('Rau') || catName.includes('Trái')) return '🥗';
-  if (catName.includes('chế biến')) return '🌭';
-  if (catName.includes('khô')) return '🍜';
-  return '📦';
-}
-
 export default function DisposalFormModal({
   isOpen,
   onClose,
@@ -126,7 +114,7 @@ export default function DisposalFormModal({
       const isAuthorized = isAdmin || currentRole === 'ADMIN' || currentRole === 'STORE_MANAGER';
       const unitCost = currentBatch.importPrice !== undefined
         ? Number(currentBatch.importPrice)
-        : Number(currentBatch.costPrice || 25000);
+        : Number(currentBatch.costPrice || 0);
 
       const normReason = String(reason || 'EXP_SPOILAGE').toUpperCase();
       const reasonDefaultNotes = {
@@ -176,7 +164,7 @@ export default function DisposalFormModal({
   };
 
   const isAuthorized = isAdmin || currentRole === 'ADMIN' || currentRole === 'STORE_MANAGER';
-  const unitPrice = currentBatch?.importPrice ?? currentBatch?.costPrice ?? 25000;
+  const unitPrice = Number(currentBatch?.importPrice ?? currentBatch?.costPrice ?? 0);
   const totalCostLoss = (Number(disposalQty) || 0) * unitPrice;
 
   return (
@@ -245,7 +233,7 @@ export default function DisposalFormModal({
               color: isAuthorized ? '#047857' : '#b45309',
               border: isAuthorized ? '1px solid #a7f3d0' : '1px solid #fde68a'
             }}>
-              {isAuthorized ? '👑 Duyệt & Trừ Kho Ngay' : '👤 Đề Xuất Chờ Duyệt'}
+              {isAuthorized ? 'Duyệt & Trừ Kho Ngay' : 'Đề Xuất Chờ Duyệt'}
             </span>
             <button
               onClick={onClose}
@@ -359,7 +347,6 @@ export default function DisposalFormModal({
               }}>
                 <div style={{ fontSize: '0.825rem', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>{getCategoryIcon(currentBatch.category)}</span>
                     <span>{currentBatch.productName}</span>
                   </div>
                   <span className={`badge ${currentBatch.status === 'EXPIRED' ? 'badge-danger' : 'badge-warning'}`} style={{ fontSize: '0.625rem', padding: '1px 6px' }}>
@@ -428,10 +415,10 @@ export default function DisposalFormModal({
             />
           </div>
 
-          {/* Lý do tiêu hủy chuẩn quốc tế ReFED / GS1 (Phase 5.1) */}
+          {/* Lý do tiêu hủy */}
           <div>
             <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-main, #0f172a)', marginBottom: '4px', display: 'block' }}>
-              Mã lý do thất thoát / tiêu hủy (Chuẩn ReFED / GS1):
+              Lý do xử lý:
             </label>
             <select
               className="form-select"
@@ -448,11 +435,11 @@ export default function DisposalFormModal({
                 boxSizing: 'border-box'
               }}
             >
-              <option value="EXP_SPOILAGE">EXP_SPOILAGE — Quá hạn sử dụng tự nhiên (Date / Shelf-life Expiration)</option>
-              <option value="PKG_DAMAGE">PKG_DAMAGE — Lỗi bao bì / Rách móp vận chuyển & trưng bày (Packaging Damage)</option>
-              <option value="TEMP_ABUSE">TEMP_ABUSE — Đứt gãy chuỗi lạnh / Sự cố tủ mát bảo quản (Cold-Chain Failure)</option>
-              <option value="INTERNAL_SHRINK">INTERNAL_SHRINK — Hao hụt kiểm kê nội bộ / Rơi vỡ thao tác (Operational Shrink)</option>
-              <option value="DONATION">DONATION — Chuyển quyên góp thực phẩm / Thu hồi nhân đạo (Food Bank)</option>
+              <option value="EXP_SPOILAGE">Quá hạn sử dụng tự nhiên</option>
+              <option value="PKG_DAMAGE">Lỗi bao bì / Rách móp</option>
+              <option value="TEMP_ABUSE">Sự cố tủ mát / Chuỗi lạnh</option>
+              <option value="INTERNAL_SHRINK">Hao hụt kiểm kê nội bộ</option>
+              <option value="DONATION">Chuyển quyên góp thực phẩm</option>
             </select>
           </div>
 
@@ -496,7 +483,7 @@ export default function DisposalFormModal({
           }}>
             <div>
               <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted, #475569)', display: 'block' }}>
-                Ước tính thiệt hại tài chính (CostLoss):
+                Ước tính thiệt hại tài chính:
               </span>
               <div style={{ fontSize: '0.72rem', color: 'var(--text-muted, #475569)' }}>
                 {Number(disposalQty) || 0} món × {unitPrice.toLocaleString('vi-VN')} đ

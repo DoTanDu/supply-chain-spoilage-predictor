@@ -401,3 +401,65 @@ export function exportReceiptToExcel(receipt) {
   const filename = `Hoa_Don_${receipt.orderCode}.csv`;
   downloadFile(csvContent, filename);
 }
+
+/**
+ * 6. Xuất Báo cáo Phân tích Hiệu quả Chuỗi Cung ứng SmartSupply AI (Mục 08)
+ */
+export function exportReportsAnalyticsToExcel(reportData, scopeLabel = 'Toàn chuỗi') {
+  if (!reportData) {
+    alert('Không có dữ liệu báo cáo để xuất file Excel!');
+    return;
+  }
+  const BOM = '\uFEFF';
+  const fa = reportData.forecastAccuracy || {};
+  const sp = reportData.spoilageMetrics || {};
+  const sh = reportData.stockHealthMetrics || {};
+  const ord = reportData.orderingEfficiency || {};
+  const trf = reportData.transferEconomics || {};
+
+  const lines = [
+    `# BÁO CÁO HIỆU QUẢ VẬN HÀNH & CHỐNG LÃNG PHÍ - SMARTSUPPLY AI`,
+    `# Phạm vi: ${scopeLabel} | Kỳ phân tích: ${reportData.periodDays || 30} ngày gần nhất`,
+    `# Thời điểm trích xuất: ${new Date().toLocaleString('vi-VN')}`,
+    '',
+    'NHÓM CHỈ SỐ,CHỈ TIÊU,GIÁ TRỊ',
+    `1. Sai số dự báo AI,Mô hình,${escapeCsv(fa.modelName || 'LightGBM')}`,
+    `1. Sai số dự báo AI,Trạng thái dữ liệu,${escapeCsv(fa.isDataSufficient ? 'Đủ dữ liệu (>= 7 ngày)' : 'Chưa đủ dữ liệu')}`,
+    `1. Sai số dự báo AI,MAE,${fa.mae ?? 'Chưa đủ dữ liệu'}`,
+    `1. Sai số dự báo AI,MAPE (%),${fa.mapePct ?? 'Chưa đủ dữ liệu'}`,
+    `2. Lãng phí & Tiêu hủy,Doanh thu bán lẻ (VND),${sp.totalRevenue || 0}`,
+    `2. Lãng phí & Tiêu hủy,Tổng giá trị hàng hủy (VND),${sp.totalCostLoss || 0}`,
+    `2. Lãng phí & Tiêu hủy,Tổng số lượng hủy (ĐV),${sp.totalDisposedUnits || 0}`,
+    `2. Lãng phí & Tiêu hủy,Tỷ lệ lãng phí (%),${sp.spoilageRatePercent || 0}`,
+    `3. Tồn kho & Cứu hàng,Tỷ lệ SKU dưới mức an toàn (%),${sh.stockoutRiskRatePercent || 0}`,
+    `3. Tồn kho & Cứu hàng,Giá trị hàng đã cứu (VND),${sh.totalRescuedValue || 0}`,
+    `3. Tồn kho & Cứu hàng,Tỷ lệ cứu hàng (%),${sh.rescueRatePercent || 0}`,
+    `4. Hiệu quả đặt hàng PO,Tổng số đơn PO,${ord.totalOrders || 0}`,
+    `4. Hiệu quả đặt hàng PO,Tỷ lệ hoàn tất PO (%),${ord.poCompletionRatePercent || 0}`,
+    `4. Hiệu quả đặt hàng PO,Lead Time xử lý TB (ngày),${ord.avgProcessingDays || 1}`,
+    `5. Lợi ích điều phối,Số phiếu hoàn tất,${trf.receivedCount || 0}`,
+    `5. Lợi ích điều phối,Giá trị hàng cứu điều chuyển (VND),${trf.savedValue || 0}`,
+    `5. Lợi ích điều phối,Chi phí vận chuyển nội bộ (VND),${trf.totalShippingCost || 0}`,
+    `5. Lợi ích điều phối,Lợi ích ròng (VND),${trf.netBenefit || 0}`,
+    '',
+    'SO SÁNH THEO CHI NHÁNH:',
+    'Mã Chi Nhánh,Tên Chi Nhánh,Trạng Thái,Doanh Thu (VND),Thiệt Hại Hủy (VND),SL Hủy,Tỷ Lệ Hao Hụt (%),Vốn Tồn Kho (VND),Giá Trị Cứu Markdown (VND),Lợi Ích Ròng Điều Chuyển (VND)'
+  ];
+
+  for (const st of (reportData.storeComparison || [])) {
+    lines.push([
+      escapeCsv(st.storeCode),
+      escapeCsv(st.storeName),
+      escapeCsv(st.status),
+      st.salesRevenue || 0,
+      st.spoilageLoss || 0,
+      st.disposedUnits || 0,
+      st.spoilageRatePercent || 0,
+      st.inventoryCost || 0,
+      st.markdownRescued || 0,
+      st.transferNetSaved || 0
+    ].join(','));
+  }
+
+  downloadFile(BOM + lines.join('\r\n'), `Bao_Cao_SmartSupply_AI_${getTimestampString()}.csv`);
+}

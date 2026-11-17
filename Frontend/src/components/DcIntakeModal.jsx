@@ -2,8 +2,6 @@ import React, { useState } from 'react';
 import {
   Truck,
   X,
-  PackagePlus,
-  FileText,
   Search,
   Camera,
   ShieldCheck,
@@ -11,8 +9,9 @@ import {
   ArrowDownToLine,
   AlertCircle,
   PlusCircle,
-  Sparkles
+  Package
 } from 'lucide-react';
+import { parseGs1Barcode } from '../utils/gs1Parser';
 
 // Helper: Chuẩn hóa tiếng Việt tìm kiếm
 function stripVietnamese(str) {
@@ -20,16 +19,14 @@ function stripVietnamese(str) {
   return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'd').toLowerCase().trim();
 }
 
-function getCategoryIcon(catName) {
-  if (!catName) return '📦';
-  if (catName.includes('Sữa')) return '🥛';
-  if (catName.includes('Bánh')) return '🍞';
-  if (catName.includes('Nước')) return '🥤';
-  if (catName.includes('Thịt') || catName.includes('Cá') || catName.includes('Trứng')) return '🥩';
-  if (catName.includes('Rau') || catName.includes('Trái')) return '🥗';
-  if (catName.includes('chế biến')) return '🌭';
-  if (catName.includes('khô')) return '🍜';
-  return '📦';
+function filterIntakeProducts(list, query) {
+  if (!query || !query.trim()) return list;
+  const norm = stripVietnamese(query);
+  return list.filter(p => {
+    const nName = stripVietnamese(p.name);
+    const nSku = (p.sku || '').toLowerCase();
+    return nName.includes(norm) || nSku.includes(norm);
+  });
 }
 
 export default function DcIntakeModal({
@@ -39,8 +36,6 @@ export default function DcIntakeModal({
   selectedProductId,
   onProductChange,
   purchaseOrders = [],
-  intakeMode,
-  setIntakeMode,
   selectedPoId,
   onSelectPo,
   batchCode,
@@ -57,6 +52,7 @@ export default function DcIntakeModal({
   setCostPrice,
   inboundRsl,
   isRslQualified,
+  dateError = '',
   minRslThreshold = 70,
   daysPassed,
   remainingDays,
@@ -72,22 +68,44 @@ export default function DcIntakeModal({
   onOpenAddProduct
 }) {
   const [modalSearchProduct, setModalSearchProduct] = useState('');
+  const [gs1Input, setGs1Input] = useState('');
+  const [gs1Feedback, setGs1Feedback] = useState('');
 
   if (!isOpen) return null;
 
-  const selectedProd = products.find(p => p.id === Number(selectedProductId)) || products[0];
-
-  const filteredProducts = products.filter(p => {
-    if (!modalSearchProduct.trim()) return true;
-    const norm = stripVietnamese(modalSearchProduct);
-    const nName = stripVietnamese(p.name);
-    const nSku = (p.sku || '').toLowerCase();
-    return nName.includes(norm) || nSku.includes(norm);
-  });
-
   const availablePos = purchaseOrders.filter(
-    po => po.status !== 'DELIVERED' && po.status !== 'COMPLETED' && po.status !== 'CANCELLED'
+    po => ['APPROVED', 'SUBMITTED', 'SHIPPING'].includes(String(po.status || '').toUpperCase())
   );
+
+  const selectedPoObj = availablePos.find(po => String(po.id) === String(selectedPoId)) || null;
+  const poItemIds = new Set((selectedPoObj?.items || []).map(it => Number(it.productId)));
+  const scopedProducts = (selectedPoObj && poItemIds.size > 0)
+    ? products.filter(p => poItemIds.has(Number(p.id)))
+    : products;
+  const isLockedSinglePoProduct = Boolean(selectedPoObj && poItemIds.size === 1 && scopedProducts.length === 1);
+
+  const selectedProd = scopedProducts.find(p => Number(p.id) === Number(selectedProductId))
+    || products.find(p => Number(p.id) === Number(selectedProductId))
+    || scopedProducts[0]
+    || products[0];
+  const filteredProducts = isLockedSinglePoProduct
+    ? scopedProducts
+    : filterIntakeProducts(scopedProducts, modalSearchProduct);
+
+  const handleSearchChange = (val) => {
+    setModalSearchProduct(val);
+    const nextFiltered = filterIntakeProducts(scopedProducts, val);
+    if (nextFiltered.length > 0 && !nextFiltered.some(p => Number(p.id) === Number(selectedProductId))) {
+      if (onProductChange) onProductChange(nextFiltered[0].id);
+    }
+  };
+
+  const handleCloseModal = () => {
+    setModalSearchProduct('');
+    setGs1Input('');
+    setGs1Feedback('');
+    if (onClose) onClose();
+  };
 
   return (
     <div
@@ -105,7 +123,7 @@ export default function DcIntakeModal({
         animation: 'fadeIn 0.15s ease-out'
       }}
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) handleCloseModal();
       }}
     >
       <div
@@ -153,10 +171,10 @@ export default function DcIntakeModal({
             </div>
             <div>
               <h2 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0, color: 'var(--text-main)', letterSpacing: '-0.02em' }}>
-                Tiếp Nhận Hàng Kho Tổng DC Biên Hòa
+                Nhập Lô Hàng Mới
               </h2>
               <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                Kiểm soát độ tươi mới RSL ≥ {minRslThreshold}%
+                Tuổi thọ còn lại ≥ {minRslThreshold}%
               </span>
             </div>
           </div>
@@ -188,7 +206,7 @@ export default function DcIntakeModal({
 
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleCloseModal}
               style={{
                 width: '32px',
                 height: '32px',
@@ -226,7 +244,7 @@ export default function DcIntakeModal({
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <AlertCircle size={16} flexShrink={0} />
+                <AlertCircle size={16} style={{ flexShrink: 0 }} />
                 <span style={{ lineHeight: 1.4 }}>{errorMsg}</span>
               </div>
               <button
@@ -239,122 +257,90 @@ export default function DcIntakeModal({
             </div>
           )}
 
-          {/* Thanh Chọn Chế Độ Tiếp Nhận: Theo Đơn PO vs Tự Do */}
-          <div
-            style={{
-              background: 'var(--bg-subtle)',
-              borderRadius: '9px',
-              padding: '3px',
-              display: 'flex',
-              gap: '6px',
-              border: '1px solid var(--border-color)'
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => setIntakeMode('po')}
+          {/* Quét / Dán nhanh mã GS1-128 (SKU + Số lô + HSD) */}
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              type="text"
+              value={gs1Input}
+              onChange={(e) => {
+                const v = e.target.value;
+                setGs1Input(v);
+                setGs1Feedback('');
+                if (!v.trim()) return;
+                const parsed = parseGs1Barcode(v);
+                const matched = scopedProducts.find(p => String(p.sku || '').trim() === parsed.sku);
+                if (matched && onProductChange) onProductChange(matched.id);
+                if (!matched && parsed.sku && selectedPoObj) {
+                  setGs1Feedback(`SKU ${parsed.sku} không thuộc đơn PO [${selectedPoObj.orderCode}].`);
+                  return;
+                }
+                if (parsed.batchCode && setBatchCode) setBatchCode(parsed.batchCode);
+                if (parsed.expiryDate && setExpiryDate) setExpiryDate(parsed.expiryDate);
+                if (parsed.isGs1) {
+                  setGs1Feedback(`Đã tách GS1: SKU ${parsed.sku}${parsed.batchCode ? ` • Lô ${parsed.batchCode}` : ''}${parsed.expiryDate ? ` • HSD ${parsed.expiryDate}` : ''}`);
+                }
+              }}
+              placeholder="Quét/dán mã GS1-128 VD: (01)08934567890101(17)261231(10)LOT01 (bỏ trống nếu nhập tay)"
               style={{
                 flex: 1,
-                padding: '7px 10px',
+                height: '32px',
+                padding: '0 10px',
+                fontSize: '0.76rem',
                 borderRadius: '7px',
-                border: 'none',
-                background: intakeMode === 'po' ? 'var(--primary)' : 'transparent',
-                color: intakeMode === 'po' ? '#fff' : 'var(--text-muted)',
-                fontWeight: 700,
-                fontSize: '0.785rem',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-                transition: 'all 0.15s ease'
+                border: '1px solid var(--border-color)',
+                background: 'var(--bg-subtle)',
+                color: 'var(--text-main)'
               }}
-            >
-              <FileText size={14} />
-              <span>Theo Đơn Đặt Hàng PO ({availablePos.length})</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setIntakeMode('manual');
-                onSelectPo('');
-              }}
-              style={{
-                flex: 1,
-                padding: '7px 10px',
-                borderRadius: '7px',
-                border: 'none',
-                background: intakeMode === 'manual' ? 'var(--primary)' : 'transparent',
-                color: intakeMode === 'manual' ? '#fff' : 'var(--text-muted)',
-                fontWeight: 700,
-                fontSize: '0.785rem',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              <PackagePlus size={14} />
-              <span>Tiếp Nhận Hàng Tự Do</span>
-            </button>
+            />
           </div>
+          {gs1Feedback && (
+            <div style={{ fontSize: '0.72rem', color: 'var(--safe-green-light)', fontWeight: 600 }}>
+              {gs1Feedback}
+            </div>
+          )}
 
-          {/* Nếu chọn PO: Dropdown danh sách đơn PO */}
-          {intakeMode === 'po' && (
-            <div
-              style={{
-                background: 'rgba(59, 130, 246, 0.05)',
-                border: '1px dashed #3b82f6',
-                borderRadius: '9px',
-                padding: '10px 12px'
-              }}
-            >
+          {/* Tùy chọn gắn đơn PO đã duyệt nếu có */}
+          {availablePos.length > 0 && (
+            <div>
               <label
+                htmlFor="intake-po-select"
                 style={{
                   fontSize: '0.725rem',
-                  fontWeight: 700,
-                  color: '#2563eb',
-                  marginBottom: '5px',
-                  display: 'flex',
-                  justifyContent: 'space-between'
+                  fontWeight: 600,
+                  color: 'var(--text-muted)',
+                  marginBottom: '4px',
+                  display: 'block'
                 }}
               >
-                <span>Chọn Đơn Đặt Hàng PO từ DC Biên Hòa:</span>
-                {selectedPoId && (
-                  <button
-                    type="button"
-                    onClick={() => onSelectPo('')}
-                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.7rem' }}
-                  >
-                    Bỏ chọn
-                  </button>
-                )}
+                Đơn PO đã duyệt đang chờ giao (tùy chọn — {availablePos.length} đơn):
               </label>
               <select
+                id="intake-po-select"
                 value={selectedPoId}
-                onChange={(e) => onSelectPo(e.target.value)}
+                onChange={(e) => {
+                  setModalSearchProduct('');
+                  onSelectPo(e.target.value);
+                }}
                 style={{
                   width: '100%',
-                  height: '34px',
-                  fontSize: '0.8rem',
+                  height: '32px',
+                  fontSize: '0.785rem',
                   borderRadius: '7px',
                   fontWeight: 600,
                   background: 'var(--bg-surface)',
                   color: 'var(--text-main)',
-                  border: '1px solid #3b82f6',
+                  border: '1px solid var(--border-color)',
                   outline: 'none',
                   padding: '0 10px'
                 }}
               >
-                <option value="">-- Chọn đơn PO cần nhập kho xe tải DC --</option>
+                <option value="">-- Nhập kho thông thường (không gắn đơn PO) --</option>
                 {availablePos.map(po => {
                   const firstItem = po.items && po.items[0];
                   const itemSummary = firstItem ? `${firstItem.productName} (x${firstItem.approvedQuantity || firstItem.suggestedQuantity})` : '';
                   return (
                     <option key={po.id} value={po.id}>
-                      [{po.orderCode}] • {po.status} {itemSummary ? `• ${itemSummary}` : ''}
+                      [{po.orderCode}] {itemSummary ? `• ${itemSummary}` : ''}
                     </option>
                   );
                 })}
@@ -364,83 +350,94 @@ export default function DcIntakeModal({
 
           {/* Chọn / Tìm kiếm Sản phẩm */}
           <div>
-            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '5px', display: 'flex', justifyContent: 'space-between' }}>
+            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '5px', display: 'flex', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
               <span>Mặt hàng tiếp nhận:</span>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                {filteredProducts.length}/{products.length} SP
+              <span style={{ fontSize: '0.7rem', color: selectedPoObj ? 'var(--primary)' : 'var(--text-muted)' }}>
+                {selectedPoObj
+                  ? `Khóa theo PO [${selectedPoObj.orderCode}] (${scopedProducts.length} SP)`
+                  : `${filteredProducts.length}/${products.length} SP`}
               </span>
             </label>
 
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-              <div style={{ position: 'relative', flex: 1 }}>
-                <Search size={14} style={{ position: 'absolute', left: '10px', top: '9px', color: 'var(--text-muted)' }} />
-                <input
-                  type="text"
-                  style={{
-                    width: '100%',
-                    paddingLeft: '32px',
-                    height: '32px',
-                    fontSize: '0.785rem',
-                    borderRadius: '7px',
-                    border: '1px solid var(--border-color)',
-                    background: 'var(--bg-surface)',
-                    color: 'var(--text-main)',
-                    outline: 'none',
-                    boxSizing: 'border-box'
-                  }}
-                  placeholder="Gõ tìm nhanh theo tên sản phẩm hoặc mã SKU..."
-                  value={modalSearchProduct}
-                  onChange={(e) => setModalSearchProduct(e.target.value)}
-                />
-              </div>
+            {!isLockedSinglePoProduct && (
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <Search size={14} style={{ position: 'absolute', left: '10px', top: '9px', color: 'var(--text-muted)' }} />
+                  <input
+                    type="text"
+                    style={{
+                      width: '100%',
+                      paddingLeft: '32px',
+                      height: '32px',
+                      fontSize: '0.785rem',
+                      borderRadius: '7px',
+                      border: '1px solid var(--border-color)',
+                      background: 'var(--bg-surface)',
+                      color: 'var(--text-main)',
+                      outline: 'none',
+                      boxSizing: 'border-box'
+                    }}
+                    placeholder="Gõ tìm nhanh theo tên sản phẩm hoặc mã SKU..."
+                    value={modalSearchProduct}
+                    onChange={(e) => handleSearchChange(e.target.value)}
+                  />
+                </div>
 
-              <button
-                type="button"
-                onClick={onOpenBarcodeScanner}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  padding: '0 12px',
-                  height: '32px',
-                  borderRadius: '7px',
-                  border: '1px solid #06b6d4',
-                  background: 'rgba(6, 182, 212, 0.1)',
-                  color: '#0891b2',
-                  fontSize: '0.75rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap'
-                }}
-                title="Quét Barcode / QR thùng hàng DC"
-              >
-                <Camera size={14} />
-                <span>Quét Barcode</span>
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={onOpenBarcodeScanner}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    padding: '0 12px',
+                    height: '32px',
+                    borderRadius: '7px',
+                    border: '1px solid #06b6d4',
+                    background: 'rgba(6, 182, 212, 0.1)',
+                    color: '#0891b2',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap'
+                  }}
+                  title="Quét Barcode / QR thùng hàng DC"
+                >
+                  <Camera size={14} />
+                  <span>Quét Barcode</span>
+                </button>
+              </div>
+            )}
 
             <select
-              value={selectedProductId}
+              value={filteredProducts.some(p => Number(p.id) === Number(selectedProductId)) ? selectedProductId : ''}
+              disabled={isLockedSinglePoProduct}
               onChange={(e) => onProductChange(e.target.value)}
+              title={isLockedSinglePoProduct ? 'Đã khóa đúng sản phẩm theo đơn PO đang chọn (bỏ chọn PO để đổi mặt hàng khác)' : ''}
               style={{
                 width: '100%',
                 height: '34px',
                 fontSize: '0.825rem',
                 borderRadius: '7px',
                 fontWeight: 600,
-                background: 'var(--bg-surface)',
+                background: isLockedSinglePoProduct ? 'var(--bg-subtle)' : 'var(--bg-surface)',
                 color: 'var(--text-main)',
                 border: '1px solid var(--border-color)',
                 outline: 'none',
                 padding: '0 10px',
-                boxSizing: 'border-box'
+                boxSizing: 'border-box',
+                cursor: isLockedSinglePoProduct ? 'not-allowed' : 'pointer'
               }}
             >
-              {filteredProducts.map(p => (
-                <option key={p.id} value={p.id}>
-                  {getCategoryIcon(p.category)} {p.name} [{p.category}]
-                </option>
-              ))}
+              {filteredProducts.length === 0 ? (
+                <option value="" disabled>Không tìm thấy sản phẩm khớp từ khóa</option>
+              ) : (
+                filteredProducts.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} [{p.category}]
+                  </option>
+                ))
+              )}
             </select>
 
             {/* Product Live Info Preview */}
@@ -460,13 +457,13 @@ export default function DcIntakeModal({
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '1.2rem' }}>{getCategoryIcon(selectedProd.category)}</span>
+                  <Package size={18} color="var(--primary, #4f46e5)" />
                   <div>
                     <div style={{ fontSize: '0.825rem', fontWeight: 700, color: 'var(--text-main)' }}>
                       {selectedProd.name}
                     </div>
                     <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                      SKU: <strong style={{ fontFamily: 'monospace' }}>{selectedProd.sku}</strong> • Ngành: {selectedProd.category}
+                      SKU: <strong style={{ fontFamily: 'monospace' }}>{selectedProd.sku}</strong> • Ngành: {selectedProd.categoryName || selectedProd.category || 'FMCG'}
                     </div>
                   </div>
                 </div>
@@ -607,11 +604,11 @@ export default function DcIntakeModal({
               </div>
             </div>
 
-            {/* THƯỚC ĐO ĐỘ TƯƠI MỚI THANH LỊCH (FRESHNESS GAUGE - ĐANG KHÓA: RSL >= 70%) */}
+            {/* THƯỚC ĐO ĐỘ TƯƠI MỚI THANH LỊCH (FRESHNESS GAUGE - KHÓA THEO MIN RSL CHI NHÁNH) */}
             <div
               style={{
-                background: isRslQualified ? 'var(--primary-bg)' : 'var(--danger-red-bg)',
-                border: `1px solid ${isRslQualified ? 'var(--primary-border)' : 'var(--danger-red-border)'}`,
+                background: (!dateError && isRslQualified) ? 'var(--primary-bg)' : 'var(--danger-red-bg)',
+                border: `1px solid ${(!dateError && isRslQualified) ? 'var(--primary-border)' : 'var(--danger-red-border)'}`,
                 borderRadius: '10px',
                 padding: '10px 14px',
                 marginTop: '4px'
@@ -619,21 +616,25 @@ export default function DcIntakeModal({
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {isRslQualified ? (
+                  {!dateError && isRslQualified ? (
                     <ShieldCheck size={16} color="var(--primary)" />
                   ) : (
                     <ShieldAlert size={16} color="var(--danger-red)" />
                   )}
-                  <span style={{ fontSize: '0.76rem', fontWeight: 800, color: isRslQualified ? 'var(--primary)' : 'var(--danger-red)' }}>
-                    {isRslQualified ? 'ĐẠT CHUẨN NHẬN HÀNG DC (RSL ≥ 70%)' : 'VI PHẠM TIÊU CHUẨN DATE (RSL < 70%)'}
+                  <span style={{ fontSize: '0.76rem', fontWeight: 800, color: (!dateError && isRslQualified) ? 'var(--primary)' : 'var(--danger-red)' }}>
+                    {dateError
+                      ? dateError
+                      : isRslQualified
+                        ? `ĐẠT CHUẨN NHẬN HÀNG DC (RSL ≥ ${minRslThreshold}%)`
+                        : `VI PHẠM TIÊU CHUẨN DATE (RSL < ${minRslThreshold}%)`}
                   </span>
                 </div>
-                <span className="num-tabular" style={{ fontSize: '0.95rem', fontWeight: 900, color: isRslQualified ? 'var(--primary)' : 'var(--danger-red)' }}>
-                  {inboundRsl}%
+                <span className="num-tabular" style={{ fontSize: '0.95rem', fontWeight: 900, color: (!dateError && isRslQualified) ? 'var(--primary)' : 'var(--danger-red)' }}>
+                  {dateError ? 'Lỗi' : `${inboundRsl}%`}
                 </span>
               </div>
 
-              {/* Thanh Đo Vạch Chia 70% */}
+              {/* Thanh Đo Vạch Chia Theo Min RSL */}
               <div
                 style={{
                   position: 'relative',
@@ -647,15 +648,15 @@ export default function DcIntakeModal({
                 <div
                   style={{
                     height: '100%',
-                    width: `${Math.min(100, Math.max(0, inboundRsl))}%`,
-                    background: isRslQualified ? 'var(--primary)' : 'var(--danger-red)',
+                    width: `${dateError ? 0 : Math.min(100, Math.max(0, inboundRsl))}%`,
+                    background: (!dateError && isRslQualified) ? 'var(--primary)' : 'var(--danger-red)',
                     transition: 'width 0.3s ease'
                   }}
                 />
                 <div
                   style={{
                     position: 'absolute',
-                    left: '70%',
+                    left: `${minRslThreshold}%`,
                     top: 0,
                     bottom: 0,
                     width: '2px',
@@ -663,17 +664,22 @@ export default function DcIntakeModal({
                     boxShadow: '0 0 3px rgba(0,0,0,0.5)',
                     zIndex: 2
                   }}
-                  title="Ngưỡng tiêu chuẩn tối thiểu 70%"
+                  title={`Ngưỡng tiêu chuẩn tối thiểu ${minRslThreshold}%`}
                 />
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '6px' }}>
                 <span>Đã trôi qua: <strong style={{ color: 'var(--text-main)' }}>{Math.round(daysPassed)} ngày</strong></span>
-                <span style={{ fontWeight: 700, color: isRslQualified ? 'var(--primary)' : 'var(--danger-red)' }}>
-                  Mốc chuẩn: 70%
+                <span style={{ fontWeight: 700, color: (!dateError && isRslQualified) ? 'var(--primary)' : 'var(--danger-red)' }}>
+                  Mốc chuẩn: {minRslThreshold}%
                 </span>
                 <span>Còn lại: <strong style={{ color: 'var(--text-main)' }}>{Math.round(remainingDays)} ngày</strong></span>
               </div>
+              {!dateError && !isRslQualified && (
+                <div style={{ fontSize: '0.7rem', color: 'var(--danger-red)', marginTop: '6px', lineHeight: 1.35 }}>
+                  Không thể nhập kho khi RSL &lt; {minRslThreshold}%. Sửa lại đúng ngày nếu gõ nhầm, hoặc lập biên bản trả hàng DC.
+                </div>
+              )}
             </div>
 
             {/* Đơn Giá & Tổng Tiền */}
@@ -744,12 +750,14 @@ export default function DcIntakeModal({
             background: 'var(--bg-subtle)',
             display: 'flex',
             justifyContent: 'flex-end',
-            gap: '10px'
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '8px'
           }}
         >
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleCloseModal}
             style={{
               padding: '8px 16px',
               borderRadius: '8px',
@@ -764,18 +772,18 @@ export default function DcIntakeModal({
             Đóng
           </button>
 
-          {!isRslQualified ? (
+          {!dateError && !isRslQualified && (
             <button
               type="button"
               disabled={isRejecting}
               onClick={onReject}
               style={{
-                padding: '8px 18px',
+                padding: '8px 14px',
                 borderRadius: '8px',
-                background: 'var(--danger-red)',
-                color: '#ffffff',
-                border: 'none',
-                fontSize: '0.825rem',
+                background: 'var(--danger-red-bg)',
+                color: 'var(--danger-red)',
+                border: '1px solid var(--danger-red-border)',
+                fontSize: '0.8rem',
                 fontWeight: 700,
                 cursor: isRejecting ? 'not-allowed' : 'pointer',
                 opacity: isRejecting ? 0.6 : 1,
@@ -785,39 +793,40 @@ export default function DcIntakeModal({
               }}
             >
               <AlertCircle size={15} />
-              <span>{isRejecting ? 'Đang lưu biên bản...' : 'Lập Biên Bản Từ Chối Nhận Hàng'}</span>
-            </button>
-          ) : (
-            <button
-              type="submit"
-              form="dc-intake-form"
-              disabled={isSubmitting}
-              style={{
-                padding: '8px 22px',
-                borderRadius: '8px',
-                background: 'var(--primary)',
-                color: '#ffffff',
-                border: 'none',
-                fontSize: '0.825rem',
-                fontWeight: 700,
-                cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                opacity: isSubmitting ? 0.6 : 1,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                boxShadow: 'var(--shadow-sm)'
-              }}
-            >
-              {isSubmitting ? (
-                <span>⏳ Đang ghi nhận CSDL...</span>
-              ) : (
-                <>
-                  <ArrowDownToLine size={16} />
-                  <span>Xác Nhận Nhập Kho Lô Hàng</span>
-                </>
-              )}
+              <span>{isRejecting ? 'Đang lưu biên bản...' : 'Từ chối & Trả hàng DC'}</span>
             </button>
           )}
+
+          <button
+            type="submit"
+            form="dc-intake-form"
+            disabled={isSubmitting || Boolean(dateError) || !isRslQualified}
+            title={dateError || (!isRslQualified ? `Không thể nhập kho khi RSL < ${minRslThreshold}%` : 'Xác nhận nhập lô hàng vào kho')}
+            style={{
+              padding: '8px 20px',
+              borderRadius: '8px',
+              background: (!dateError && isRslQualified) ? 'var(--primary)' : 'var(--bg-muted, #e2e8f0)',
+              color: (!dateError && isRslQualified) ? '#ffffff' : 'var(--text-muted)',
+              border: (!dateError && isRslQualified) ? 'none' : '1px solid var(--border-color)',
+              fontSize: '0.825rem',
+              fontWeight: 700,
+              cursor: (isSubmitting || Boolean(dateError) || !isRslQualified) ? 'not-allowed' : 'pointer',
+              opacity: isSubmitting ? 0.6 : (!dateError && isRslQualified ? 1 : 0.7),
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              boxShadow: (!dateError && isRslQualified) ? 'var(--shadow-sm)' : 'none'
+            }}
+          >
+            {isSubmitting ? (
+              <span>⏳ Đang ghi nhận CSDL...</span>
+            ) : (
+              <>
+                <ArrowDownToLine size={16} />
+                <span>Xác Nhận Nhập Kho Lô Hàng</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
     </div>

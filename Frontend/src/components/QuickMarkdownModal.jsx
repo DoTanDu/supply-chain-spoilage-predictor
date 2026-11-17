@@ -120,9 +120,6 @@ export default function QuickMarkdownModal({
               <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--text-main, #0f172a)' }}>
                 Kích Hoạt Quick Markdown Xả Hàng
               </h3>
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted, #475569)' }}>
-                Chiết khấu tức thì tại quầy POSChuẩn Tự Động
-              </span>
             </div>
           </div>
 
@@ -177,24 +174,26 @@ export default function QuickMarkdownModal({
               <span>Giá gốc: <strong style={{ color: '#0f172a' }}>{originalPrice.toLocaleString('vi-VN')} đ</strong></span>
             </div>
 
-            {/* Khuyến nghị Định giá Động Wasteless Dynamic Pricing (Phase 4.3) */}
-            <div style={{
-              marginTop: '6px',
-              padding: '8px 10px',
-              borderRadius: '8px',
-              background: 'rgba(234, 88, 12, 0.08)',
-              border: '1px dashed rgba(234, 88, 12, 0.35)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: '6px',
-              fontSize: '0.73rem'
-            }}>
+            {/* Khuyến nghị Định giá Động */}
+            <div
+              style={{
+                marginTop: '6px',
+                padding: '8px 10px',
+                borderRadius: '8px',
+                background: 'rgba(234, 88, 12, 0.08)',
+                border: '1px dashed rgba(234, 88, 12, 0.35)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '6px',
+                fontSize: '0.73rem'
+              }}
+              title={`Tốc độ bán ước tính: ${estDailyVelocity} SP/ngày`}
+            >
               <div>
-                <span style={{ color: '#9a3412', fontWeight: 700 }}>Wasteless AI Dynamic Pricing: </span>
                 <span style={{ color: '#475569' }}>
-                  Tốc độ bán {estDailyVelocity} SP/ngày • Lượng dư nguy cơ ế (RiskQty): <strong style={{ color: '#dc2626' }}>{riskQuantity} {batch.unit || 'SP'}</strong>
+                  Dự kiến dư: <strong style={{ color: '#dc2626' }}>{riskQuantity} {batch.unit || 'SP'}</strong>
                 </span>
               </div>
               <span style={{ padding: '2px 7px', borderRadius: '999px', background: '#ea580c', color: '#ffffff', fontWeight: 700, fontSize: '0.68rem' }}>
@@ -269,7 +268,7 @@ export default function QuickMarkdownModal({
             </div>
 
             <div style={{ textAlign: 'right' }}>
-              <span style={{ fontSize: '0.685rem', color: 'var(--text-muted, #475569)' }}>Doanh thu giải cứu kỳ vọng (Rescued Value):</span>
+              <span style={{ fontSize: '0.685rem', color: 'var(--text-muted, #475569)' }}>Doanh thu giải cứu kỳ vọng:</span>
               <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0284c7' }}>
                 {expectedRescuedRevenue.toLocaleString('vi-VN')} đ
               </div>

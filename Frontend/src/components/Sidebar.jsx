@@ -1,37 +1,50 @@
+// src/components/Sidebar.jsx
 import React, { useState } from 'react';
-import { 
-  LayoutDashboard, 
-  Clock, 
-  ShoppingCart, 
-  PackagePlus, 
-  Trash2, 
-  TrendingUp, 
-  ScrollText,
-  Shield,
-  User,
-  Store,
-  Truck,
-  Package,
-  Users,
-  Sliders,
+import {
+  LayoutDashboard,
+  Building2,
+  Boxes,
+  TrendingUp,
+  ShoppingBag,
   ArrowLeftRight,
+  AlertTriangle,
+  BarChart3,
+  Settings,
+  Shield,
+  Store,
+  User,
   PanelLeftClose,
   PanelLeftOpen
 } from 'lucide-react';
+import { canAccessPage, normalizeRole } from '../utils/pagePermissions';
 
-export default function Sidebar({ 
-  activeTab, 
-  setActiveTab, 
-  currentRole = 'ADMIN', 
+export const MENU_CONFIG = [
+  { id: 'dashboard', label: '01. Dashboard', icon: LayoutDashboard },
+  { id: 'store-management', label: '02. Store Management', icon: Building2 },
+  { id: 'inventory-management', label: '03. Inventory Management', icon: Boxes },
+  { id: 'ai-forecast', label: '04. AI Forecast', icon: TrendingUp },
+  { id: 'smart-ordering', label: '05. Smart Ordering', icon: ShoppingBag },
+  { id: 'stock-transfer', label: '06. Stock Transfer', icon: ArrowLeftRight },
+  { id: 'spoilage-alerts', label: '07. Spoilage Alerts', icon: AlertTriangle },
+  { id: 'reports-analytics', label: '08. Reports & Analytics', icon: BarChart3 },
+  { id: 'settings-integration', label: '09. Settings & Integration', icon: Settings }
+];
+
+export default function Sidebar({
+  activeTab,
+  setActiveTab,
+  currentRole = 'ADMIN',
   currentUser,
-  criticalCount = 0 
+  criticalCount = 0,
+  pendingTransferCount = 0,
+  isSingleStore = false
 }) {
-  const roleCode = currentRole?.toUpperCase() || 'STAFF';
+  const roleCode = normalizeRole(currentRole);
 
   const [isCollapsed, setIsCollapsed] = useState(() => {
     try {
-      return localStorage.getItem('lhu_sidebar_collapsed') === 'true';
-    } catch (e) {
+      return localStorage.getItem('ss_sidebar_collapsed') === 'true';
+    } catch {
       return false;
     }
   });
@@ -40,107 +53,36 @@ export default function Sidebar({
     setIsCollapsed(prev => {
       const next = !prev;
       try {
-        localStorage.setItem('lhu_sidebar_collapsed', String(next));
-      } catch (e) {}
+        localStorage.setItem('ss_sidebar_collapsed', String(next));
+      } catch {}
       return next;
     });
   };
 
-  // Danh mục menu chuẩn mực (Tối ưu vị trí Quầy POS theo vai trò: STAFF lên đầu, OWNER/MANAGER xếp sau khối điều hành)
-  const isStaffActor = roleCode === 'CASHIER' || roleCode === 'STAFF';
-  const posMenuItem = {
-    id: 'pos-checkout',
-    label: isStaffActor ? 'Quầy Bán lẻ POS' : 'Quầy Bán lẻ POS (Giám sát)',
-    icon: ShoppingCart,
-    allowedRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER'],
-    highlight: isStaffActor
-  };
-
-  const allMenuItems = [
-    ...(isStaffActor ? [posMenuItem] : []),
-    {
-      id: 'dashboard',
-      label: 'Tổng quan điều hành',
-      icon: LayoutDashboard,
-      allowedRoles: ['ADMIN', 'STORE_MANAGER']
-    },
-    {
-      id: 'fefo-monitor',
-      label: 'Giám sát Date & FEFO',
-      icon: Clock,
-      badge: criticalCount > 0 ? `${criticalCount} khẩn` : null,
-      allowedRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER']
-    },
-    {
-      id: 'dc-intake',
-      label: 'Tiếp nhận hàng DC',
-      icon: PackagePlus,
-      allowedRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER']
-    },
-    {
-      id: 'product-catalog',
-      label: 'Danh mục Sản phẩm',
-      icon: Package,
-      allowedRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER']
-    },
-    {
-      id: 'spoilage-disposal',
-      label: 'Tiêu hủy & Sổ hao hụt',
-      icon: Trash2,
-      allowedRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER']
-    },
-    {
-      id: 'reorder-predictor',
-      label: 'Dự báo AI & Đặt hàng DC',
-      icon: TrendingUp,
-      allowedRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER']
-    },
-    {
-      id: 'stock-transfer',
-      label: 'Điều phối Liên cửa hàng',
-      icon: ArrowLeftRight,
-      allowedRoles: ['ADMIN']
-    },
-    ...(!isStaffActor ? [posMenuItem] : []),
-    {
-      id: 'audit-log',
-      label: 'Nhật ký Kiểm toán',
-      icon: ScrollText,
-      allowedRoles: ['ADMIN', 'STORE_MANAGER']
-    },
-    {
-      id: 'store-settings',
-      label: 'Cấu hình Cửa hàng',
-      icon: Sliders,
-      allowedRoles: ['ADMIN', 'STORE_MANAGER']
-    },
-    {
-      id: 'user-management',
-      label: 'Quản lý Tài khoản',
-      icon: Users,
-      allowedRoles: ['ADMIN']
+  const visibleMenuItems = MENU_CONFIG.filter(item => {
+    if (item.id === 'stock-transfer' && isSingleStore) return false;
+    if (currentUser) {
+      return canAccessPage(currentUser, item.id, isSingleStore);
     }
-  ];
-
-  // Lọc menu hiển thị nghiêm ngặt theo Ma trận Phân quyền RBAC
-  const visibleMenuItems = allMenuItems.filter(item => {
-    if (roleCode === 'ADMIN' || roleCode === 'OWNER') return true;
-    return item.allowedRoles.includes(roleCode);
+    return true;
+  }).map(item => {
+    if (item.id === 'spoilage-alerts' && criticalCount > 0) {
+      return { ...item, badge: `${criticalCount} khẩn`, badgeTone: 'danger' };
+    }
+    if (item.id === 'stock-transfer' && pendingTransferCount > 0) {
+      return { ...item, badge: `${pendingTransferCount} chờ`, badgeTone: 'warning' };
+    }
+    return item;
   });
 
   const getRoleBadge = () => {
     switch (roleCode) {
       case 'ADMIN':
-      case 'OWNER':
-        return { label: 'OWNER • CHỦ CHUỖI', color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe', icon: Shield };
+        return { label: 'OWNER • Chủ chuỗi', color: '#4f46e5', bg: '#eef2ff', border: '#c7d2fe', icon: Shield };
       case 'STORE_MANAGER':
-      case 'MANAGER':
-        return { label: 'MANAGER • QUẢN LÝ CH', color: '#4f46e5', bg: '#eef2ff', border: '#c7d2fe', icon: Store };
-      case 'CASHIER':
-      case 'STAFF':
-        return { label: 'STAFF • NHÂN VIÊN CH', color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe', icon: ShoppingCart };
+        return { label: 'MANAGER • Quản lý CH', color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe', icon: Store };
       default:
-        return { label: 'STAFF • NHÂN VIÊN', color: '#475569', bg: '#f1f5f9', border: '#e2e8f0', icon: User };
+        return { label: 'STAFF • Nhân viên CH', color: '#047857', bg: '#ecfdf5', border: '#a7f3d0', icon: User };
     }
   };
 
@@ -148,48 +90,46 @@ export default function Sidebar({
   const RoleIcon = roleInfo.icon;
 
   return (
-    <aside style={{
-      width: isCollapsed ? '68px' : '250px',
-      background: 'var(--bg-secondary)',
-      borderRight: '1px solid var(--border-subtle)',
-      display: 'flex',
-      flexDirection: 'column',
-      justifyContent: 'space-between',
-      padding: isCollapsed ? '16px 8px' : '16px 12px',
-      minHeight: 'calc(100vh - 70px)',
-      transition: 'width 0.22s cubic-bezier(0.4, 0, 0.2, 1), padding 0.22s ease, background-color 0.2s ease, border-color 0.2s ease',
-      position: 'relative'
-    }}>
-      {/* Menu List */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-        {/* Header Toggle */}
-        <div style={{
-          padding: isCollapsed ? '0 0 10px' : '0 6px 10px',
-          display: 'flex',
-          justifyContent: isCollapsed ? 'center' : 'space-between',
-          alignItems: 'center',
-          borderBottom: '1px solid var(--border-subtle)',
-          marginBottom: '6px'
-        }}>
+    <aside
+      className="ss-desktop-sidebar"
+      style={{
+        width: isCollapsed ? '72px' : '256px',
+        background: 'var(--bg-secondary)',
+        borderRight: '1px solid var(--border-subtle)',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        padding: isCollapsed ? '14px 8px' : '14px 12px',
+        minHeight: 'calc(100dvh - 64px)',
+        transition: 'width 0.18s ease, padding 0.18s ease',
+        flexShrink: 0
+      }}
+    >
+      <nav aria-label="Điều hướng chính SmartSupply AI" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        <div
+          style={{
+            padding: isCollapsed ? '0 0 10px' : '0 6px 10px',
+            display: 'flex',
+            justifyContent: isCollapsed ? 'center' : 'space-between',
+            alignItems: 'center',
+            borderBottom: '1px solid var(--border-subtle)',
+            marginBottom: '6px'
+          }}
+        >
           {!isCollapsed && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{
-                fontSize: '0.72rem',
-                fontWeight: 700,
-                textTransform: 'uppercase',
-                color: 'var(--text-muted)',
-                letterSpacing: '0.06em'
-              }}>
-                Nghiệp vụ ca trực
+              <span
+                style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  color: 'var(--text-dim)',
+                  letterSpacing: '0.05em'
+                }}
+              >
+                Phân hệ quản trị
               </span>
-              <span style={{
-                fontSize: '0.625rem',
-                padding: '1px 6px',
-                borderRadius: '4px',
-                background: 'var(--bg-subtle)',
-                color: 'var(--text-secondary)',
-                fontWeight: 600
-              }}>
+              <span className="ss-badge ss-badge-neutral" style={{ padding: '1px 6px', fontSize: '0.68rem' }}>
                 {visibleMenuItems.length}
               </span>
             </div>
@@ -197,118 +137,118 @@ export default function Sidebar({
           <button
             type="button"
             onClick={toggleCollapse}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--text-muted)',
-              cursor: 'pointer',
-              padding: '4px',
-              borderRadius: '6px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'all 0.15s ease'
-            }}
-            title={isCollapsed ? 'Mở rộng thanh menu (250px)' : 'Thu gọn thanh menu (68px)'}
-            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-main)'; e.currentTarget.style.background = 'var(--bg-subtle)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent'; }}
+            aria-label={isCollapsed ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng'}
+            title={isCollapsed ? 'Mở rộng menu' : 'Thu gọn menu'}
+            className="ss-btn ss-btn-secondary ss-btn-sm"
+            style={{ padding: '5px', border: 'none', background: 'transparent', color: 'var(--text-muted)' }}
           >
-            {isCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+            {isCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
           </button>
         </div>
 
-        {visibleMenuItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              title={isCollapsed ? item.label : undefined}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: isCollapsed ? 'center' : 'space-between',
-                padding: isCollapsed ? '10px 0' : '9px 12px',
-                borderRadius: '8px',
-                border: '1px solid',
-                borderColor: isActive ? 'var(--primary-border)' : 'transparent',
-                background: isActive 
-                  ? 'var(--primary-bg)' 
-                  : 'transparent',
-                color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                cursor: 'pointer',
-                textAlign: 'left',
-                transition: 'all 0.15s ease',
-                width: '100%',
-                fontWeight: isActive ? 700 : 500,
-                position: 'relative'
-              }}
-              onMouseEnter={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.background = 'var(--bg-subtle)';
-                  e.currentTarget.style.color = 'var(--text-main)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.color = 'var(--text-secondary)';
-                }
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{
-                  color: isActive ? 'var(--primary)' : 'var(--text-muted)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <Icon size={18} />
-                </div>
-                {!isCollapsed && (
-                  <span style={{ fontSize: '0.845rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {item.label}
-                  </span>
-                )}
-              </div>
+        <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+          {visibleMenuItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            return (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab(item.id)}
+                  aria-current={isActive ? 'page' : undefined}
+                  title={isCollapsed ? item.label : undefined}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: isCollapsed ? 'center' : 'space-between',
+                    gap: '10px',
+                    width: '100%',
+                    padding: isCollapsed ? '10px 0' : '9px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid',
+                    borderColor: isActive ? 'var(--primary-border)' : 'transparent',
+                    background: isActive ? 'var(--primary-bg)' : 'transparent',
+                    color: isActive ? 'var(--primary-hover)' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    fontFamily: 'inherit',
+                    position: 'relative',
+                    transition: 'background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease'
+                  }}
+                >
+                  {isActive && !isCollapsed && (
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        position: 'absolute',
+                        left: '3px',
+                        top: '8px',
+                        bottom: '8px',
+                        width: '3px',
+                        borderRadius: '3px',
+                        background: 'var(--primary)'
+                      }}
+                    />
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, paddingLeft: isActive && !isCollapsed ? '4px' : 0 }}>
+                    <Icon
+                      size={18}
+                      aria-hidden="true"
+                      style={{ color: isActive ? 'var(--primary)' : 'var(--text-dim)', flexShrink: 0 }}
+                    />
+                    {!isCollapsed && (
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontSize: '0.84rem',
+                            fontWeight: isActive ? 700 : 600,
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            lineHeight: 1.35
+                          }}
+                        >
+                          {item.label}
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
-              {/* Badge: hiển thị chữ khi mở rộng, chấm đỏ góc khi thu gọn */}
-              {item.badge && !isCollapsed && (
-                <span style={{
-                  fontSize: '0.675rem',
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  background: 'var(--danger-red-bg)',
-                  color: 'var(--danger-red)',
-                  border: '1px solid var(--danger-red-border)',
-                  fontWeight: 700
-                }}>
-                  {item.badge}
-                </span>
-              )}
-              {item.badge && isCollapsed && (
-                <span style={{
-                  position: 'absolute',
-                  top: '6px',
-                  right: '12px',
-                  width: '8px',
-                  height: '8px',
-                  borderRadius: '50%',
-                  background: 'var(--danger-red)',
-                  boxShadow: '0 0 6px rgba(239, 68, 68, 0.6)'
-                }} />
-              )}
-            </button>
-          );
-        })}
-      </div>
+                  {item.badge && !isCollapsed && (
+                    <span
+                      className={`ss-badge ${item.badgeTone === 'danger' ? 'ss-badge-danger' : 'ss-badge-warning'}`}
+                      style={{ fontSize: '0.68rem', padding: '2px 7px' }}
+                    >
+                      {item.badge}
+                    </span>
+                  )}
 
-      {/* Role Footer Card */}
-      <div 
-        title={isCollapsed ? `${roleInfo.label} • ${currentUser?.fullName || 'Đang hoạt động'}` : undefined}
+                  {item.badge && isCollapsed && (
+                    <span
+                      aria-label={item.badge}
+                      style={{
+                        position: 'absolute',
+                        top: '6px',
+                        right: '12px',
+                        width: '7px',
+                        height: '7px',
+                        borderRadius: '50%',
+                        background: item.badgeTone === 'danger' ? 'var(--danger-red)' : 'var(--warning-yellow)'
+                      }}
+                    />
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+
+      {/* Role & Scope Card */}
+      <div
+        title={isCollapsed ? `${roleInfo.label} • ${currentUser?.fullName || ''}` : undefined}
         style={{
-          marginTop: '16px',
+          marginTop: '14px',
           padding: isCollapsed ? '10px 0' : '10px 12px',
           borderRadius: '10px',
           background: 'var(--bg-subtle)',
@@ -319,26 +259,46 @@ export default function Sidebar({
           gap: '10px'
         }}
       >
-        <div style={{
-          width: '32px',
-          height: '32px',
-          borderRadius: '6px',
-          background: roleInfo.bg,
-          border: `1px solid ${roleInfo.border}`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: roleInfo.color,
-          flexShrink: 0
-        }}>
-          <RoleIcon size={16} />
+        <div
+          style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '8px',
+            background: roleInfo.bg,
+            border: `1px solid ${roleInfo.border}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: roleInfo.color,
+            flexShrink: 0
+          }}
+        >
+          <RoleIcon size={16} aria-hidden="true" />
         </div>
         {!isCollapsed && (
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: roleInfo.color, letterSpacing: '0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div
+              style={{
+                fontSize: '0.7rem',
+                fontWeight: 700,
+                color: roleInfo.color,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}
+            >
               {roleInfo.label}
             </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-main)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div
+              style={{
+                fontSize: '0.77rem',
+                color: 'var(--text-main)',
+                fontWeight: 600,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}
+            >
               {currentUser?.fullName || 'Đang hoạt động'}
             </div>
           </div>
