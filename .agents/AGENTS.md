@@ -47,4 +47,4 @@
   * Dùng index tối ưu: `IX_Batches_FEFO`, `IX_Batches_ExpiryWatchdog`, `IX_Products_Sku`, `IX_SalesHistory_Product_Date`, `IX_SpoilageRecords_Batch`.
   * Toàn bộ chuỗi tiếng Việt phải dùng `N'...'` và mã hóa `utf-8-sig`.
 * **Giao diện Frontend:** Rich Aesthetics, Dark mode, Dashboard 6 chỉ số KPI tài chính, Action Board ca trực khẩn cấp, Responsive.
-* **Chiến lược phát triển:** Nếu mã nguồn hiện tại có điểm sai lệch so với đặc tả, giữ vững tính ổn định của hệ thống và refactor/sửa đổi tuần tự từng module để đạt sự đồng nhất hoàn toàn với đặc tả.
+* **Chiến lược phát triển:** Nếu mã nguồn hiện tại có điểm sai lệch so với đặc tả, giữ vững tính ổn định của hệ thống và refactor/sửa đổi tuần tự từng module để đạt sự đồng nhất hoàn toàn với đặc tả.
