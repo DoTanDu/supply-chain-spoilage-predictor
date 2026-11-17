@@ -43,6 +43,7 @@ import {
 import { exportReceiptToExcel, exportSalesHistoryToExcel } from '../utils/exportUtils';
 import BarcodeScannerModal from './BarcodeScannerModal';
 import PosPaymentModal from './PosPaymentModal';
+import PosCsvImportModal from './PosCsvImportModal';
 import { fetchSalesHistory, apiGetReceipt } from '../api';
 
 // Helper: Chuẩn hóa chuỗi tiếng Việt không dấu phục vụ tìm kiếm linh hoạt
@@ -75,6 +76,7 @@ export default function PosCheckoutView({
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [barcodeSuccessToast, setBarcodeSuccessToast] = useState('');
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showCsvImportModal, setShowCsvImportModal] = useState(false);
   const [salesHistoryList, setSalesHistoryList] = useState([]);
   const [todaySalesSummary, setTodaySalesSummary] = useState({ todayTransactionsCount: 0, todayTotalQuantity: 0, todayTotalRevenue: 0 });
   const tabsContainerRef = useRef(null);
@@ -753,6 +755,30 @@ export default function PosCheckoutView({
             >
               <History size={13} />
               <span>Lịch sử HĐ ({todaySalesSummary.todayTransactionsCount || 0})</span>
+            </button>
+
+                        {/* Nút Nhập Dữ Liệu POS từ Excel/CSV (Mục 07 & Phụ lục A1 PDF) */}
+            <button
+              type="button"
+              onClick={() => setShowCsvImportModal(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                background: '#f0fdf4',
+                padding: '5px 10px',
+                borderRadius: '7px',
+                border: '1px solid #bbf7d0',
+                fontSize: '0.735rem',
+                fontWeight: 700,
+                color: '#166534',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+              title="Nhập và kiểm tra dữ liệu giao dịch POS bằng file Excel / CSV (Mục 07 & Phụ lục A1)"
+            >
+              <FileSpreadsheet size={13} color="#16a34a" />
+              <span>Nhập Excel/CSV</span>
             </button>
 
             {/* Nút Bật Cửa Sổ Hóa Đơn Giỏ Hàng & Thanh Toán (Modal) */}

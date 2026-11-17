@@ -22,6 +22,7 @@ const GetBatchAlertsUseCase = require('./application/use-cases/batch/GetBatchAle
 const ProcessFefoSaleUseCase = require('./application/use-cases/sales/ProcessFefoSaleUseCase');
 const GetSalesHistoryUseCase = require('./application/use-cases/sales/GetSalesHistoryUseCase');
 const GetSaleReceiptUseCase = require('./application/use-cases/sales/GetSaleReceiptUseCase');
+const ValidateAndImportPosCsvUseCase = require('./application/use-cases/sales/ValidateAndImportPosCsvUseCase');
 
 const DisposeSpoiledGoodsUseCase = require('./application/use-cases/spoilage/DisposeSpoiledGoodsUseCase');
 const GetSpoilageLedgerUseCase = require('./application/use-cases/spoilage/GetSpoilageLedgerUseCase');
@@ -149,7 +150,13 @@ const batchController = new BatchController({
   auditLogRepository
 });
 
+const validateAndImportPosCsvUseCase = new ValidateAndImportPosCsvUseCase({
+  productRepository,
+  saleRepository
+});
+
 const salesController = new SalesController({
+  validateAndImportPosCsvUseCase,
   processFefoSaleUseCase,
   getSalesHistoryUseCase,
   getSaleReceiptUseCase

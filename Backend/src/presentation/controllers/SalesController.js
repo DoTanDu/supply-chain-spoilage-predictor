@@ -1,9 +1,15 @@
 // src/presentation/controllers/SalesController.js
 class SalesController {
-  constructor({ processFefoSaleUseCase, getSalesHistoryUseCase, getSaleReceiptUseCase }) {
+  constructor({ 
+    processFefoSaleUseCase, 
+    getSalesHistoryUseCase, 
+    getSaleReceiptUseCase,
+    validateAndImportPosCsvUseCase 
+  }) {
     this.processFefoSaleUseCase = processFefoSaleUseCase;
     this.getSalesHistoryUseCase = getSalesHistoryUseCase;
     this.getSaleReceiptUseCase = getSaleReceiptUseCase;
+    this.validateAndImportPosCsvUseCase = validateAndImportPosCsvUseCase;
   }
 
   async processSale(req, res, next) {
@@ -51,6 +57,55 @@ class SalesController {
         return res.status(result.statusCode || 404).json(result);
       }
       res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  // ==========================================
+  // EXCEL / CSV POS IMPORT & VALIDATION MODULE (Mục 07 & Phụ lục A1 PDF)
+  // ==========================================
+  async validateCsv(req, res, next) {
+    try {
+      const { csvContent } = req.body;
+      if (!this.validateAndImportPosCsvUseCase) {
+        throw new Error('ValidateAndImportPosCsvUseCase chưa được khởi tạo!');
+      }
+      const result = await this.validateAndImportPosCsvUseCase.validate(csvContent);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async importCsv(req, res, next) {
+    try {
+      const { csvContent, validatedData, storeId } = req.body;
+      const cashierId = req.user ? req.user.id : 3;
+      if (!this.validateAndImportPosCsvUseCase) {
+        throw new Error('ValidateAndImportPosCsvUseCase chưa được khởi tạo!');
+      }
+      const result = await this.validateAndImportPosCsvUseCase.commitImport({
+        csvContent,
+        validatedData,
+        cashierId,
+        storeId: storeId || 1
+      });
+      res.status(201).json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async getCsvTemplate(req, res, next) {
+    try {
+      if (!this.validateAndImportPosCsvUseCase) {
+        throw new Error('ValidateAndImportPosCsvUseCase chưa được khởi tạo!');
+      }
+      const csvStr = this.validateAndImportPosCsvUseCase.getStandardTemplateCsv();
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="sample_pos_transactions.csv"');
+      res.send('\uFEFF' + csvStr); // Prepend UTF-8 BOM so Excel opens it with Vietnamese accents perfectly
     } catch (err) {
       next(err);
     }

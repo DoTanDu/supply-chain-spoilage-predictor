@@ -6,6 +6,20 @@ const roleMiddleware = require('../middlewares/roleMiddleware');
 
 const router = express.Router();
 
+// GET /api/sales/csv-template - Tải file mẫu chuẩn Excel/CSV POS
+router.get('/csv-template', (req, res, next) => salesController.getCsvTemplate(req, res, next));
+
+// POST /api/sales/validate-csv - Kiểm tra và đánh giá chất lượng file CSV/Excel trước khi nhập (Phụ lục A1 PDF)
+router.post('/validate-csv', (req, res, next) => salesController.validateCsv(req, res, next));
+
+// POST /api/sales/import-csv - Nhập chính thức các giao dịch hợp lệ vào CSDL sales_history bằng Transaction SQL
+router.post(
+  '/import-csv',
+  authMiddleware,
+  roleMiddleware(['ADMIN', 'STORE_MANAGER', 'CASHIER']),
+  (req, res, next) => salesController.importCsv(req, res, next)
+);
+
 // POST /api/sales - Thanh toán bán lẻ tại quầy POS, tự động bẻ lô theo chuẩn FEFO (Chỉ ADMIN, STORE_MANAGER, CASHIER)
 router.post(
   '/',

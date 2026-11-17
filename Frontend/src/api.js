@@ -696,3 +696,64 @@ export async function apiUpdateStockTransferStatus(transferId, status, notes = '
   });
   return await parseJsonSafe(res);
 }
+
+// ==========================================
+// AI 4 - SMARTSUPPLY AI ASSISTANT API
+// ==========================================
+export async function askAiAssistant(message, apiKey = '', userRole = '') {
+  const token = localStorage.getItem('token');
+  const res = await fetch(`${API_BASE}/ai/assistant/chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify({ message, apiKey, userRole })
+  });
+  return await parseJsonSafe(res);
+}
+
+export async function fetchAiAssistantQuickInsights() {
+  const token = localStorage.getItem('token');
+  const res = await fetch(`${API_BASE}/ai/assistant/quick-insights`, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    }
+  });
+  return await parseJsonSafe(res);
+}
+
+
+// ==========================================
+// POS EXCEL / CSV IMPORT & VALIDATION API (Phụ lục A1 PDF)
+// ==========================================
+export async function validatePosCsv(csvContent) {
+  const token = localStorage.getItem('token');
+  const res = await fetch(`${API_BASE}/sales/validate-csv`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify({ csvContent })
+  });
+  return await parseJsonSafe(res);
+}
+
+export async function importPosCsv(csvContent, validatedData, storeId = 1) {
+  const token = localStorage.getItem('token');
+  const res = await fetch(`${API_BASE}/sales/import-csv`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify({ csvContent, validatedData, storeId })
+  });
+  return await parseJsonSafe(res);
+}
+
+export function getPosCsvTemplateUrl() {
+  return `${API_BASE}/sales/csv-template`;
+}

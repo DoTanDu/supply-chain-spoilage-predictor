@@ -13,6 +13,8 @@ import LoginView from './components/LoginView';
 import ProductCatalogView from './components/ProductCatalogView';
 import ShiftHandoverView from './components/ShiftHandoverView';
 import UserManagementView from './components/UserManagementView';
+import AiAssistantModal from './components/AiAssistantModal';
+import { Bot, Sparkles } from 'lucide-react';
 import StoreSettingsView from './components/StoreSettingsView';
 import AdminLoginModal from './components/AdminLoginModal';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -105,6 +107,7 @@ export default function App() {
   const isAdmin = currentUser?.roleCode === 'ADMIN';
   const currentRole = currentUser?.roleCode || 'GUEST';
   const [showAdminModal, setShowAdminModal] = useState(false);
+  const [showAiAssistantModal, setShowAiAssistantModal] = useState(false);
   
   const [products, setProducts] = useState([]);
   const [batches, setBatches] = useState([]);
@@ -526,6 +529,7 @@ export default function App() {
         onQuickDiscount={handleQuickDiscount}
         onRotateShelf={handleRotateShelf}
         onNavigateToUserManagement={() => setActiveTab('user-management')}
+          onOpenAiAssistant={() => setShowAiAssistantModal(true)}
       />
 
       {/* Main Container */}
@@ -709,6 +713,67 @@ export default function App() {
           </ErrorBoundary>
         </main>
       </div>
+
+
+      {/* Modal Trợ lý AI 4 (SmartSupply AI Assistant) */}
+      <AiAssistantModal
+        isOpen={showAiAssistantModal}
+        onClose={() => setShowAiAssistantModal(false)}
+        currentUser={currentUser}
+        currentRole={currentRole}
+      />
+
+      {/* Floating Action Button mở Trợ lý AI 4 từ mọi trang */}
+      {currentUser && (
+        <button
+          type="button"
+          onClick={() => setShowAiAssistantModal(true)}
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            right: '24px',
+            zIndex: 40,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '10px 18px',
+            background: 'linear-gradient(135deg, #1d4ed8 0%, #4338ca 50%, #2563eb 100%)',
+            color: '#ffffff',
+            borderRadius: '9999px',
+            boxShadow: '0 8px 24px -4px rgba(37, 99, 235, 0.45)',
+            border: '1.5px solid rgba(255, 255, 255, 0.25)',
+            cursor: 'pointer',
+            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-2px) scale(1.03)';
+            e.currentTarget.style.boxShadow = '0 12px 28px -4px rgba(37, 99, 235, 0.55)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0) scale(1)';
+            e.currentTarget.style.boxShadow = '0 8px 24px -4px rgba(37, 99, 235, 0.45)';
+          }}
+          title="Mở Trợ lý AI 4 (SmartSupply AI Assistant) - Giải thích báo cáo & đề xuất"
+        >
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+            <Bot size={18} color="#ffffff" />
+            <span style={{
+              position: 'absolute',
+              top: '-3px',
+              right: '-3px',
+              width: '8px',
+              height: '8px',
+              backgroundColor: '#34d399',
+              borderRadius: '50%',
+              border: '1.5px solid #1e40af'
+            }} />
+          </div>
+          <span style={{ fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.02em', display: 'flex', alignItems: 'center', gap: '5px' }}>
+            Trợ lý AI 4
+            <Sparkles size={14} color="#fde047" />
+          </span>
+        </button>
+      )}
 
       {/* Modal Xác thực Quyền Quản trị viên (Admin Login Override) */}
       {showAdminModal && (

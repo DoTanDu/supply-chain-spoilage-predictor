@@ -19,6 +19,7 @@ const dashboardRoutes = require('./src/presentation/routes/dashboardRoutes');
 const shiftHandoverRoutes = require('./src/presentation/routes/shiftHandoverRoutes');
 const supplierRoutes = require('./src/presentation/routes/supplierRoutes');
 const stockTransferRoutes = require('./src/presentation/routes/stockTransferRoutes');
+const aiAssistantRoutes = require('./src/presentation/routes/aiAssistantRoutes');
 
 // Import DI Container
 const { auditLogRepository } = require('./src/container');
@@ -115,6 +116,7 @@ app.use('/api/forecast', forecastRoutes);
 app.use('/api/purchase-orders', purchaseOrderRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/stock-transfers', stockTransferRoutes);
+app.use('/api/ai/assistant', aiAssistantRoutes);
 app.use('/api/ai', stockTransferRoutes);
 
 // 4. Aliases for Backward Compatibility with existing frontend

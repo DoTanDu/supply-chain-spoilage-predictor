@@ -23,7 +23,8 @@ import {
   RotateCw,
   ArrowRight,
   Cloud,
-  Users
+  Users,
+  Sparkles
 } from 'lucide-react';
 import UserManagementModal from './UserManagementModal';
 import ChangePasswordModal from './ChangePasswordModal';
@@ -46,7 +47,8 @@ export default function Header({
   isSyncingWeather = false,
   theme = 'light',
   onToggleTheme,
-  onNavigateToUserManagement
+  onNavigateToUserManagement,
+  onOpenAiAssistant
 }) {
   const [showNotifModal, setShowNotifModal] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
@@ -443,6 +445,31 @@ export default function Header({
               <span>{weather?.isHoliday ? 'Ngày Lễ (1.35x)' : 'Ngày thường'}</span>
             </button>
           </div>
+                    {/* Nút Trợ lý AI (AI 4) */}
+          <button
+            type="button"
+            onClick={onOpenAiAssistant}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 14px',
+              borderRadius: '20px',
+              background: 'linear-gradient(135deg, #1d4ed8 0%, #4338ca 100%)',
+              border: '1px solid rgba(255, 255, 255, 0.25)',
+              color: '#ffffff',
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(37, 99, 235, 0.3)',
+              transition: 'all 0.15s ease'
+            }}
+            title="Mở Trợ lý AI 4 (SmartSupply AI Assistant) - Giải thích báo cáo và đề xuất"
+          >
+            <Sparkles size={14} color="#fde047" />
+            <span>Trợ lý AI 4</span>
+          </button>
+
           {/* Critical Alert Bell Button - Tinh gọn dạng Icon Chuông kèm Badge đè góc */}
           <button
             type="button"
