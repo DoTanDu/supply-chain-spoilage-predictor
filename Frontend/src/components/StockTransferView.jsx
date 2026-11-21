@@ -52,22 +52,23 @@ export default function StockTransferView({
   const [docTab, setDocTab] = useState('outbound'); // outbound | transit | receipt
 
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const defaultFromStore = !isOwnerRole && myStoreId > 0 ? myStoreId : 1;
+  const defaultFromStore = !isOwnerRole && myStoreId > 0 ? myStoreId : 0;
   const [newTransferForm, setNewTransferForm] = useState({
     fromStoreId: defaultFromStore,
-    toStoreId: defaultFromStore === 2 ? 1 : 2,
-    productId: 1,
-    transferQuantity: 15,
+    toStoreId: 0,
+    productId: 0,
+    transferQuantity: 0,
     shippingCost: 0,
     aiRecommendationNote: ''
   });
+  const [createError, setCreateError] = useState('');
 
   useEffect(() => {
     if (!isOwnerRole && myStoreId > 0) {
       setNewTransferForm(prev => ({
         ...prev,
         fromStoreId: myStoreId,
-        toStoreId: prev.toStoreId === myStoreId ? (myStoreId === 1 ? 2 : 1) : prev.toStoreId
+        toStoreId: prev.toStoreId === myStoreId ? 0 : prev.toStoreId
       }));
     }
   }, [isOwnerRole, myStoreId]);
@@ -126,6 +127,24 @@ export default function StockTransferView({
   const handleManualCreateSubmit = async (e) => {
     e.preventDefault();
     setActionMsg(null);
+    setCreateError('');
+    const { fromStoreId, toStoreId, productId, transferQuantity } = newTransferForm;
+    if (!(fromStoreId > 0) || !(toStoreId > 0)) {
+      setCreateError('Vui lòng chọn đầy đủ chi nhánh xuất và chi nhánh nhận.');
+      return;
+    }
+    if (fromStoreId === toStoreId) {
+      setCreateError('Chi nhánh xuất và chi nhánh nhận phải khác nhau.');
+      return;
+    }
+    if (!(productId > 0)) {
+      setCreateError('Vui lòng chọn sản phẩm cần điều chuyển.');
+      return;
+    }
+    if (!Number.isInteger(transferQuantity) || transferQuantity < 1) {
+      setCreateError('Số lượng chuyển phải là số nguyên lớn hơn 0.');
+      return;
+    }
     try {
       const res = await api.apiCreateStockTransfer({
         ...newTransferForm,
@@ -243,7 +262,7 @@ export default function StockTransferView({
 
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           {canApprove && (
-            <button type="button" className="ss-btn ss-btn-primary" onClick={() => setShowCreateModal(true)}>
+            <button type="button" className="ss-btn ss-btn-primary" onClick={() => { setCreateError(''); setShowCreateModal(true); }}>
               <Plus size={16} /> Tạo Đề xuất
             </button>
           )}
@@ -634,7 +653,8 @@ export default function StockTransferView({
                 value={newTransferForm.fromStoreId}
                 onChange={(e) => setNewTransferForm({ ...newTransferForm, fromStoreId: Number(e.target.value) })}
               >
-                {(storeCols.length > 0 ? storeCols : [{ id: 1, storeName: 'Chi nhánh 1' }, { id: 2, storeName: 'Chi nhánh 2' }, { id: 3, storeName: 'Chi nhánh 3' }]).map(st => (
+                <option value={0} disabled>— Chọn chi nhánh xuất —</option>
+                {storeCols.map(st => (
                   <option key={st.id} value={st.id}>{st.storeName}</option>
                 ))}
               </select>
@@ -646,7 +666,8 @@ export default function StockTransferView({
                 value={newTransferForm.toStoreId}
                 onChange={(e) => setNewTransferForm({ ...newTransferForm, toStoreId: Number(e.target.value) })}
               >
-                {(storeCols.length > 0 ? storeCols : [{ id: 1, storeName: 'Chi nhánh 1' }, { id: 2, storeName: 'Chi nhánh 2' }, { id: 3, storeName: 'Chi nhánh 3' }]).map(st => (
+                <option value={0} disabled>— Chọn chi nhánh nhận —</option>
+                {storeCols.map(st => (
                   <option key={st.id} value={st.id}>{st.storeName}</option>
                 ))}
               </select>
@@ -660,6 +681,7 @@ export default function StockTransferView({
               value={newTransferForm.productId}
               onChange={(e) => setNewTransferForm({ ...newTransferForm, productId: Number(e.target.value) })}
             >
+              <option value={0} disabled>— Chọn sản phẩm —</option>
               {availableProducts.map(p => (
                 <option key={p.productId} value={p.productId}>{p.sku} — {p.productName}</option>
               ))}
@@ -674,7 +696,7 @@ export default function StockTransferView({
                 type="number"
                 min="1"
                 required
-                value={newTransferForm.transferQuantity}
+                value={newTransferForm.transferQuantity || ''}
                 onChange={(e) => setNewTransferForm({ ...newTransferForm, transferQuantity: Number(e.target.value) })}
               />
             </div>
@@ -701,6 +723,10 @@ export default function StockTransferView({
               onChange={(e) => setNewTransferForm({ ...newTransferForm, aiRecommendationNote: e.target.value })}
             />
           </div>
+
+          {createError && (
+            <div role="alert" style={{ color: 'var(--danger-red-light, #dc2626)', fontSize: '0.8rem', fontWeight: 600 }}>{createError}</div>
+          )}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
             <button type="button" className="ss-btn ss-btn-secondary" onClick={() => setShowCreateModal(false)}>Hủy</button>

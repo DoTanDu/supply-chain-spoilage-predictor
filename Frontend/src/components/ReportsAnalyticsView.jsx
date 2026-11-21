@@ -80,19 +80,6 @@ export default function ReportsAnalyticsView({
         </div>
 
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-          {isAdmin && storesList.length > 0 && (
-            <select
-              aria-label="Phạm vi báo cáo"
-              value={selectedStoreId || 'ALL'}
-              onChange={(e) => onSelectStore && onSelectStore(e.target.value)}
-              style={{ width: 'auto', minWidth: '180px' }}
-            >
-              <option value="ALL">Toàn chuỗi ({storesList.length} CN)</option>
-              {storesList.map(st => (
-                <option key={st.id} value={String(st.id)}>{st.storeCode} — {st.storeName}</option>
-              ))}
-            </select>
-          )}
           <select
             aria-label="Kỳ phân tích"
             value={periodDays}

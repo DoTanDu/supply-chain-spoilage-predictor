@@ -38,7 +38,7 @@ export default function EditUserModal({
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [roleCode, setRoleCode] = useState('CASHIER');
-  const [storeId, setStoreId] = useState('1');
+  const [storeId, setStoreId] = useState('');
   const [stores, setStores] = useState([]);
   const [pageCatalog, setPageCatalog] = useState(MANAGEABLE_PAGES);
   const [pagePermissions, setPagePermissions] = useState({ grant: [], revoke: [] });
@@ -66,7 +66,7 @@ export default function EditUserModal({
       setEmail(targetUser.email || '');
       setPhone(targetUser.phone || '');
       setRoleCode(initRole);
-      setStoreId(targetUser.storeId ? String(targetUser.storeId) : '1');
+      setStoreId(targetUser.storeId ? String(targetUser.storeId) : '');
       setPagePermissions(normalizePagePermissions(targetUser.pagePermissions, initRole));
       setErrorMessage('');
       setSuccessMessage('');
@@ -167,6 +167,11 @@ export default function EditUserModal({
       return;
     }
 
+    if (!isRoleAdmin && !(Number(storeId) > 0)) {
+      setErrorMessage('Vui lòng chọn chi nhánh công tác cho nhân viên.');
+      return;
+    }
+
     setIsLoading(true);
     try {
       const normalizedPerms = isRoleAdmin
@@ -178,7 +183,7 @@ export default function EditUserModal({
         email: email ? email.trim() : '',
         phone: phone ? phone.trim() : '',
         roleCode: normalizedRole,
-        storeId: isRoleAdmin ? null : Number(storeId || 1),
+        storeId: isRoleAdmin ? null : Number(storeId),
         pagePermissions: normalizedPerms
       });
 
@@ -508,14 +513,10 @@ export default function EditUserModal({
                   cursor: isLoading ? 'not-allowed' : 'pointer'
                 }}
               >
-                {(stores.length > 0
-                  ? stores
-                  : [
-                      { id: 1, storeName: 'Chi nhánh #1' },
-                      { id: 2, storeName: 'Chi nhánh #2' },
-                      { id: 3, storeName: 'Chi nhánh #3' }
-                    ]
-                ).map(st => (
+                <option value="" disabled>
+                  {stores.length > 0 ? '— Chọn chi nhánh —' : 'Chưa có dữ liệu chi nhánh'}
+                </option>
+                {stores.map(st => (
                   <option key={st.id} value={String(st.id)}>
                     {`Chi nhánh #${st.id} — ${st.storeName || st.name || `Chi nhánh #${st.id}`}`}
                   </option>

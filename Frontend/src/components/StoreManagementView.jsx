@@ -62,8 +62,8 @@ export default function StoreManagementView({
     minInboundRslPercent: 70,
     defaultWarningDays: 7,
     criticalWarningDays: 3,
-    shelfCapacitySkus: 1200,
-    shelfCapacityUnits: 4000
+    shelfCapacitySkus: 1500,
+    shelfCapacityUnits: 5000
   });
 
   const loadStores = async () => {
@@ -112,8 +112,8 @@ export default function StoreManagementView({
       minInboundRslPercent: 70,
       defaultWarningDays: 7,
       criticalWarningDays: 3,
-      shelfCapacitySkus: 1200,
-      shelfCapacityUnits: 4000
+      shelfCapacitySkus: 1500,
+      shelfCapacityUnits: 5000
     });
     setEditingStore(null);
     setFormError('');
@@ -135,8 +135,8 @@ export default function StoreManagementView({
       minInboundRslPercent: Number(st.minInboundRslPercent || 70),
       defaultWarningDays: Number(st.defaultWarningDays || 7),
       criticalWarningDays: Number(st.criticalWarningDays || 3),
-      shelfCapacitySkus: Number(st.shelfCapacitySkus || 1200),
-      shelfCapacityUnits: Number(st.shelfCapacityUnits || 4000)
+      shelfCapacitySkus: Number(st.shelfCapacitySkus || 1500),
+      shelfCapacityUnits: Number(st.shelfCapacityUnits || 5000)
     });
     setFormError('');
     setModalMode('EDIT');

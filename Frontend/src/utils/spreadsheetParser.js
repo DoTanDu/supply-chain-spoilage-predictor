@@ -174,7 +174,9 @@ export async function parseXlsxFirstSheet(arrayBuffer) {
       } else if (vNode) {
         const rawVal = vNode.textContent || '';
         const serialNum = Number(rawVal);
-        val = (dateCols.has(colIdx) || (r > 0 && colIdx >= 2 && serialNum >= 40000 && serialNum <= 60000)) && /^\d{5}(\.\d+)?$/.test(rawVal)
+        const isHeuristicDateCol = dateCols.size === 0 && r > 0 && colIdx === 2 && serialNum >= 40000 && serialNum <= 60000;
+        const isKnownDateCol = dateCols.has(colIdx) && serialNum >= 20000 && serialNum <= 80000;
+        val = (isKnownDateCol || isHeuristicDateCol) && /^\d{5}(\.\d+)?$/.test(rawVal)
           ? excelSerialToIsoDate(rawVal)
           : rawVal;
       }

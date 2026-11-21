@@ -115,7 +115,7 @@ export default function InventoryManagementView({
   const [purchaseOrders, setPurchaseOrders] = useState([]);
   const [goodsReceipts, setGoodsReceipts] = useState([]);
   const [selectedPoId, setSelectedPoId] = useState('');
-  const [selectedProductId, setSelectedProductId] = useState(products[0]?.id || 1);
+  const [selectedProductId, setSelectedProductId] = useState(products[0]?.id ?? 0);
   const buildBatchCode = (skuOrId, dateStr) => {
     const cleanSku = String(skuOrId || 'SKU').replace(/[^A-Za-z0-9_-]/g, '');
     const day = String(dateStr || new Date().toISOString().slice(0, 10)).replace(/-/g, '');
@@ -124,7 +124,7 @@ export default function InventoryManagementView({
   };
 
   const [batchCode, setBatchCode] = useState(() => buildBatchCode(products[0]?.sku || 'SKU'));
-  const [quantity, setQuantity] = useState(24);
+  const [quantity, setQuantity] = useState('');
   const [importDate, setImportDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [manufactureDate, setManufactureDate] = useState(() => {
     const d = new Date();
@@ -136,7 +136,7 @@ export default function InventoryManagementView({
     d.setDate(d.getDate() + 18);
     return d.toISOString().slice(0, 10);
   });
-  const [costPrice, setCostPrice] = useState(products[0]?.costPrice || 22000);
+  const [costPrice, setCostPrice] = useState(products[0]?.costPrice ?? '');
   const [isSubmittingIntake, setIsSubmittingIntake] = useState(false);
   const [isRejectingIntake, setIsRejectingIntake] = useState(false);
   const [intakeError, setIntakeError] = useState('');
@@ -239,7 +239,7 @@ export default function InventoryManagementView({
   useEffect(() => {
     if (products.length > 0 && !products.some(p => Number(p.id) === Number(selectedProductId))) {
       setSelectedProductId(products[0].id);
-      setCostPrice(products[0].costPrice || 22000);
+      setCostPrice(products[0].costPrice ?? '');
     }
   }, [products]);
 
@@ -289,7 +289,7 @@ export default function InventoryManagementView({
     const total = Math.round((expMs - mfgMs) / 86400000);
     const rem = Math.round((expMs - impMs) / 86400000);
     const passed = Math.max(0, Math.round((impMs - mfgMs) / 86400000));
-    const rsl = rem <= 0 ? 0 : Math.max(0, Math.min(100, Math.round((rem / total) * 100)));
+    const rsl = rem <= 0 ? 0 : Math.max(0, Math.min(100, Number(((rem / total) * 100).toFixed(2))));
     return {
       totalLifeDays: total,
       remainingDays: rem,
@@ -310,7 +310,7 @@ export default function InventoryManagementView({
     setSelectedProductId(Number(prodId));
     const p = products.find(item => Number(item.id) === Number(prodId));
     if (p) {
-      setCostPrice(p.costPrice || 22000);
+      setCostPrice(p.costPrice ?? '');
       const life = Number(p.shelfLifeDays || 14);
       const impD = new Date(importDate || new Date());
       const mfgD = new Date(impD);
@@ -324,7 +324,7 @@ export default function InventoryManagementView({
         const activePo = purchaseOrders.find(o => String(o.id) === String(selectedPoId));
         const matchedItem = activePo?.items?.find(it => Number(it.productId) === Number(prodId));
         if (matchedItem) {
-          setQuantity(matchedItem.approvedQuantity || matchedItem.suggestedQuantity || 20);
+          setQuantity(matchedItem.approvedQuantity || matchedItem.suggestedQuantity || '');
         }
       }
     }
@@ -336,7 +336,7 @@ export default function InventoryManagementView({
     const currentProd = products.find(p => Number(p.id) === Number(selectedProductId)) || products[0];
     if (currentProd) {
       setSelectedProductId(Number(currentProd.id));
-      setCostPrice(currentProd.costPrice || 22000);
+      setCostPrice(currentProd.costPrice ?? '');
       setBatchCode(buildBatchCode(currentProd.sku || currentProd.id, importDate));
     } else {
       setBatchCode(buildBatchCode('SKU', importDate));
@@ -355,12 +355,25 @@ export default function InventoryManagementView({
       setIntakeError(`Lô hàng có RSL_inbound = ${inboundRsl}% (< ${minRslThreshold}%). Vui lòng lập Biên bản Từ chối nhận hàng!`);
       return;
     }
+    if (!(Number(selectedProductId) > 0)) {
+      setIntakeError('Vui lòng chọn sản phẩm nhập kho.');
+      return;
+    }
+    if (!Number.isInteger(Number(quantity)) || Number(quantity) < 1) {
+      setIntakeError('Số lượng nhập phải là số nguyên lớn hơn 0.');
+      return;
+    }
+    if (!(Number(costPrice) > 0)) {
+      setIntakeError('Vui lòng nhập giá vốn nhập kho lớn hơn 0.');
+      return;
+    }
     setIsSubmittingIntake(true);
     try {
       const targetStoreId = selectedStoreId !== 'ALL' ? Number(selectedStoreId) : Number(currentUser?.storeId || 1);
+      const activePo = selectedPoId ? purchaseOrders.find(o => String(o.id) === String(selectedPoId)) : null;
       const payload = {
         storeId: targetStoreId,
-        supplierId: 1,
+        ...(activePo?.supplierId ? { supplierId: Number(activePo.supplierId) } : {}),
         purchaseOrderId: selectedPoId ? Number(selectedPoId) : null,
         receiptDate: importDate,
         batches: [
@@ -377,13 +390,13 @@ export default function InventoryManagementView({
       const res = onAddBatch ? await onAddBatch(payload) : await api.apiReceiveDCInbound(payload);
       if (res && res.success) {
         if (selectedPoId) {
-          await api.apiUpdatePOStatus(Number(selectedPoId), 'DELIVERED', 'Đã tiếp nhận đủ vào kho').catch(() => {});
           setSelectedPoId('');
         }
         setShowIntakeModal(false);
         setToast({ type: 'success', text: res.message || `Đã nhập thành công lô ${batchCode} (+${quantity} ĐV) với RSL ${inboundRsl}%.` });
         const curProd = products.find(p => Number(p.id) === Number(selectedProductId));
         setBatchCode(buildBatchCode(curProd?.sku || selectedProductId, importDate));
+        setQuantity('');
         await loadAuxData();
         if (onRefreshData) await onRefreshData();
       } else {
@@ -398,6 +411,10 @@ export default function InventoryManagementView({
 
   const handleRejectIntake = async () => {
     setIntakeError('');
+    if (!(Number(selectedProductId) > 0) || !Number.isInteger(Number(quantity)) || Number(quantity) < 1) {
+      setIntakeError('Vui lòng chọn sản phẩm và nhập số lượng hợp lệ trước khi lập biên bản từ chối.');
+      return;
+    }
     setIsRejectingIntake(true);
     try {
       const targetStoreId = selectedStoreId !== 'ALL' ? Number(selectedStoreId) : Number(currentUser?.storeId || 1);
@@ -1103,7 +1120,7 @@ export default function InventoryManagementView({
                               {liveStock.toLocaleString('vi-VN')} {p.unit || 'ĐV'}
                             </span>
                           </td>
-                          <td data-label="Min/Max" className="num-tabular">{p.minStockLevel || 15} / {p.maxStockLevel || 150}</td>
+                          <td data-label="Min/Max" className="num-tabular">{p.minStockLevel ?? '—'} / {p.maxStockLevel ?? '—'}</td>
                           <td data-label="Hạn chuẩn" className="num-tabular">{p.shelfLifeDays || 14}d (Cảnh báo {p.customWarningDays || 5}d)</td>
                           <td data-label="Giá" className="num-tabular">
                             <div>Vốn: {Number(p.costPrice || 0).toLocaleString('vi-VN')} đ</div>
@@ -1292,7 +1309,7 @@ export default function InventoryManagementView({
           const firstItem = foundPo?.items?.[0];
           if (firstItem) {
             handleIntakeProductChange(firstItem.productId);
-            setQuantity(firstItem.approvedQuantity || firstItem.suggestedQuantity || 20);
+            setQuantity(firstItem.approvedQuantity || firstItem.suggestedQuantity || '');
           }
         }}
         batchCode={batchCode}

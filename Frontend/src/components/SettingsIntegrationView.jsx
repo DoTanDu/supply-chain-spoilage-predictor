@@ -93,13 +93,14 @@ export default function SettingsIntegrationView({
   }, [products]);
 
   const handleDownloadTemplate = () => {
-    const sku1 = products[0]?.sku || '8934567890101';
-    const sku2 = products[1]?.sku || '8934567890201';
-    const storeCode = storeProfile?.storeCode || 'RETAIL-STORE-01';
+    const storeCode = storeProfile?.storeCode || '';
     const today = new Date().toISOString().slice(0, 10);
-    const content = '\uFEFFstore_code,sku,sale_date,quantity_sold,sale_price\n' +
-      `${storeCode},${sku1},${today},12,${products[0]?.sellingPrice || 32000}\n` +
-      `${storeCode},${sku2},${today},8,${products[1]?.sellingPrice || 25000}\n`;
+    const exampleRows = products
+      .filter(p => p?.sku && Number(p.sellingPrice) > 0)
+      .slice(0, 2)
+      .map(p => `${storeCode},${p.sku},${today},1,${Number(p.sellingPrice)}\n`)
+      .join('');
+    const content = '\uFEFFstore_code,sku,sale_date,quantity_sold,sale_price\n' + exampleRows;
     downloadFile(content, 'Mau_Dong_Bo_POS_SmartSupply_AI.csv');
   };
 
@@ -240,10 +241,11 @@ export default function SettingsIntegrationView({
     centralWarehouseName: enterpriseConfig?.centralWarehouseName || 'Kho trung tâm (DC)',
     managerPoApprovalLimit: Number(enterpriseConfig?.managerPoApprovalLimit ?? 5000000)
   });
+  const [isEntDirty, setIsEntDirty] = useState(false);
   const [savingEnt, setSavingEnt] = useState(false);
 
   useEffect(() => {
-    if (enterpriseConfig) {
+    if (enterpriseConfig && !isEntDirty) {
       setEntForm({
         enterpriseName: enterpriseConfig.enterpriseName || 'SmartSupply AI Retail Chain',
         hasCentralWarehouse: enterpriseConfig.hasCentralWarehouse !== false,
@@ -251,7 +253,7 @@ export default function SettingsIntegrationView({
         managerPoApprovalLimit: Number(enterpriseConfig.managerPoApprovalLimit ?? 5000000)
       });
     }
-  }, [enterpriseConfig]);
+  }, [enterpriseConfig, isEntDirty]);
 
   const handleSaveEnterprise = async (e) => {
     e.preventDefault();
@@ -259,6 +261,7 @@ export default function SettingsIntegrationView({
     try {
       const res = await api.apiUpdateEnterpriseConfig(entForm);
       if (res && res.success) {
+        setIsEntDirty(false);
         setToast({ type: 'success', text: res.message || 'Đã lưu cấu hình doanh nghiệp.' });
         if (onEnterpriseUpdated && res.data) onEnterpriseUpdated(res.data);
       } else {
@@ -349,7 +352,7 @@ export default function SettingsIntegrationView({
           {/* PANEL 1: KẾT NỐI POS EXCEL/CSV & NGOẠI CẢNH */}
           {canImportPos && (
             <div role="tabpanel" aria-labelledby="set-tab-pos" hidden={subTab !== 'pos-integration'}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px', marginBottom: '18px' }}>
+              <div style={{ marginBottom: '18px' }}>
                 <div className="ss-card-subtle" style={{ padding: '16px' }}>
                   <h2 style={{ fontSize: '1rem', fontWeight: 700, margin: '0 0 8px' }}>
                     Nhập Dữ liệu Bán hàng POS (Excel / CSV)
@@ -366,29 +369,6 @@ export default function SettingsIntegrationView({
                       <input type="file" accept=".xlsx,.csv,.txt" onChange={handleFileChange} style={{ display: 'none' }} />
                     </label>
                     {csvFileName && <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 }}>{csvFileName}</span>}
-                  </div>
-                </div>
-
-                <div className="ss-card-subtle" style={{ padding: '16px' }}>
-                  <h2 style={{ fontSize: '1rem', fontWeight: 700, margin: '0 0 8px' }}>
-                    Thời tiết & Ngày lễ (Phục vụ Dự báo)
-                  </h2>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '12px' }}>
-                    Nhiệt độ hiện tại: <strong>{weather?.temp || 30}°C</strong>
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    {onSyncWeather && (
-                      <button type="button" className="ss-btn ss-btn-primary ss-btn-sm" onClick={onSyncWeather} disabled={isSyncingWeather}>
-                        <RefreshCw size={14} style={{ animation: isSyncingWeather ? 'spin 1s linear infinite' : 'none' }} /> Đồng bộ Open-Meteo
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className={`ss-btn ss-btn-sm ${weather?.isHoliday ? 'ss-btn-warning' : 'ss-btn-secondary'}`}
-                      onClick={() => setWeather && setWeather({ ...weather, isHoliday: !weather?.isHoliday })}
-                    >
-                      <Calendar size={14} /> {weather?.isHoliday ? 'Đang bật Ngày lễ (+30%)' : 'Ngày thường'}
-                    </button>
                   </div>
                 </div>
               </div>
@@ -635,15 +615,15 @@ export default function SettingsIntegrationView({
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
                     <div className="ss-field">
                       <label className="ss-label" htmlFor="ent-name">Tên doanh nghiệp / Chuỗi</label>
-                      <input id="ent-name" type="text" required value={entForm.enterpriseName} onChange={(e) => setEntForm({ ...entForm, enterpriseName: e.target.value })} />
+                      <input id="ent-name" type="text" required value={entForm.enterpriseName} onChange={(e) => { setIsEntDirty(true); setEntForm({ ...entForm, enterpriseName: e.target.value }); }} />
                     </div>
                     <div className="ss-field">
                       <label className="ss-label" htmlFor="ent-limit">Hạn mức Manager tự duyệt PO (đ)</label>
-                      <input id="ent-limit" type="number" min="0" step="500000" value={entForm.managerPoApprovalLimit} onChange={(e) => setEntForm({ ...entForm, managerPoApprovalLimit: Number(e.target.value) })} />
+                      <input id="ent-limit" type="number" min="0" step="500000" value={entForm.managerPoApprovalLimit} onChange={(e) => { setIsEntDirty(true); setEntForm({ ...entForm, managerPoApprovalLimit: Number(e.target.value) }); }} />
                     </div>
                     <div className="ss-field">
                       <label className="ss-label" htmlFor="ent-dc-mode">Kho trung tâm (tùy chọn)</label>
-                      <select id="ent-dc-mode" value={entForm.hasCentralWarehouse ? 'YES' : 'NO'} onChange={(e) => setEntForm({ ...entForm, hasCentralWarehouse: e.target.value === 'YES' })}>
+                      <select id="ent-dc-mode" value={entForm.hasCentralWarehouse ? 'YES' : 'NO'} onChange={(e) => { setIsEntDirty(true); setEntForm({ ...entForm, hasCentralWarehouse: e.target.value === 'YES' }); }}>
                         <option value="YES">Có dùng Kho trung tâm</option>
                         <option value="NO">Không dùng (Đặt thẳng NCC)</option>
                       </select>
@@ -651,7 +631,7 @@ export default function SettingsIntegrationView({
                     {entForm.hasCentralWarehouse && (
                       <div className="ss-field">
                         <label className="ss-label" htmlFor="ent-dc-name">Tên Kho trung tâm</label>
-                        <input id="ent-dc-name" type="text" value={entForm.centralWarehouseName} onChange={(e) => setEntForm({ ...entForm, centralWarehouseName: e.target.value })} />
+                        <input id="ent-dc-name" type="text" value={entForm.centralWarehouseName} onChange={(e) => { setIsEntDirty(true); setEntForm({ ...entForm, centralWarehouseName: e.target.value }); }} />
                       </div>
                     )}
                   </div>
@@ -769,6 +749,7 @@ export default function SettingsIntegrationView({
       <CreateUserModal
         isOpen={showCreateUser}
         onClose={() => setShowCreateUser(false)}
+        storesList={storesList}
         onUserCreated={() => { loadUsers(); setToast({ type: 'success', text: 'Đã tạo tài khoản mới thành công!' }); }}
       />
       <EditUserModal

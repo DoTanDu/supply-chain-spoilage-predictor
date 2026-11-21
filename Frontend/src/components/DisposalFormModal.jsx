@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Trash2,
   AlertTriangle,
@@ -36,10 +36,13 @@ export default function DisposalFormModal({
   const [notes, setNotes] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const wasOpenRef = useRef(false);
 
-  // Cập nhật khi mở modal hoặc thay đổi initialBatchId
+  // Chỉ khởi tạo giá trị form khi modal chuyển sang mở hoặc thay đổi initialBatchId (tránh polling 15s xóa dữ liệu đang nhập)
   useEffect(() => {
-    if (isOpen) {
+    const justOpened = isOpen && !wasOpenRef.current;
+    wasOpenRef.current = isOpen;
+    if (isOpen && (justOpened || initialBatchId !== null)) {
       setErrorMsg('');
       const targetId = initialBatchId || (availableBatches[0]?.id ?? null);
       setSelectedBatchId(targetId);
@@ -56,7 +59,7 @@ export default function DisposalFormModal({
       }
       setNotes('');
     }
-  }, [isOpen, initialBatchId, availableBatches]);
+  }, [isOpen, initialBatchId]);
 
   if (!isOpen) return null;
 
@@ -132,7 +135,7 @@ export default function DisposalFormModal({
       const finalNotes = notes?.trim() || defaultNoteByReason;
 
       if (onSubmitDisposal) {
-        await onSubmitDisposal({
+        const res = await onSubmitDisposal({
           batchId: currentBatch.id,
           batchCode: currentBatch.batchCode,
           productId: currentBatch.productId,
@@ -154,6 +157,10 @@ export default function DisposalFormModal({
           approvedByName: isAuthorized ? (currentUser?.fullName || 'Quản lý cửa hàng') : null,
           disposedDate: new Date().toISOString().split('T')[0]
         });
+        if (res && res.success === false) {
+          setErrorMsg(res.message || 'Không thể ghi nhận phiếu hủy.');
+          return;
+        }
       }
       onClose();
     } catch (err) {

@@ -1,4 +1,4 @@
-const API_BASE = 'http://localhost:5000/api';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 
 function handleUnauthorizedResponse(res, skipAuthRedirect = false) {
   if (res && res.status === 401 && !skipAuthRedirect) {
@@ -81,9 +81,12 @@ export async function fetchDisposals(storeId = null) {
   return json.data || [];
 }
 
-export async function fetchAuditLogs() {
+export async function fetchAuditLogs(storeId = null) {
   const token = localStorage.getItem('token');
-  const res = await fetch(`${API_BASE}/audit-logs`, {
+  const qs = storeId && String(storeId).toUpperCase() !== 'ALL'
+    ? `?storeId=${encodeURIComponent(storeId)}`
+    : '';
+  const res = await fetch(`${API_BASE}/audit-logs${qs}`, {
     headers: {
       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
     }
@@ -753,30 +756,6 @@ export async function apiGetGoodsReceipts(storeId = 'ALL') {
   return json.data || [];
 }
 
-export async function apiGetGoodsReceiptById(id) {
-  const token = localStorage.getItem('token');
-  const res = await fetch(`${API_BASE}/goods-receipts/${id}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    }
-  });
-  return await parseJsonSafe(res);
-}
-
-export async function apiCreateGoodsReceipt(receiptData) {
-  const token = localStorage.getItem('token');
-  const res = await fetch(`${API_BASE}/goods-receipts`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    },
-    body: JSON.stringify(receiptData)
-  });
-  return await parseJsonSafe(res);
-}
-
 // Module 20: AI Engine & Điều phối Liên cửa hàng (stock_transfers)
 export async function fetchAiSupplyChainMatrix(weather = 'AUTO', isHoliday = 'auto') {
   const token = localStorage.getItem('token');
@@ -837,6 +816,45 @@ export async function apiUpdateStockTransferStatus(transferId, status, notes = '
       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
     },
     body: JSON.stringify({ status, notes })
+  });
+  return await parseJsonSafe(res);
+}
+
+// ==========================================
+// Module 21: AI 4 - SmartSupply AI Assistant
+// ==========================================
+export async function askAiAssistant(message, apiKey = '', storeId = 'ALL') {
+  const token = localStorage.getItem('token');
+  const res = await fetch(`${API_BASE}/ai/assistant/chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify({ message, apiKey, storeId })
+  });
+  return await parseJsonSafe(res);
+}
+
+export async function fetchAiAssistantQuickInsights(storeId = 'ALL') {
+  const token = localStorage.getItem('token');
+  const query = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  const res = await fetch(`${API_BASE}/ai/assistant/quick-insights${query}`, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    }
+  });
+  return await parseJsonSafe(res);
+}
+
+export async function fetchAiAssistantStatus() {
+  const token = localStorage.getItem('token');
+  const res = await fetch(`${API_BASE}/ai/assistant/status`, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    }
   });
   return await parseJsonSafe(res);
 }

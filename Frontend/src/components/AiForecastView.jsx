@@ -187,20 +187,6 @@ export default function AiForecastView({
         </div>
 
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-          {isAdmin && storesList.length > 0 && (
-            <select
-              aria-label="Chọn phạm vi cửa hàng dự báo"
-              value={selectedStoreId || 'ALL'}
-              onChange={(e) => onSelectStore && onSelectStore(e.target.value)}
-              style={{ width: 'auto', minWidth: '150px', maxWidth: '210px' }}
-            >
-              <option value="ALL">Toàn chuỗi ({storesList.length} CN)</option>
-              {storesList.map(st => (
-                <option key={st.id} value={String(st.id)}>{st.storeCode} — {st.storeName}</option>
-              ))}
-            </select>
-          )}
-
           {canRunInference && (
             <>
               <button type="button" className="ss-btn ss-btn-secondary" disabled={savingSnapshot} onClick={handleSaveSnapshot}>
@@ -301,7 +287,7 @@ export default function AiForecastView({
             {hasReliableMetrics ? `${summary.averageMaeMetric} ĐV/ngày` : 'Chưa đủ dữ liệu'}
           </div>
           <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '3px' }}>
-            Mô hình: <strong>{summary?.modelName || 'ROP-Live-Sales-Weather'}</strong>
+            Mô hình: <strong>{summary?.modelName || '—'}</strong>
           </div>
         </div>
 
@@ -525,7 +511,7 @@ export default function AiForecastView({
         ) : inferenceResult ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div className="ss-card-subtle" style={{ padding: '10px 14px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', fontSize: '0.82rem' }}>
-              <span>Model: <strong>{inferenceResult.modelName || 'LightGBM-HistGBT-v2.1-Pretrained'}</strong></span>
+              <span>Model: <strong>{inferenceResult.modelName || '—'}</strong></span>
               <span>Dataset: <strong>{inferenceResult.totalDatasetRows || 0} dòng</strong></span>
               <span>
                 MAE: <strong>{inferenceResult.metrics?.mae ?? '—'}</strong> • RMSE: <strong>{inferenceResult.metrics?.rmse ?? '—'}</strong> • MAPE: <strong>{inferenceResult.metrics?.mape_pct ?? '—'}%</strong>

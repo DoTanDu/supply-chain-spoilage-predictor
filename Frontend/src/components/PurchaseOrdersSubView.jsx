@@ -32,20 +32,31 @@ export default function PurchaseOrdersSubView({
   isOwner = false,
   managerApprovalLimit = 5000000,
   onRequestAdminLogin,
-  storeProfile = null
+  storeProfile = null,
+  storesList = []
 }) {
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPo, setSelectedPo] = useState(null);
   const [updatingId, setUpdatingId] = useState(null);
 
-  // Thống kê KPI Đơn Hàng PO
+  const resolvePoStore = (po) => {
+    const sid = Number(po?.storeId || 0);
+    const matched = sid ? storesList.find(s => Number(s.id) === sid) : null;
+    if (matched) return matched;
+    if (storeProfile && (!sid || Number(storeProfile.id) === sid)) return storeProfile;
+    return sid ? { storeCode: `CN #${sid}`, storeName: `Chi nhánh #${sid}` } : { storeCode: 'STORE', storeName: 'Cửa hàng' };
+  };
+
+  // Thống kê KPI Đơn Hàng PO (không cộng đơn đã hủy vào ngân sách)
   const stats = {
     total: orders.length,
     pending: orders.filter(o => o.status === 'PENDING' || o.status === 'APPROVED' || o.status === 'DRAFT').length,
     shipping: orders.filter(o => o.status === 'SHIPPING' || o.status === 'SUBMITTED').length,
     completed: orders.filter(o => o.status === 'COMPLETED' || o.status === 'DELIVERED' || o.status === 'RECEIVED').length,
-    totalValue: orders.reduce((sum, o) => sum + Number(o.totalEstimatedCost || 0), 0)
+    totalValue: orders
+      .filter(o => String(o.status || '').toUpperCase() !== 'CANCELLED')
+      .reduce((sum, o) => sum + Number(o.totalEstimatedCost || 0), 0)
   };
 
   // Lọc danh sách theo Tab trạng thái và Ô tìm kiếm
@@ -399,6 +410,7 @@ export default function PurchaseOrdersSubView({
                 filteredOrders.map(po => {
                   const badge = getStatusBadge(po.status);
                   const isUpdating = updatingId === po.id;
+                  const poStore = resolvePoStore(po);
 
                   return (
                     <tr key={po.id}>
@@ -408,7 +420,7 @@ export default function PurchaseOrdersSubView({
                           {po.orderCode}
                         </div>
                         <div style={{ fontSize: '0.675rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                          <span style={{ color: 'var(--primary)', fontWeight: 600 }}>{storeProfile?.storeCode || 'STORE'}</span> → {po.supplierName || storeProfile?.defaultDcSupplierName || 'Kho tổng / NCC'}
+                          <span style={{ color: 'var(--primary)', fontWeight: 600 }}>{poStore.storeCode || 'STORE'}</span> → {po.supplierName || storeProfile?.defaultDcSupplierName || 'Kho tổng / NCC'}
                         </div>
                         {!isOwner && Number(po.totalEstimatedCost || 0) > managerApprovalLimit && ['DRAFT', 'PENDING'].includes(String(po.status).toUpperCase()) && (
                           <div style={{ fontSize: '0.67rem', color: 'var(--warning-yellow-light)', fontWeight: 700, marginTop: '2px' }}>
@@ -642,7 +654,12 @@ export default function PurchaseOrdersSubView({
               }}>
                 <div>
                   <span style={{ color: 'var(--text-muted)' }}>Cơ sở đặt hàng: </span>
-                  <strong style={{ color: 'var(--text-main)' }}>{storeProfile?.storeName || 'Cửa hàng'} ({storeProfile?.storeCode || 'STORE'})</strong>
+                  <strong style={{ color: 'var(--text-main)' }}>
+                    {(() => {
+                      const poStore = resolvePoStore(selectedPo);
+                      return `${poStore.storeName || 'Cửa hàng'} (${poStore.storeCode || 'STORE'})`;
+                    })()}
+                  </strong>
                 </div>
                 <div>
                   <span style={{ color: 'var(--text-muted)' }}>Nhà cung cấp / Kho: </span>

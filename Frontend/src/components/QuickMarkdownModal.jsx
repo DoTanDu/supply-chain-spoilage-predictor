@@ -22,9 +22,11 @@ export default function QuickMarkdownModal({
 }) {
   const [selectedPercent, setSelectedPercent] = useState(30);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
     if (batch && isOpen) {
+      setErrorMsg('');
       if (batch.discountPercent && batch.discountPercent > 0) {
         setSelectedPercent(batch.discountPercent);
       } else if (batch.alertColor === 'RED' || batch.status === 'CRITICAL' || (batch.daysLeft !== undefined && batch.daysLeft <= 3)) {
@@ -37,15 +39,18 @@ export default function QuickMarkdownModal({
 
   if (!isOpen || !batch) return null;
 
-  const originalPrice = Number(batch.retailPrice || batch.price || batch.sellingPrice || 35000);
+  const originalPrice = Number(batch.sellingPrice || batch.retailPrice || batch.price || 0);
+  const formatVnd = (value) => (value > 0 ? `${value.toLocaleString('vi-VN')} đ` : '—');
   const discountedPrice = Math.round(originalPrice * (1 - selectedPercent / 100));
   const saveAmount = originalPrice - discountedPrice;
   const stock = Number(batch.currentQuantity ?? batch.quantity ?? 0);
   const daysLeft = Number(batch.daysLeft ?? 0);
-  const estDailyVelocity = Number(batch.estDailyVelocity ?? 2.5);
+  const estDailyVelocity = batch.estDailyVelocity !== undefined ? Number(batch.estDailyVelocity) : null;
   const riskQuantity = batch.riskQuantity !== undefined
     ? Number(batch.riskQuantity)
-    : Math.max(0, Math.round(stock - estDailyVelocity * Math.max(0, daysLeft)));
+    : (estDailyVelocity !== null
+      ? Math.max(0, Math.round(stock - estDailyVelocity * Math.max(0, daysLeft)))
+      : null);
   const suggestedMarkdown = Number(batch.suggestedMarkdownPercent || (daysLeft <= 1 ? 50 : daysLeft <= 3 ? 40 : 30));
   const expectedRescuedRevenue = Math.round(stock * discountedPrice);
 
@@ -58,13 +63,18 @@ export default function QuickMarkdownModal({
 
   const handleSubmit = async (percent) => {
     setIsSubmitting(true);
+    setErrorMsg('');
     try {
       if (onApplyMarkdown) {
-        await onApplyMarkdown(batch.id, percent);
+        const res = await onApplyMarkdown(batch.id, percent);
+        if (res && res.success === false) {
+          setErrorMsg(res.message || 'Không thể kích hoạt giảm giá Quick Markdown.');
+          return;
+        }
       }
       onClose();
     } catch (err) {
-      console.error(err);
+      setErrorMsg(err?.message || 'Lỗi khi áp dụng Quick Markdown.');
     } finally {
       setIsSubmitting(false);
     }
@@ -140,6 +150,11 @@ export default function QuickMarkdownModal({
 
         {/* Thông tin Lô Hàng */}
         <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {errorMsg && (
+            <div role="alert" style={{ padding: '8px 12px', borderRadius: '8px', background: '#fff1f2', border: '1px solid #fda4af', color: '#be123c', fontSize: '0.78rem', fontWeight: 600 }}>
+              {errorMsg}
+            </div>
+          )}
           <div style={{
             background: 'var(--bg-subtle, #f8fafc)',
             border: '1px solid var(--border-subtle, #cbd5e1)',
@@ -171,7 +186,7 @@ export default function QuickMarkdownModal({
               <span>•</span>
               <span>Tồn kệ: <strong style={{ color: '#0284c7' }}>{stock} {batch.unit || 'hộp'}</strong></span>
               <span>•</span>
-              <span>Giá gốc: <strong style={{ color: '#0f172a' }}>{originalPrice.toLocaleString('vi-VN')} đ</strong></span>
+              <span>Giá gốc: <strong style={{ color: '#0f172a' }}>{formatVnd(originalPrice)}</strong></span>
             </div>
 
             {/* Khuyến nghị Định giá Động */}
@@ -189,11 +204,11 @@ export default function QuickMarkdownModal({
                 gap: '6px',
                 fontSize: '0.73rem'
               }}
-              title={`Tốc độ bán ước tính: ${estDailyVelocity} SP/ngày`}
+              title={estDailyVelocity !== null ? `Tốc độ bán ước tính: ${estDailyVelocity} SP/ngày` : 'Chưa có dữ liệu tốc độ bán'}
             >
               <div>
                 <span style={{ color: '#475569' }}>
-                  Dự kiến dư: <strong style={{ color: '#dc2626' }}>{riskQuantity} {batch.unit || 'SP'}</strong>
+                  Dự kiến dư: <strong style={{ color: '#dc2626' }}>{riskQuantity !== null ? `${riskQuantity} ${batch.unit || 'SP'}` : '—'}</strong>
                 </span>
               </div>
               <span style={{ padding: '2px 7px', borderRadius: '999px', background: '#ea580c', color: '#ffffff', fontWeight: 700, fontSize: '0.68rem' }}>
@@ -255,14 +270,14 @@ export default function QuickMarkdownModal({
           }}>
             <div>
               <div style={{ fontSize: '0.72rem', color: 'var(--text-muted, #475569)', textDecoration: 'line-through' }}>
-                Giá niêm yết: {originalPrice.toLocaleString('vi-VN')} đ
+                Giá niêm yết: {formatVnd(originalPrice)}
               </div>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginTop: '2px' }}>
                 <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ea580c' }}>
-                  {discountedPrice.toLocaleString('vi-VN')} đ
+                  {formatVnd(discountedPrice)}
                 </span>
                 <span style={{ fontSize: '0.72rem', color: '#047857', fontWeight: 700 }}>
-                  (Tiết kiệm {saveAmount.toLocaleString('vi-VN')} đ)
+                  (Tiết kiệm {formatVnd(saveAmount)})
                 </span>
               </div>
             </div>
@@ -270,7 +285,7 @@ export default function QuickMarkdownModal({
             <div style={{ textAlign: 'right' }}>
               <span style={{ fontSize: '0.685rem', color: 'var(--text-muted, #475569)' }}>Doanh thu giải cứu kỳ vọng:</span>
               <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0284c7' }}>
-                {expectedRescuedRevenue.toLocaleString('vi-VN')} đ
+                {formatVnd(expectedRescuedRevenue)}
               </div>
             </div>
           </div>

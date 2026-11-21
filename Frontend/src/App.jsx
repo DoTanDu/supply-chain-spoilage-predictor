@@ -1,5 +1,5 @@
 // src/App.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import LoginView from './components/LoginView';
@@ -13,7 +13,9 @@ import SpoilageAlertsView from './components/SpoilageAlertsView';
 import ReportsAnalyticsView from './components/ReportsAnalyticsView';
 import SettingsIntegrationView from './components/SettingsIntegrationView';
 import AdminLoginModal from './components/AdminLoginModal';
+import AiAssistantModal from './components/AiAssistantModal';
 import ErrorBoundary from './components/ErrorBoundary';
+import { Bot, Sparkles } from 'lucide-react';
 
 import * as api from './api';
 import { fetchRealtimeEnvironment } from './utils/weatherService';
@@ -64,6 +66,7 @@ export default function App() {
   const currentRole = currentUser?.roleCode || 'GUEST';
 
   const [showAdminModal, setShowAdminModal] = useState(false);
+  const [showAiAssistantModal, setShowAiAssistantModal] = useState(false);
   const [selectedStoreId, setSelectedStoreId] = useState(() => {
     const r = normalizeRole(currentUser?.roleCode || currentUser?.actorCode);
     return r === 'ADMIN' ? 'ALL' : String(currentUser?.storeId || 1);
@@ -79,19 +82,18 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [liveStats, setLiveStats] = useState(null);
   const [storeProfile, setStoreProfile] = useState(null);
-  const [enterpriseConfig, setEnterpriseConfig] = useState({
-    enterpriseName: 'SmartSupply AI Retail Chain',
-    hasCentralWarehouse: true,
-    centralWarehouseName: 'Kho trung tâm (DC)',
-    managerPoApprovalLimit: 5000000
-  });
+  const [enterpriseConfig, setEnterpriseConfig] = useState(null);
 
   const activeStoresCount = storesList.filter(s => String(s.status || 'OPEN').toUpperCase() !== 'SUSPENDED').length;
-  const isSingleStore = Boolean(
-    (storesList.length > 0 && activeStoresCount <= 1) ||
-    storeProfile?.isSingleStore ||
-    (storeProfile?.chainStoreCount !== undefined && Number(storeProfile.chainStoreCount) <= 1)
-  );
+  const isSingleStore = (() => {
+    if (typeof storeProfile?.isSingleStore === 'boolean') {
+      return storeProfile.isSingleStore;
+    }
+    if (storeProfile?.chainStoreCount !== undefined && Number(storeProfile.chainStoreCount) > 0) {
+      return Number(storeProfile.chainStoreCount) <= 1;
+    }
+    return Boolean(isAdmin && storesList.length > 0 && activeStoresCount <= 1);
+  })();
 
   // Đồng bộ URL với trang đang mở (9 trang SmartSupply AI)
   useEffect(() => {
@@ -247,45 +249,66 @@ export default function App() {
     ? currentUser.effectivePages.join(',')
     : '';
 
+  const loadInFlightRef = useRef(false);
+  const latestLoadSeqRef = useRef(0);
+
   const loadLiveDatabaseData = async (storeScopeOverride = null) => {
+    if (storeScopeOverride === null && loadInFlightRef.current) {
+      return;
+    }
+    loadInFlightRef.current = true;
+    const seq = ++latestLoadSeqRef.current;
+
     try {
       const effectiveStoreScope = storeScopeOverride !== null
         ? storeScopeOverride
         : (isAdmin ? selectedStoreId : String(currentUser?.storeId || 1));
 
       const canReadDashboard = canAccessPage(currentUser, 'dashboard', isSingleStore);
-      const canReadAudit = isAdmin || roleCode === 'STORE_MANAGER' || canAccessPage(currentUser, 'settings-integration', isSingleStore);
+      const canReadAudit = isAdmin || roleCode === 'STORE_MANAGER';
       const canReadDisposals = canAccessPage(currentUser, 'spoilage-alerts', isSingleStore) || canReadDashboard;
 
-      const [prods, bats, disps, logs, stats, storeProf, allStores, trfRes, entRes] = await Promise.all([
+      const secondaryPromise = Promise.all([
+        canReadDisposals ? api.fetchDisposals(effectiveStoreScope).catch(() => []) : Promise.resolve([]),
+        canReadAudit ? api.fetchAuditLogs(effectiveStoreScope).catch(() => []) : Promise.resolve([]),
+        api.fetchStockTransfers('ALL').catch(() => null)
+      ]).then(([disps, logs, trfRes]) => {
+        if (seq !== latestLoadSeqRef.current) return;
+        if (Array.isArray(disps)) setDisposals(disps);
+        if (Array.isArray(logs)) setAuditLogs(logs);
+        if (trfRes && Array.isArray(trfRes.data)) {
+          setPendingTransfersCount(
+            trfRes.data.filter(t => ['PROPOSED', 'PENDING'].includes(String(t.status).toUpperCase())).length
+          );
+        }
+      });
+
+      const [prods, bats, stats, storeProf, allStores, entRes] = await Promise.all([
         api.fetchProducts().catch(() => []),
         api.fetchBatches(effectiveStoreScope).catch(() => []),
-        canReadDisposals ? api.fetchDisposals(effectiveStoreScope).catch(() => []) : Promise.resolve([]),
-        canReadAudit ? api.fetchAuditLogs().catch(() => []) : Promise.resolve([]),
         canReadDashboard ? api.fetchDashboardOverview(effectiveStoreScope).catch(() => null) : Promise.resolve(null),
         api.apiGetStoreProfile(effectiveStoreScope === 'ALL' ? null : effectiveStoreScope).catch(() => null),
         api.apiGetAllStores().catch(() => []),
-        api.fetchStockTransfers('ALL').catch(() => null),
         api.apiGetEnterpriseConfig().catch(() => null)
       ]);
 
+      if (seq !== latestLoadSeqRef.current) return;
       if (Array.isArray(prods)) setProducts(prods);
       if (Array.isArray(bats)) setBatches(bats);
-      if (Array.isArray(disps)) setDisposals(disps);
-      if (Array.isArray(logs)) setAuditLogs(logs);
       if (stats) setLiveStats(stats);
       if (storeProf) setStoreProfile(storeProf);
       if (Array.isArray(allStores)) setStoresList(allStores);
       if (entRes && entRes.success && entRes.data) setEnterpriseConfig(entRes.data);
-      if (trfRes && Array.isArray(trfRes.data)) {
-        setPendingTransfersCount(
-          trfRes.data.filter(t => ['PROPOSED', 'PENDING'].includes(String(t.status).toUpperCase())).length
-        );
-      }
+      setIsLoading(false);
+
+      await secondaryPromise;
     } catch (err) {
       console.warn('Lỗi tải dữ liệu hệ thống:', err);
-    } finally {
       setIsLoading(false);
+    } finally {
+      if (seq === latestLoadSeqRef.current) {
+        loadInFlightRef.current = false;
+      }
     }
   };
 
@@ -302,7 +325,7 @@ export default function App() {
       }
     }, 15000);
     return () => clearInterval(interval);
-  }, [currentUser?.id, currentUser?.roleCode, selectedStoreId, effectivePagesKey]);
+  }, [currentUser?.id, currentUser?.roleCode, selectedStoreId, effectivePagesKey, isSingleStore]);
 
   const handleLoginSuccess = (user, token) => {
     if (token) localStorage.setItem('token', token);
@@ -316,7 +339,6 @@ export default function App() {
     setActiveTab(nextTab);
     setRouteSubTab(null);
     window.history.pushState(null, '', `/${nextTab}`);
-    loadLiveDatabaseData(nextStoreScope);
   };
 
   const handleLogout = async () => {
@@ -641,6 +663,48 @@ export default function App() {
             setShowAdminModal(false);
           }}
         />
+      )}
+
+      {currentUser && (
+        <AiAssistantModal
+          isOpen={showAiAssistantModal}
+          onClose={() => setShowAiAssistantModal(false)}
+          currentUser={currentUser}
+          selectedStoreId={effectiveSelectedStoreId}
+          isSingleStore={isSingleStore}
+        />
+      )}
+
+      {currentUser && !showAiAssistantModal && (
+        <button
+          type="button"
+          onClick={() => setShowAiAssistantModal(true)}
+          aria-label="Mở Trợ lý AI SmartSupply"
+          title="Mở Trợ lý AI SmartSupply"
+          style={{
+            position: 'fixed',
+            right: '20px',
+            bottom: '20px',
+            zIndex: 900,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '10px 16px',
+            borderRadius: '999px',
+            background: 'linear-gradient(135deg, #1d4ed8 0%, #4338ca 100%)',
+            color: '#ffffff',
+            border: '1px solid rgba(255, 255, 255, 0.25)',
+            boxShadow: '0 8px 24px rgba(37, 99, 235, 0.35)',
+            cursor: 'pointer',
+            fontSize: '0.82rem',
+            fontWeight: 700,
+            letterSpacing: '0.01em'
+          }}
+        >
+          <Bot size={17} />
+          <span>Trợ lý AI</span>
+          <Sparkles size={14} color="#fde047" />
+        </button>
       )}
     </div>
   );

@@ -423,7 +423,7 @@ export default function SpoilageAlertsView({
                       const yellow = isYellow(b);
                       const qty = Number(b.currentQuantity ?? b.quantity ?? 0);
                       const aiInfo = aiRiskMap[Number(b.productId)];
-                      const estDaily = Number(aiInfo?.adjustedDailyDemand || 3);
+                      const estDaily = Number(aiInfo?.adjustedDailyDemand ?? 0);
                       const daysLeft = Number(b.daysLeft ?? 0);
                       const estSellBeforeExp = daysLeft > 0 ? Math.round(estDaily * daysLeft) : 0;
                       const estSpoilageQty = exp ? qty : Math.max(0, qty - estSellBeforeExp);

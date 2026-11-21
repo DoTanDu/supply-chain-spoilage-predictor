@@ -63,10 +63,11 @@ export default function PrintDiscountStickerModal({
     (batch.product_name && p.name === batch.product_name)
   );
 
-  const productName = matchedProd?.name || batch.productName || batch.product_name || batch.name || 'Sản phẩm cận date';
-  const sku = matchedProd?.sku || batch.sku || batch.productSku || 'SKU-FMCG';
-  const unit = matchedProd?.unit || batch.unit || 'gói';
-  const originalPrice = Number(matchedProd?.price || batch.price || batch.salePrice || batch.sale_price || 35000);
+  const productName = matchedProd?.name || batch.productName || batch.product_name || batch.name || '—';
+  const sku = matchedProd?.sku || batch.sku || batch.productSku || '—';
+  const unit = matchedProd?.unit || batch.unit || '';
+  const originalPrice = Number(matchedProd?.sellingPrice || matchedProd?.price || batch.sellingPrice || batch.price || batch.salePrice || batch.sale_price || 0);
+  const hasPrice = originalPrice > 0;
   const discountedPrice = Math.round((originalPrice * (100 - selectedDiscount)) / 100);
   const savingsAmount = originalPrice - discountedPrice;
 
@@ -78,7 +79,7 @@ export default function PrintDiscountStickerModal({
 
   const daysLeft = batch.daysLeft !== undefined 
     ? Number(batch.daysLeft) 
-    : (batch.days_left !== undefined ? Number(batch.days_left) : 3);
+    : (batch.days_left !== undefined ? Number(batch.days_left) : 0);
 
   const currentStock = batch.currentQuantity !== undefined 
     ? Number(batch.currentQuantity) 
@@ -429,15 +430,17 @@ export default function PrintDiscountStickerModal({
               <button
                 type="button"
                 onClick={handlePrint}
+                disabled={!hasPrice}
+                title={hasPrice ? undefined : 'Sản phẩm chưa có giá niêm yết, không thể in tem'}
                 style={{
                   padding: '8px 18px',
                   borderRadius: '8px',
                   border: 'none',
-                  background: '#ea580c',
+                  background: hasPrice ? '#ea580c' : '#94a3b8',
                   color: '#ffffff',
                   fontSize: '0.825rem',
                   fontWeight: 700,
-                  cursor: 'pointer',
+                  cursor: hasPrice ? 'pointer' : 'not-allowed',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',

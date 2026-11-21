@@ -82,7 +82,7 @@ export default function SmartOrderingView({
     try {
       const [ropRes, poRes, supRes] = await Promise.all([
         fetchRopForecast(wCond, isHoliday, selectedStoreId),
-        fetchPurchaseOrders(),
+        fetchPurchaseOrders(selectedStoreId),
         apiGetSuppliers(false).catch(() => [])
       ]);
       if (ropRes && ropRes.success) {
@@ -246,19 +246,6 @@ export default function SmartOrderingView({
         </div>
 
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-          {isAdmin && storesList.length > 0 && (
-            <select
-              aria-label="Chọn chi nhánh lập đơn"
-              value={selectedStoreId || 'ALL'}
-              onChange={(e) => onSelectStore && onSelectStore(e.target.value)}
-              style={{ width: 'auto', minWidth: '180px' }}
-            >
-              <option value="ALL">Toàn chuỗi (Mặc định tạo cho CN #1)</option>
-              {storesList.map(st => (
-                <option key={st.id} value={String(st.id)}>{st.storeCode} — {st.storeName}</option>
-              ))}
-            </select>
-          )}
           <button type="button" className="ss-btn ss-btn-secondary" onClick={loadAll} disabled={loading}>
             <RefreshCw size={15} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} /> Làm mới
           </button>
@@ -552,6 +539,7 @@ export default function SmartOrderingView({
               managerApprovalLimit={Number(enterpriseConfig?.managerPoApprovalLimit ?? 5000000)}
               onRequestAdminLogin={onRequestAdminLogin}
               storeProfile={storeProfile}
+              storesList={storesList}
             />
           </div>
         </div>

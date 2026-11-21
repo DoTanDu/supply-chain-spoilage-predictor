@@ -17,10 +17,11 @@ import {
 } from 'lucide-react';
 import { apiCreateUser } from '../api';
 
-export default function CreateUserModal({ isOpen, onClose, onUserCreated }) {
+export default function CreateUserModal({ isOpen, onClose, onUserCreated, storesList = [] }) {
   const [username, setUsername] = useState('');
   const [fullName, setFullName] = useState('');
   const [roleCode, setRoleCode] = useState('CASHIER');
+  const [storeId, setStoreId] = useState(() => Number(storesList?.[0]?.id || 1));
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [email, setEmail] = useState('');
@@ -82,6 +83,7 @@ export default function CreateUserModal({ isOpen, onClose, onUserCreated }) {
     setUsername('');
     setFullName('');
     setRoleCode('CASHIER');
+    setStoreId(Number(storesList?.[0]?.id || 1));
     setPassword('');
     setConfirmPassword('');
     setEmail('');
@@ -135,6 +137,7 @@ export default function CreateUserModal({ isOpen, onClose, onUserCreated }) {
         fullName: fullName.trim(),
         password,
         roleCode,
+        storeId: roleCode === 'ADMIN' ? null : Number(storeId || 1),
         email: email.trim() || null,
         phone: phone.trim() || null
       };
@@ -279,7 +282,7 @@ export default function CreateUserModal({ isOpen, onClose, onUserCreated }) {
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value.toLowerCase())}
-                  placeholder="ví dụ: cashier_ca2"
+                  placeholder="ví dụ: nhanvien_ca1"
                   disabled={loading}
                   autoFocus
                   style={{
@@ -367,6 +370,37 @@ export default function CreateUserModal({ isOpen, onClose, onUserCreated }) {
               })}
             </div>
           </div>
+
+          {/* Chọn chi nhánh trực thuộc nếu không phải ADMIN */}
+          {roleCode !== 'ADMIN' && storesList.length > 0 && (
+            <div>
+              <label style={{ display: 'block', fontSize: '0.775rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '5px' }}>
+                Chi nhánh trực thuộc: <span style={{ color: 'var(--danger-red)' }}>*</span>
+              </label>
+              <select
+                value={storeId}
+                onChange={(e) => setStoreId(Number(e.target.value))}
+                disabled={loading}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  background: 'var(--bg-subtle)',
+                  border: '1px solid var(--border-color)',
+                  color: 'var(--text-main)',
+                  fontSize: '0.85rem',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              >
+                {storesList.map(st => (
+                  <option key={st.id} value={st.id}>
+                    {st.storeCode} — {st.storeName}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Row 2: Password & Confirm Password */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>

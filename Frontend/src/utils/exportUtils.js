@@ -335,7 +335,7 @@ export function exportAuditLogsToExcel(logs = []) {
       escapeCsv(log.action || log.actionType || log.action_type || 'INFO'),
       escapeCsv(log.entityName || log.entity_name || log.table || ''),
       escapeCsv(log.entityId || log.entity_id || log.recordId || ''),
-      escapeCsv(log.ip || log.ipAddress || log.ip_address || '127.0.0.1'),
+      escapeCsv(log.ip || log.ipAddress || log.ip_address || ''),
       escapeCsv(log.details || log.description || '')
     ].join(',');
   });

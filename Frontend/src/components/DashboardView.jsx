@@ -107,6 +107,7 @@ export default function DashboardView({
   const [aiMatrix, setAiMatrix] = useState(null);
   const [poList, setPoList] = useState([]);
   const [transferList, setTransferList] = useState([]);
+  const [dashFeedback, setDashFeedback] = useState(null);
 
   useEffect(() => {
     let mounted = true;
@@ -118,7 +119,7 @@ export default function DashboardView({
       (!isSingleStore && (!currentUser || canAccessPage(currentUser, 'stock-transfer', isSingleStore)))
         ? fetchAiSupplyChainMatrix(wCond, isHol).catch(() => null)
         : Promise.resolve(null),
-      fetchPurchaseOrders().catch(() => null),
+      fetchPurchaseOrders(selectedStoreId).catch(() => null),
       !isSingleStore ? fetchStockTransfers('ALL').catch(() => null) : Promise.resolve(null)
     ]).then(([ropRes, matRes, poRes, trfRes]) => {
       if (!mounted) return;
@@ -174,12 +175,17 @@ export default function DashboardView({
   const crossStoreBenchmark = liveStats?.crossStoreBenchmark || [];
 
   // 3. DONUT CHART PHÂN BỔ LÔ HÀNG
-  const totalActiveBatches = Math.max(1, safeBatches.length + warningBatches.length + criticalBatches.length + expiredBatches.length);
+  const rawTotalBatches = safeBatches.length + warningBatches.length + criticalBatches.length + expiredBatches.length;
+  const totalActiveBatches = Math.max(1, rawTotalBatches);
+  const safePct = rawTotalBatches === 0 ? 0 : Math.round((safeBatches.length / totalActiveBatches) * 100);
+  const warnPct = rawTotalBatches === 0 ? 0 : Math.round((warningBatches.length / totalActiveBatches) * 100);
+  const critPct = rawTotalBatches === 0 ? 0 : Math.round((criticalBatches.length / totalActiveBatches) * 100);
+  const expPct = rawTotalBatches === 0 ? 0 : Math.max(0, 100 - safePct - warnPct - critPct);
   const donutSlices = [
-    { id: 'safe', label: 'Vùng Xanh (An toàn)', count: safeBatches.length, pct: Math.round((safeBatches.length / totalActiveBatches) * 100), color: '#4f46e5' },
-    { id: 'warning', label: 'Vùng Vàng (Cảnh báo)', count: warningBatches.length, pct: Math.round((warningBatches.length / totalActiveBatches) * 100), color: '#d97706' },
-    { id: 'critical', label: 'Vùng Đỏ (≤ 3 ngày)', count: criticalBatches.length, pct: Math.round((criticalBatches.length / totalActiveBatches) * 100), color: '#e11d48' },
-    { id: 'expired', label: 'Quá hạn (Khóa)', count: expiredBatches.length, pct: Math.max(0, 100 - Math.round((safeBatches.length / totalActiveBatches) * 100) - Math.round((warningBatches.length / totalActiveBatches) * 100) - Math.round((criticalBatches.length / totalActiveBatches) * 100)), color: '#7e22ce' }
+    { id: 'safe', label: 'Vùng Xanh (An toàn)', count: safeBatches.length, pct: safePct, color: '#4f46e5' },
+    { id: 'warning', label: 'Vùng Vàng (Cảnh báo)', count: warningBatches.length, pct: warnPct, color: '#d97706' },
+    { id: 'critical', label: 'Vùng Đỏ (≤ 3 ngày)', count: criticalBatches.length, pct: critPct, color: '#e11d48' },
+    { id: 'expired', label: 'Quá hạn (Khóa)', count: expiredBatches.length, pct: expPct, color: '#7e22ce' }
   ];
   const radius = 62;
   const circumference = 2 * Math.PI * radius;
@@ -243,7 +249,7 @@ export default function DashboardView({
   const urgentSpoilageList = useMemo(() => {
     return [...criticalBatches, ...warningBatches]
       .sort((a, b) => Number(a.daysLeft ?? 99) - Number(b.daysLeft ?? 99))
-      .slice(0, 8);
+      .slice(0, 5);
   }, [criticalBatches, warningBatches]);
 
   const ropAlerts = liveStats?.actionBoard?.ropAlertItems || [];
@@ -255,154 +261,146 @@ export default function DashboardView({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
       {/* Page Header */}
+      {dashFeedback && (
+        <div
+          role="status"
+          style={{
+            padding: '10px 14px',
+            borderRadius: '8px',
+            background: dashFeedback.type === 'error' ? 'var(--danger-red-bg)' : 'var(--safe-green-bg)',
+            color: dashFeedback.type === 'error' ? 'var(--danger-red-light)' : 'var(--safe-green-light)',
+            border: `1px solid ${dashFeedback.type === 'error' ? 'var(--danger-red-border)' : 'var(--safe-green-border)'}`,
+            fontSize: '0.84rem',
+            fontWeight: 600,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}
+        >
+          <span>{dashFeedback.text}</span>
+          <button type="button" onClick={() => setDashFeedback(null)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontWeight: 800 }}>×</button>
+        </div>
+      )}
       <div className="ss-page-header">
         <div>
           <h1 className="ss-page-title">{scopeTitle}</h1>
         </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-          {isAdmin && storesList.length > 0 && (
-            <select
-              aria-label="Lọc theo chi nhánh trên Dashboard"
-              value={selectedStoreId || 'ALL'}
-              onChange={(e) => onSelectStore && onSelectStore(e.target.value)}
-              style={{ width: 'auto', minWidth: '200px', fontWeight: 600 }}
-            >
-              <option value="ALL">Toàn chuỗi ({storesList.length} chi nhánh)</option>
-              {storesList.map(st => (
-                <option key={st.id} value={String(st.id)}>
-                  {st.storeCode} — {st.storeName}
-                </option>
-              ))}
-            </select>
-          )}
-          <button type="button" className="ss-btn ss-btn-secondary" onClick={() => setActiveTab('ai-forecast')}>
-            <TrendingUp size={15} /> AI Forecast
-          </button>
-          <button type="button" className="ss-btn ss-btn-primary" onClick={() => setActiveTab('smart-ordering')}>
-            <ShoppingBag size={15} /> Smart Ordering
-          </button>
-        </div>
       </div>
 
-      {/* Layer Separation Banner: Thực tế vs AI Dự báo vs Trạng thái Phê duyệt */}
+      {/* 4 Thẻ KPI Điều hành Tinh gọn */}
       <div className="ss-kpi-grid">
-        {/* Q1: Bán được bao nhiêu? */}
+        {/* 1. Doanh số bán lẻ */}
         <article className="ss-card ss-card-pad" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-            <span className="ss-badge ss-badge-indigo">Thực tế & AI Dự báo</span>
+            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)' }}>Doanh số bán lẻ</span>
             <DollarSign size={16} color="var(--primary)" aria-hidden="true" />
           </div>
           <div>
-            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>01. Sức mua & Doanh số</div>
-            <div className="num-tabular" style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-main)', marginTop: '3px' }}>
+            <div className="num-tabular" style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-main)' }}>
               {cumulativeRevenue.toLocaleString('vi-VN')} <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>đ</span>
             </div>
-            <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+            <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '3px' }}>
               Hôm nay: <strong className="num-tabular" style={{ color: 'var(--text-main)' }}>{todayRevenue.toLocaleString('vi-VN')} đ</strong>
             </div>
           </div>
-          <div style={{ paddingTop: '8px', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.76rem' }}>
+          <div style={{ paddingTop: '8px', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', fontSize: '0.76rem' }}>
             <span style={{ color: 'var(--text-muted)' }}>
-              AI dự báo 7d: <strong className="num-tabular" style={{ color: 'var(--primary)' }}>
-                {aiForecastSummary ? `${aiForecastSummary.total7d.toLocaleString('vi-VN')} ĐV` : 'Đang tính...'}
-              </strong>
+              {aiForecastSummary && aiForecastSummary.total7d > 0 ? (
+                <>Dự báo 7d: <strong className="num-tabular" style={{ color: 'var(--primary)' }}>{aiForecastSummary.total7d.toLocaleString('vi-VN')} ĐV</strong></>
+              ) : (
+                <>Vốn tồn kệ: <strong className="num-tabular" style={{ color: 'var(--text-main)' }}>{totalInventoryCost.toLocaleString('vi-VN')} đ</strong></>
+              )}
             </span>
-            <button type="button" onClick={() => setActiveTab('ai-forecast')} style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 700, cursor: 'pointer', fontSize: '0.76rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+            <button type="button" onClick={() => setActiveTab('ai-forecast')} style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 700, cursor: 'pointer', fontSize: '0.76rem', display: 'inline-flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap', flexShrink: 0, padding: 0 }}>
               Chi tiết <ArrowRight size={12} />
             </button>
           </div>
         </article>
 
-        {/* Q2: Nên nhập thêm bao nhiêu? */}
+        {/* 2. Đề xuất nhập hàng */}
         <article className="ss-card ss-card-pad" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-            <span className="ss-badge ss-badge-info">AI ROP & Phê duyệt PO</span>
+            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)' }}>Đề xuất nhập hàng</span>
             <ShoppingBag size={16} color="var(--accent-blue)" aria-hidden="true" />
           </div>
           <div>
-            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>02. Đề xuất Nhập hàng</div>
-            <div className="num-tabular" style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-main)', marginTop: '3px' }}>
+            <div className="num-tabular" style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-main)' }}>
               {aiForecastSummary?.reorderCount ?? ropAlerts.length} <span style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--text-muted)' }}>SKU cần nhập</span>
             </div>
-            <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+            <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '3px' }}>
               Khuyến nghị đặt: <strong className="num-tabular" style={{ color: 'var(--accent-blue-light)' }}>{(aiForecastSummary?.totalSuggestedOrder || 0).toLocaleString('vi-VN')} ĐV</strong>
             </div>
           </div>
-          <div style={{ paddingTop: '8px', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.76rem' }}>
+          <div style={{ paddingTop: '8px', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', fontSize: '0.76rem' }}>
             <span style={{ color: 'var(--text-muted)' }}>
-              PO chờ duyệt: <strong>{pendingPoCount}</strong> • Đang giao: <strong>{activePoCount}</strong>
+              <strong>{pendingPoCount}</strong> PO chờ duyệt · <strong>{activePoCount}</strong> đang giao
             </span>
-            <button type="button" onClick={() => setActiveTab('smart-ordering')} style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 700, cursor: 'pointer', fontSize: '0.76rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+            <button type="button" onClick={() => setActiveTab('smart-ordering')} style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 700, cursor: 'pointer', fontSize: '0.76rem', display: 'inline-flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap', flexShrink: 0, padding: 0 }}>
               Duyệt PO <ArrowRight size={12} />
             </button>
           </div>
         </article>
 
-        {/* Q3: Cửa hàng nào dư, cửa hàng nào thiếu? */}
+        {/* 3. Điều phối liên chi nhánh */}
         <article className="ss-card ss-card-pad" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-            <span className={`ss-badge ${isSingleStore ? 'ss-badge-neutral' : 'ss-badge-warning'}`}>
-              {isSingleStore ? 'Chế độ 1 Cửa hàng' : 'Điều phối OR-Tools'}
+            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+              {isSingleStore ? 'Tồn kho cửa hàng' : 'Điều phối chi nhánh'}
             </span>
             <ArrowLeftRight size={16} color="var(--warning-yellow)" aria-hidden="true" />
           </div>
           <div>
-            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>03. Cân bằng Dư – Thiếu</div>
             {isSingleStore ? (
               <>
-                <div style={{ fontSize: '1.08rem', fontWeight: 700, color: 'var(--text-main)', marginTop: '4px' }}>
-                  Cửa hàng độc lập
+                <div className="num-tabular" style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-main)' }}>
+                  {totalStockUnits.toLocaleString('vi-VN')} <span style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--text-muted)' }}>ĐV</span>
                 </div>
-                <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                  Tồn kho hiện tại: <strong>{totalStockUnits.toLocaleString('vi-VN')} ĐV</strong> ({totalInventoryCost.toLocaleString('vi-VN')} đ)
+                <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '3px' }}>
+                  Cửa hàng độc lập
                 </div>
               </>
             ) : (
               <>
-                <div className="num-tabular" style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-main)', marginTop: '3px' }}>
-                  {orToolsProposals.length} <span style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--text-muted)' }}>phương án đề xuất</span>
+                <div className="num-tabular" style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-main)' }}>
+                  {orToolsProposals.length} <span style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--text-muted)' }}>đề xuất</span>
                 </div>
-                <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                  Phiếu chờ duyệt: <strong style={{ color: 'var(--warning-yellow-light)' }}>{pendingTransfers.length}</strong> • Đang chuyển: <strong>{inTransitTransfers.length}</strong>
+                <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '3px' }}>
+                  Chờ duyệt: <strong style={{ color: 'var(--warning-yellow-light)' }}>{pendingTransfers.length}</strong> · Đang chuyển: <strong>{inTransitTransfers.length}</strong>
                 </div>
               </>
             )}
           </div>
-          <div style={{ paddingTop: '8px', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.76rem' }}>
+          <div style={{ paddingTop: '8px', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', fontSize: '0.76rem' }}>
             <span style={{ color: 'var(--text-muted)' }}>
-              Vốn tồn kệ: <strong className="num-tabular">{(totalInventoryCost / 1000000).toFixed(1)}M đ</strong>
+              {isSingleStore ? 'Chế độ đơn lẻ' : `Cân bằng ${storesList.length || 3} chi nhánh`}
             </span>
             {!isSingleStore && (
-              <button type="button" onClick={() => setActiveTab('stock-transfer')} style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 700, cursor: 'pointer', fontSize: '0.76rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+              <button type="button" onClick={() => setActiveTab('stock-transfer')} style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 700, cursor: 'pointer', fontSize: '0.76rem', display: 'inline-flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap', flexShrink: 0, padding: 0 }}>
                 Điều phối <ArrowRight size={12} />
               </button>
             )}
           </div>
         </article>
 
-        {/* Q4: Sản phẩm nào có nguy cơ hết hạn? */}
+        {/* 4. Vốn rủi ro cận hạn */}
         <article className="ss-card ss-card-pad" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-            <span className={`ss-badge ${criticalBatches.length > 0 ? 'ss-badge-danger' : 'ss-badge-safe'}`}>
-              Rủi ro Hạn dùng
-            </span>
+            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)' }}>Vốn rủi ro cận hạn</span>
             <AlertTriangle size={16} color={criticalBatches.length > 0 ? 'var(--danger-red)' : 'var(--safe-green)'} aria-hidden="true" />
           </div>
           <div>
-            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>04. Nguy cơ Lãng phí</div>
-            <div className="num-tabular" style={{ fontSize: '1.35rem', fontWeight: 800, color: criticalBatches.length > 0 ? 'var(--danger-red-light)' : 'var(--text-main)', marginTop: '3px' }}>
+            <div className="num-tabular" style={{ fontSize: '1.35rem', fontWeight: 800, color: criticalBatches.length > 0 ? 'var(--danger-red-light)' : 'var(--text-main)' }}>
               {atRiskCost.toLocaleString('vi-VN')} <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>đ</span>
             </div>
-            <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-              <strong style={{ color: 'var(--danger-red-light)' }}>{criticalBatches.length} Đỏ</strong> • <strong style={{ color: 'var(--warning-yellow-light)' }}>{warningBatches.length} Vàng</strong> • <strong style={{ color: 'var(--expired-purple)' }}>{expiredBatches.length} Quá hạn</strong>
+            <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '3px' }}>
+              <strong style={{ color: 'var(--danger-red-light)' }}>{criticalBatches.length} Đỏ</strong> · <strong style={{ color: 'var(--warning-yellow-light)' }}>{warningBatches.length} Vàng</strong> · <strong style={{ color: 'var(--expired-purple)' }}>{expiredBatches.length} Quá hạn</strong>
             </div>
           </div>
-          <div style={{ paddingTop: '8px', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.76rem' }}>
-            <span style={{ color: 'var(--text-muted)' }}>
-              Hao hụt thực tế: <strong className="num-tabular">{spoilageRate}%</strong> ({totalDisposalCost.toLocaleString('vi-VN')} đ)
+          <div style={{ paddingTop: '8px', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', fontSize: '0.76rem' }}>
+            <span style={{ color: 'var(--text-muted)' }} title={`Tổng giá trị tiêu hủy đã chốt: ${totalDisposalCost.toLocaleString('vi-VN')} đ`}>
+              Hao hụt: <strong className="num-tabular">{spoilageRate}%</strong>
             </span>
-            <button type="button" onClick={() => setActiveTab('spoilage-alerts')} style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 700, cursor: 'pointer', fontSize: '0.76rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+            <button type="button" onClick={() => setActiveTab('spoilage-alerts')} style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 700, cursor: 'pointer', fontSize: '0.76rem', display: 'inline-flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap', flexShrink: 0, padding: 0 }}>
               Xử lý <ArrowRight size={12} />
             </button>
           </div>
@@ -574,74 +572,6 @@ export default function DashboardView({
         </section>
       </div>
 
-      {/* Chain Branch Overview (When OWNER views ALL stores) */}
-      {isAdmin && selectedStoreId === 'ALL' && crossStoreBenchmark.length > 1 && (
-        <section className="ss-card ss-card-pad">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
-            <div>
-              <h2 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>
-                So sánh nhanh các Chi nhánh trong Chuỗi
-              </h2>
-              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                Trạng thái tồn kho thực tế, doanh thu và nhận diện chi nhánh dư/thiếu
-              </p>
-            </div>
-            <button type="button" className="ss-btn ss-btn-secondary ss-btn-sm" onClick={() => setActiveTab('store-management')}>
-              <Building2 size={14} /> Quản lý chi nhánh
-            </button>
-          </div>
-
-          <div className="table-wrapper" tabIndex={0} role="region" aria-label="Bảng so sánh chi nhánh">
-            <table className="ss-table ss-table-responsive">
-              <thead>
-                <tr>
-                  <th scope="col">Chi nhánh</th>
-                  <th scope="col">Tồn khả dụng</th>
-                  <th scope="col">Vốn tồn kho</th>
-                  <th scope="col">Doanh số POS</th>
-                  <th scope="col">Lô cảnh báo</th>
-                  <th scope="col">Tình trạng cân bằng</th>
-                  <th scope="col" style={{ textAlign: 'right' }}>Xem riêng</th>
-                </tr>
-              </thead>
-              <tbody>
-                {crossStoreBenchmark.map(st => (
-                  <tr key={st.storeId}>
-                    <td data-label="Chi nhánh">
-                      <div style={{ fontWeight: 700, color: 'var(--text-main)' }}>{st.storeName}</div>
-                      <div style={{ fontSize: '0.74rem', color: 'var(--text-dim)', fontFamily: 'monospace' }}>{st.storeCode}</div>
-                    </td>
-                    <td data-label="Tồn khả dụng" className="num-tabular">{Number(st.totalAvailableUnits || 0).toLocaleString('vi-VN')} ĐV</td>
-                    <td data-label="Vốn tồn kho" className="num-tabular">{Number(st.totalInventoryValue || 0).toLocaleString('vi-VN')} đ</td>
-                    <td data-label="Doanh số POS" className="num-tabular" style={{ fontWeight: 700, color: 'var(--primary)' }}>
-                      {Number(st.totalSalesRevenue || 0).toLocaleString('vi-VN')} đ
-                    </td>
-                    <td data-label="Lô cảnh báo">
-                      <span className="ss-badge ss-badge-danger" style={{ marginRight: '4px' }}>{st.redBatchesCount} Đỏ</span>
-                      <span className="ss-badge ss-badge-warning">{st.yellowBatchesCount} Vàng</span>
-                    </td>
-                    <td data-label="Tình trạng">
-                      <span className={`ss-badge ${st.supplyStatus === 'SURPLUS' ? 'ss-badge-warning' : st.supplyStatus === 'DEFICIT' ? 'ss-badge-danger' : 'ss-badge-safe'}`}>
-                        {st.supplyStatusLabel}
-                      </span>
-                    </td>
-                    <td data-label="Xem riêng" style={{ textAlign: 'right' }}>
-                      <button
-                        type="button"
-                        className="ss-btn ss-btn-secondary ss-btn-sm"
-                        onClick={() => onSelectStore && onSelectStore(String(st.storeId))}
-                      >
-                        Lọc CN này
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
-
       {/* Action Board with Explicit Approval Status Separation */}
       <section className="ss-card" style={{ overflow: 'hidden' }}>
         <div style={{ padding: '16px 20px 0' }}>
@@ -749,16 +679,39 @@ export default function DashboardView({
                                 <button
                                   type="button"
                                   className="ss-btn ss-btn-primary ss-btn-sm"
-                                  onClick={() => onQuickDiscount(b.id, isRed ? 40 : 20)}
+                                  onClick={async () => {
+                                    const pct = isRed ? 40 : 15;
+                                    try {
+                                      const res = await onQuickDiscount(b.id, pct);
+                                      if (res && res.success) {
+                                        setDashFeedback({ type: 'success', text: `Đã kích hoạt Quick Markdown -${pct}% cho lô ${b.batchCode}.` });
+                                      } else {
+                                        setDashFeedback({ type: 'error', text: res?.message || `Không thể áp dụng giảm ${pct}% cho lô ${b.batchCode}.` });
+                                      }
+                                    } catch (err) {
+                                      setDashFeedback({ type: 'error', text: err.message || 'Lỗi khi áp dụng Quick Markdown.' });
+                                    }
+                                  }}
                                 >
-                                  <Zap size={13} /> Giảm {isRed ? '40%' : '20%'}
+                                  <Zap size={13} /> Giảm {isRed ? '40%' : '15%'}
                                 </button>
                               )}
                               {!b.isShelfRotated && onRotateShelf && (
                                 <button
                                   type="button"
                                   className="ss-btn ss-btn-secondary ss-btn-sm"
-                                  onClick={() => onRotateShelf(b.id)}
+                                  onClick={async () => {
+                                    try {
+                                      const res = await onRotateShelf(b.id);
+                                      if (res && res.success) {
+                                        setDashFeedback({ type: 'success', text: `Đã xác nhận đảo kệ mặt tiền cho lô ${b.batchCode}.` });
+                                      } else {
+                                        setDashFeedback({ type: 'error', text: res?.message || `Không thể xác nhận đảo kệ lô ${b.batchCode}.` });
+                                      }
+                                    } catch (err) {
+                                      setDashFeedback({ type: 'error', text: err.message || 'Lỗi khi xác nhận đảo kệ.' });
+                                    }
+                                  }}
                                 >
                                   <RotateCw size={13} /> Đảo kệ
                                 </button>
