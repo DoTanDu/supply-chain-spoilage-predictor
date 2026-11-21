@@ -1,6 +1,19 @@
 // server.js - Supply Chain Spoilage Predictor API
 // Clean Architecture 4-Tier Server with Microsoft SQL Server LocalDB
 
+const fs = require('fs');
+const path = require('path');
+
+// Tự động nạp Backend/.env nếu tồn tại (API có sẵn từ Node 20.12+, không ghi đè env hệ thống)
+const envFilePath = path.join(__dirname, '.env');
+if (typeof process.loadEnvFile === 'function' && fs.existsSync(envFilePath)) {
+  try {
+    process.loadEnvFile(envFilePath);
+  } catch (envErr) {
+    console.warn('[ENV] Không thể nạp file .env:', envErr.message);
+  }
+}
+
 const express = require('express');
 const cors = require('cors');
 
@@ -18,6 +31,7 @@ const purchaseOrderRoutes = require('./src/presentation/routes/purchaseOrderRout
 const dashboardRoutes = require('./src/presentation/routes/dashboardRoutes');
 const supplierRoutes = require('./src/presentation/routes/supplierRoutes');
 const stockTransferRoutes = require('./src/presentation/routes/stockTransferRoutes');
+const aiAssistantRoutes = require('./src/presentation/routes/aiAssistantRoutes');
 
 // Import DI Container
 const { auditLogRepository } = require('./src/container');
@@ -169,6 +183,7 @@ app.use('/api/forecast', forecastRoutes);
 app.use('/api/purchase-orders', purchaseOrderRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/stock-transfers', stockTransferRoutes);
+app.use('/api/ai/assistant', aiAssistantRoutes);
 app.use('/api/ai', stockTransferRoutes);
 
 // 4. Aliases for Backward Compatibility with existing frontend
@@ -180,7 +195,8 @@ app.use(errorHandler);
 
 // Start HTTP Server
 if (require.main === module) {
-  ensureSmartSupplySchema()
+  SqlConnection.warmUp(2)
+    .then(() => ensureSmartSupplySchema())
     .then(() => {
       app.listen(PORT, () => {
         console.log(`[SERVER] SmartSupply AI API running on http://localhost:${PORT}`);
