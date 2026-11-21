@@ -2,6 +2,48 @@
 const SqlConnection = require('../sqlConnection');
 const ensureSmartSupplySchema = require('../ensureSmartSupplySchema');
 const IBatchRepository = require('../../../domain/interfaces/IBatchRepository');
+const { formatLocalDateYMD } = require('../../../domain/utils/dateUtils');
+
+const EXPIRY_SWEEP_INTERVAL_MS = 60 * 1000;
+let lastExpirySweepAt = 0;
+let lastExpirySweepDate = '';
+let expirySweepInFlight = null;
+
+async function syncExpiredBatchesIfDue() {
+  const todayYmd = formatLocalDateYMD(new Date());
+  const now = Date.now();
+  if (lastExpirySweepDate === todayYmd && (now - lastExpirySweepAt) < EXPIRY_SWEEP_INTERVAL_MS) {
+    return;
+  }
+  if (expirySweepInFlight) {
+    return expirySweepInFlight;
+  }
+  expirySweepInFlight = (async () => {
+    try {
+      const dueRows = await SqlConnection.queryJson(`
+        SELECT TOP 1 1 AS hasDue
+        FROM batches
+        WHERE expiry_date <= CAST(GETDATE() AS DATE)
+          AND status IN ('ACTIVE', 'WARNING')
+          AND current_quantity > 0;
+      `);
+      if (dueRows && dueRows.length > 0) {
+        await SqlConnection.executeSql(`
+          UPDATE batches
+          SET status = 'EXPIRED'
+          WHERE expiry_date <= CAST(GETDATE() AS DATE)
+            AND status IN ('ACTIVE', 'WARNING')
+            AND current_quantity > 0;
+        `);
+      }
+      lastExpirySweepAt = Date.now();
+      lastExpirySweepDate = todayYmd;
+    } finally {
+      expirySweepInFlight = null;
+    }
+  })();
+  return expirySweepInFlight;
+}
 
 class SqlBatchRepository extends IBatchRepository {
   async findById(id) {
@@ -78,7 +120,7 @@ class SqlBatchRepository extends IBatchRepository {
         ${storeFilter}
         AND status IN ('ACTIVE', 'WARNING')
         AND current_quantity > 0
-        AND expiry_date >= CAST(GETDATE() AS DATE)
+        AND expiry_date > CAST(GETDATE() AS DATE)
       ORDER BY expiry_date ASC, id ASC;
     `;
     return await SqlConnection.queryJson(sql);
@@ -88,14 +130,8 @@ class SqlBatchRepository extends IBatchRepository {
    * Truy vấn danh sách toàn bộ các lô kết hợp View 3 màu cảnh báo và bộ lọc
    */
   async findAllWithAlerts(filter = {}) {
-    // Rule 5 SSOT: Tự động khóa cứng các lô có DaysLeft <= 0 sang trạng thái EXPIRED
-    await SqlConnection.executeSql(`
-      UPDATE batches
-      SET status = 'EXPIRED'
-      WHERE expiry_date <= CAST(GETDATE() AS DATE)
-        AND status IN ('ACTIVE', 'WARNING')
-        AND current_quantity > 0;
-    `);
+    // Rule 5 SSOT: Tự động khóa cứng các lô có DaysLeft <= 0 sang trạng thái EXPIRED (throttle 60s để giữ read cache)
+    await syncExpiredBatchesIfDue();
 
     let whereClauses = ['1=1'];
 
@@ -236,6 +272,7 @@ class SqlBatchRepository extends IBatchRepository {
    */
   async create({
     receiptId = null,
+    storeId = 1,
     batchCode,
     productId,
     importDate,
@@ -247,11 +284,12 @@ class SqlBatchRepository extends IBatchRepository {
     status = 'ACTIVE'
   }) {
     const safeReceipt = receiptId ? Number(receiptId) : 'NULL';
+    const safeStoreId = Number(storeId || 1);
     const safeCode = SqlConnection.escapeSql(batchCode);
     const safeProd = Number(productId);
-    const safeImpDate = SqlConnection.escapeSql(new Date(importDate).toISOString().slice(0, 10));
-    const safeMfgDate = SqlConnection.escapeSql(new Date(manufactureDate).toISOString().slice(0, 10));
-    const safeExpDate = SqlConnection.escapeSql(new Date(expiryDate).toISOString().slice(0, 10));
+    const safeImpDate = SqlConnection.escapeSql(formatLocalDateYMD(importDate));
+    const safeMfgDate = SqlConnection.escapeSql(formatLocalDateYMD(manufactureDate));
+    const safeExpDate = SqlConnection.escapeSql(formatLocalDateYMD(expiryDate));
     const qty = Number(initialQuantity);
     const price = Number(importPrice);
     const disc = Number(discountPercent || 0);
@@ -260,13 +298,13 @@ class SqlBatchRepository extends IBatchRepository {
     const sql = `
       DECLARE @tmpBatch TABLE (id INT, batchCode NVARCHAR(100));
       INSERT INTO batches (
-        receipt_id, batch_code, product_id, import_date, manufacture_date,
+        receipt_id, store_id, batch_code, product_id, import_date, manufacture_date,
         expiry_date, initial_quantity, current_quantity, import_price,
         discount_percent, status, is_shelf_rotated, created_at
       )
       OUTPUT INSERTED.id, INSERTED.batch_code INTO @tmpBatch
       VALUES (
-        ${safeReceipt}, ${safeCode}, ${safeProd}, ${safeImpDate}, ${safeMfgDate},
+        ${safeReceipt}, ${safeStoreId}, ${safeCode}, ${safeProd}, ${safeImpDate}, ${safeMfgDate},
         ${safeExpDate}, ${qty}, ${qty}, ${price},
         ${disc}, ${safeStatus}, 0, GETDATE()
       );
@@ -303,8 +341,8 @@ class SqlBatchRepository extends IBatchRepository {
     const sql = `
       UPDATE batches
       SET discount_percent = ${safePct},
-          status = CASE WHEN status = 'EXPIRED' THEN 'EXPIRED' ELSE '${newStatus}' END
-      WHERE id = ${safeId};
+          status = CASE WHEN status IN ('EXPIRED', 'DISPOSED') THEN status ELSE '${newStatus}' END
+      WHERE id = ${safeId} AND status <> 'DISPOSED';
     `;
     await SqlConnection.executeSql(sql);
     return true;
