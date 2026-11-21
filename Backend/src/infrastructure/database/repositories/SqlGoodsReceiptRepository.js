@@ -1,6 +1,7 @@
 // src/infrastructure/database/repositories/SqlGoodsReceiptRepository.js
 const SqlConnection = require('../sqlConnection');
 const IGoodsReceiptRepository = require('../../../domain/interfaces/IGoodsReceiptRepository');
+const { formatLocalDateYMD } = require('../../../domain/utils/dateUtils');
 
 class SqlGoodsReceiptRepository extends IGoodsReceiptRepository {
   /**
@@ -11,6 +12,9 @@ class SqlGoodsReceiptRepository extends IGoodsReceiptRepository {
     const receiptNumber = rc.receiptNumber;
     const supplierId = rc.supplierId;
     const storeId = Number(rc.storeId || params.storeId || 1);
+    const purchaseOrderId = (rc.purchaseOrderId || params.purchaseOrderId)
+      ? Number(rc.purchaseOrderId || params.purchaseOrderId)
+      : 'NULL';
     const receivedBy = rc.receivedBy;
     const receiptDate = rc.receiptDate || new Date();
     const totalCost = rc.totalCost || 0;
@@ -20,11 +24,23 @@ class SqlGoodsReceiptRepository extends IGoodsReceiptRepository {
     const num = SqlConnection.escapeSql(receiptNumber);
     const supId = Number(supplierId);
     const recBy = Number(receivedBy);
-    const recDate = SqlConnection.escapeSql(new Date(receiptDate).toISOString().slice(0, 10));
+    const recDate = SqlConnection.escapeSql(formatLocalDateYMD(receiptDate));
     const cost = Number(totalCost);
     const noteStr = SqlConnection.escapeSql(notes || '');
 
-    // Kiểm tra trùng mã lô trước khi INSERT để trả thông báo nghiệp vụ rõ ràng thay vì lỗi SQL 2627
+    // Kiểm tra trùng mã lô trong chính payload đầu vào và trong CSDL trước khi INSERT
+    const seenCodes = new Set();
+    for (const b of batches) {
+      const codeNorm = String(b.batchCode || '').trim().toUpperCase();
+      if (seenCodes.has(codeNorm)) {
+        const err = new Error(`Mã lô hàng [${b.batchCode}] bị trùng lặp trong cùng phiếu nhập kho!`);
+        err.statusCode = 409;
+        err.code = 'ERR_DUPLICATE_BATCH_CODE';
+        throw err;
+      }
+      seenCodes.add(codeNorm);
+    }
+
     const batchCodesSql = batches.map(b => SqlConnection.escapeSql(b.batchCode)).join(', ');
     if (batchCodesSql) {
       const dupRows = await SqlConnection.queryJson(`
@@ -46,9 +62,9 @@ class SqlGoodsReceiptRepository extends IGoodsReceiptRepository {
       const code = SqlConnection.escapeSql(b.batchCode);
       const pId = Number(b.productId);
       const bStoreId = Number(b.storeId || storeId || 1);
-      const impD = SqlConnection.escapeSql(new Date(b.importDate).toISOString().slice(0, 10));
-      const mfgD = SqlConnection.escapeSql(new Date(b.manufactureDate).toISOString().slice(0, 10));
-      const expD = SqlConnection.escapeSql(new Date(b.expiryDate).toISOString().slice(0, 10));
+      const impD = SqlConnection.escapeSql(formatLocalDateYMD(b.importDate));
+      const mfgD = SqlConnection.escapeSql(formatLocalDateYMD(b.manufactureDate));
+      const expD = SqlConnection.escapeSql(formatLocalDateYMD(b.expiryDate));
       const qty = Number(b.initialQuantity);
       const prc = Number(b.importPrice);
 
@@ -65,7 +81,10 @@ class SqlGoodsReceiptRepository extends IGoodsReceiptRepository {
       `);
 
       productCostUpdates.push(`
-        UPDATE products SET cost_price = ${prc}, updated_at = GETDATE() WHERE id = ${pId};
+        UPDATE products
+        SET cost_price = CASE WHEN ${prc} > 0 AND ${prc} <= selling_price THEN ${prc} ELSE cost_price END,
+            updated_at = GETDATE()
+        WHERE id = ${pId};
       `);
     }
 
@@ -75,10 +94,10 @@ class SqlGoodsReceiptRepository extends IGoodsReceiptRepository {
         DECLARE @NewReceiptId INT;
 
         INSERT INTO goods_receipts (
-          receipt_number, supplier_id, store_id, received_by, receipt_date,
+          receipt_number, supplier_id, store_id, purchase_order_id, received_by, receipt_date,
           total_cost, status, notes, created_at
         ) VALUES (
-          ${num}, ${supId}, ${storeId}, ${recBy}, ${recDate},
+          ${num}, ${supId}, ${storeId}, ${purchaseOrderId}, ${recBy}, ${recDate},
           ${cost}, 'COMPLETED', ${noteStr}, GETDATE()
         );
 
@@ -145,6 +164,25 @@ class SqlGoodsReceiptRepository extends IGoodsReceiptRepository {
       ORDER BY gr.id DESC;
     `;
     return await SqlConnection.queryJson(sql);
+  }
+
+  async getReceivedQuantitiesByPurchaseOrder(purchaseOrderId) {
+    const poId = Number(purchaseOrderId);
+    if (!Number.isInteger(poId) || poId <= 0) return {};
+    const rows = await SqlConnection.queryJson(`
+      SELECT
+        b.product_id AS productId,
+        SUM(b.initial_quantity) AS receivedQty
+      FROM batches b
+      INNER JOIN goods_receipts gr ON b.receipt_id = gr.id
+      WHERE gr.purchase_order_id = ${poId}
+      GROUP BY b.product_id;
+    `);
+    const map = {};
+    for (const r of (rows || [])) {
+      map[Number(r.productId)] = Number(r.receivedQty || 0);
+    }
+    return map;
   }
 }
 

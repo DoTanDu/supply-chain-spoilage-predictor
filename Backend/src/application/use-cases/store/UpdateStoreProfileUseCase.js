@@ -28,12 +28,12 @@ class UpdateStoreProfileUseCase {
     }
 
     const rawRole = String(currentUser?.roleCode || 'GUEST').toUpperCase().trim();
-    const isStoreManager = rawRole === 'STORE_MANAGER' || rawRole === 'MANAGER';
+    const isAdmin = rawRole === 'ADMIN' || rawRole === 'OWNER';
 
     // Ranh giới Phân quyền (SoD - Mục 4.1, 4.2 & Mục 5 SSOT):
-    // STORE_MANAGER chỉ được phép chuyển đổi Trạng thái hoạt động cửa hàng (status) và khung giờ ca trực,
-    // không được phép tự ý thay đổi các ngưỡng kỹ thuật lõi (Min RSL, Cảnh báo 3 màu, Lead Time, Cửa hàng trưởng).
-    if (isStoreManager) {
+    // Chỉ ADMIN / OWNER mới được thay đổi ngưỡng kỹ thuật lõi (Min RSL, Cảnh báo 3 màu, Lead Time, Cửa hàng trưởng, Sức chứa kệ).
+    // Mọi vai trò khác (STORE_MANAGER hoặc CASHIER được cấp quyền trang) chỉ được đổi Trạng thái và khung giờ ca trực.
+    if (!isAdmin) {
       const triedChangeRsl = updateData.minInboundRslPercent !== undefined && Number(updateData.minInboundRslPercent) !== Number(current.minInboundRslPercent);
       const triedChangeWarn = updateData.defaultWarningDays !== undefined && Number(updateData.defaultWarningDays) !== Number(current.defaultWarningDays);
       const triedChangeCrit = updateData.criticalWarningDays !== undefined && Number(updateData.criticalWarningDays) !== Number(current.criticalWarningDays);

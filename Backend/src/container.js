@@ -174,7 +174,6 @@ const forecastController = new ForecastController({
 
 const dashboardController = new DashboardController({
   getDashboardOverviewUseCase,
-  getReportsAnalyticsUseCase,
   getReportsAnalyticsUseCase
 });
 

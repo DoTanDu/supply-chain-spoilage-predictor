@@ -179,7 +179,7 @@ BEGIN
     -- (Ngày hiện tại lớn hơn ExpiryDate và trạng thái vẫn là ACTIVE hoặc WARNING)
     IF EXISTS (
         SELECT 1 FROM inserted 
-        WHERE [expiry_date] < CAST(GETDATE() AS DATE) 
+        WHERE [expiry_date] <= CAST(GETDATE() AS DATE) 
           AND [status] IN ('ACTIVE', 'WARNING')
     )
     BEGIN
@@ -187,7 +187,7 @@ BEGIN
         SET b.[status] = 'EXPIRED'
         FROM [dbo].[batches] b
         INNER JOIN inserted i ON b.[id] = i.[id]
-        WHERE i.[expiry_date] < CAST(GETDATE() AS DATE) 
+        WHERE i.[expiry_date] <= CAST(GETDATE() AS DATE) 
           AND b.[status] IN ('ACTIVE', 'WARNING');
     END
 END

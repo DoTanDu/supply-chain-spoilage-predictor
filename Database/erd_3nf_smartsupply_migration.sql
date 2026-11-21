@@ -223,15 +223,7 @@ BEGIN
     CREATE NONCLUSTERED INDEX [IX_AiForecasts_Store_Product_Date]
         ON [dbo].[ai_forecasts] ([store_id], [product_id], [forecast_date] DESC);
 
-    -- Seed dữ liệu mẫu dự báo AI 7 ngày tới
-    INSERT INTO [dbo].[ai_forecasts] ([store_id], [product_id], [forecast_date], [predicted_sales], [lower_bound], [upper_bound], [spoilage_risk_qty], [suggested_order_qty], [model_name], [mae_metric])
-    VALUES
-        (1, 1, CAST(DATEADD(day, 1, GETDATE()) AS DATE), 45.0, 38.0, 52.0, 12, 0, N'LightGBM-M5-Pretrained', 2.15),
-        (1, 2, CAST(DATEADD(day, 1, GETDATE()) AS DATE), 35.0, 28.0, 42.0, 40, 0, N'LightGBM-M5-Pretrained', 1.85),
-        (2, 2, CAST(DATEADD(day, 1, GETDATE()) AS DATE), 60.0, 50.0, 70.0, 0, 35, N'LightGBM-M5-Pretrained', 1.92),
-        (3, 1, CAST(DATEADD(day, 1, GETDATE()) AS DATE), 50.0, 42.0, 58.0, 0, 25, N'LightGBM-M5-Pretrained', 2.05);
-
-    PRINT N'✓ Đã tạo bảng dbo.ai_forecasts và nạp dữ liệu dự báo mẫu';
+    PRINT N'✓ Đã tạo bảng dbo.ai_forecasts';
 END
 GO
 
@@ -266,25 +258,7 @@ BEGIN
     CREATE NONCLUSTERED INDEX [IX_StockTransfers_Stores_Status]
         ON [dbo].[stock_transfers] ([from_store_id], [to_store_id], [status]);
 
-    -- Seed dữ liệu mẫu điều phối liên chi nhánh (Ví dụ thực tế từ tài liệu định hướng)
-    DECLARE @sampleBatchId INT;
-    SELECT TOP 1 @sampleBatchId = [id] FROM [dbo].[batches] WHERE [current_quantity] > 0 ORDER BY [id] ASC;
-    IF @sampleBatchId IS NOT NULL
-    BEGIN
-        INSERT INTO [dbo].[stock_transfers] (
-            [transfer_code], [from_store_id], [to_store_id], [product_id], [source_batch_id],
-            [transfer_quantity], [shipping_cost], [status], [ai_recommendation_note], [requested_by], [approved_by]
-        )
-        VALUES (
-            N'TRF-20261105-001',
-            1, 2, 1, @sampleBatchId,
-            15, 25000, N'APPROVED',
-            N'[OR-Tools Optimization] Chi nhánh 1 dư 40 đơn vị cận date (dự báo bán 25), Chi nhánh 2 thiếu 15 đơn vị (dự báo bán 60). Đề xuất điều chuyển 15 đơn vị.',
-            2, 1
-        );
-    END
-
-    PRINT N'✓ Đã tạo bảng dbo.stock_transfers và nạp phiếu điều chuyển mẫu';
+    PRINT N'✓ Đã tạo bảng dbo.stock_transfers';
 END
 GO
 

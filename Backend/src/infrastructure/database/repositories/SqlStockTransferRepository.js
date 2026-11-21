@@ -26,7 +26,7 @@ class SqlStockTransferRepository {
           ISNULL((SELECT MAX(b.discount_percent) FROM dbo.batches b WHERE b.product_id = p.id AND b.store_id = ISNULL(sh.store_id, 1) AND b.current_quantity > 0), 0) AS discount_pct,
           CAST(ISNULL(SUM(CASE WHEN sh.sale_date >= DATEADD(day, -7, CAST(GETDATE() AS DATE)) THEN sh.quantity_sold ELSE 0 END), 0) / 7.0 AS FLOAT) AS rolling_mean_7d,
           CAST(ISNULL(SUM(CASE WHEN sh.sale_date >= DATEADD(day, -14, CAST(GETDATE() AS DATE)) THEN sh.quantity_sold ELSE 0 END), 0) / 14.0 AS FLOAT) AS rolling_mean_14d,
-          CAST(ISNULL((SELECT TOP 1 s2.quantity_sold FROM dbo.sales_history s2 WHERE s2.product_id = p.id AND ISNULL(s2.store_id, 1) = ISNULL(sh.store_id, 1) ORDER BY s2.sale_date DESC, s2.id DESC), 0) AS FLOAT) AS lag_1d,
+          CAST(ISNULL((SELECT TOP 1 SUM(s2.quantity_sold) FROM dbo.sales_history s2 WHERE s2.product_id = p.id AND ISNULL(s2.store_id, 1) = ISNULL(sh.store_id, 1) GROUP BY s2.sale_date ORDER BY s2.sale_date DESC), 0) AS FLOAT) AS lag_1d,
           CAST(ISNULL(SUM(sh.quantity_sold) / NULLIF(COUNT(DISTINCT CONVERT(VARCHAR(10), sh.sale_date, 23)), 0), 0) AS FLOAT) AS actual_demand
         FROM dbo.sales_history sh
         INNER JOIN dbo.products p ON sh.product_id = p.id
@@ -41,7 +41,8 @@ class SqlStockTransferRepository {
     }
 
     const now = new Date();
-    const dow = now.getDay();
+    // Đồng bộ encoding thứ trong tuần với Python datetime.weekday() (0 = Thứ 2 .. 6 = Chủ nhật)
+    const dow = (now.getDay() + 6) % 7;
     const liveTemp = liveEnv?.current?.temp ?? 28;
     const cond = liveEnv?.current?.condition || 'NORMAL';
     const wCode = cond === 'RAINY' ? 2 : cond === 'SUNNY' ? 1 : 0;
@@ -54,7 +55,7 @@ class SqlStockTransferRepository {
       sku: r.sku,
       product_name: r.product_name,
       day_of_week: dow,
-      is_weekend: (dow === 0 || dow === 6) ? 1 : 0,
+      is_weekend: (dow === 5 || dow === 6) ? 1 : 0,
       is_holiday: isHoliday,
       weather_code: wCode,
       temperature_c: Number(liveTemp),
@@ -152,10 +153,10 @@ class SqlStockTransferRepository {
 
     const reqW = String(weather || 'AUTO').toUpperCase();
     const wKey = ['NORMAL', 'SUNNY', 'RAINY'].includes(reqW) ? reqW : (liveEnv?.current?.condition || 'NORMAL');
-    const effHoliday = (isHoliday === 'auto' || isHoliday === undefined)
-      ? Boolean(liveEnv?.calendar?.isHoliday)
-      : (isHoliday === true || isHoliday === 'true');
-    const holidayMultiplier = effHoliday ? 1.30 : 1.0;
+    const isAutoHoliday = isHoliday === 'auto' || isHoliday === undefined || isHoliday === null;
+    const forceHoliday = !isAutoHoliday && (isHoliday === true || String(isHoliday).toLowerCase() === 'true');
+    const forceNoHoliday = !isAutoHoliday && (isHoliday === false || String(isHoliday).toLowerCase() === 'false');
+    const effHoliday = forceHoliday ? true : (forceNoHoliday ? false : Boolean(liveEnv?.calendar?.isHoliday));
 
     const storeList = Array.isArray(stores) ? stores : [];
     const storeCount = storeList.length;
@@ -183,7 +184,12 @@ class SqlStockTransferRepository {
 
     const dailyEnvList = Array.isArray(liveEnv?.dailyForecast) && liveEnv.dailyForecast.length === 7
       ? liveEnv.dailyForecast
-      : Array.from({ length: 7 }, () => ({ condition: wKey, isHoliday: effHoliday }));
+      : Array.from({ length: 7 }, (_, idx) => {
+          const d = new Date();
+          d.setDate(d.getDate() + idx);
+          const dayNum = d.getDay();
+          return { condition: wKey, isHoliday: dayNum === 0 || dayNum === 6 };
+        });
 
     const matrixByProduct = [];
     const orToolsTransferProposals = [];
@@ -197,7 +203,14 @@ class SqlStockTransferRepository {
         const dailySeries = dailyEnvList.map(day => {
           if (dBase14 <= 0) return 0;
           const wf = new WeatherCondition(day.condition || wKey).getDemandFactor(prod.categoryName || 'FMCG');
-          const hf = day.isHoliday ? 1.30 : holidayMultiplier;
+          let hf = 1.0;
+          if (forceHoliday) {
+            hf = 1.30;
+          } else if (forceNoHoliday) {
+            hf = 1.0;
+          } else {
+            hf = day.isHoliday ? 1.30 : 1.0;
+          }
           return Math.round(dBase14 * wf * hf);
         });
         const predictedDemand7d = Math.round(dailySeries.reduce((s, v) => s + v, 0) * 10) / 10;
@@ -537,13 +550,20 @@ class SqlStockTransferRepository {
       // Tự động chọn lô FEFO còn hạn (>= 2 ngày) và đủ số lượng tại ĐÚNG chi nhánh xuất & ĐÚNG sản phẩm
       const fefoRows = await SqlConnection.queryJson(`
         SELECT TOP 1 id, batch_code AS batchCode, current_quantity AS currentQuantity
-        FROM dbo.batches
-        WHERE product_id = ${pId}
-          AND ISNULL(store_id, 1) = ${fId}
-          AND status IN ('ACTIVE', 'WARNING')
-          AND DATEDIFF(day, CAST(GETDATE() AS DATE), expiry_date) >= 2
-          AND current_quantity >= ${qty}
-        ORDER BY expiry_date ASC, id ASC
+        FROM dbo.batches b
+        WHERE b.product_id = ${pId}
+          AND ISNULL(b.store_id, 1) = ${fId}
+          AND b.status IN ('ACTIVE', 'WARNING')
+          AND DATEDIFF(day, CAST(GETDATE() AS DATE), b.expiry_date) >= 2
+          AND (
+            b.current_quantity - ISNULL((
+              SELECT SUM(st2.transfer_quantity)
+              FROM dbo.stock_transfers st2
+              WHERE st2.source_batch_id = b.id
+                AND st2.status IN ('PROPOSED', 'PENDING', 'APPROVED')
+            ), 0)
+          ) >= ${qty}
+        ORDER BY b.expiry_date ASC, b.id ASC
       `);
       if (!fefoRows || fefoRows.length === 0) {
         const err = new Error(
@@ -568,6 +588,12 @@ class SqlStockTransferRepository {
       BEGIN TRY
         DECLARE @newId INT;
 
+        DECLARE @reservedQty INT = 0;
+        SELECT @reservedQty = ISNULL(SUM(transfer_quantity), 0)
+        FROM dbo.stock_transfers WITH (HOLDLOCK)
+        WHERE source_batch_id = ${resolvedBatchId}
+          AND status IN ('PROPOSED', 'PENDING', 'APPROVED');
+
         IF NOT EXISTS (
           SELECT 1 FROM dbo.batches WITH (UPDLOCK, ROWLOCK)
           WHERE id = ${resolvedBatchId}
@@ -575,9 +601,9 @@ class SqlStockTransferRepository {
             AND product_id = ${pId}
             AND status IN ('ACTIVE', 'WARNING')
             AND expiry_date > CAST(GETDATE() AS DATE)
-            AND current_quantity >= ${qty}
+            AND (current_quantity - @reservedQty) >= ${qty}
         )
-          THROW 50003, N'Lô hàng nguồn không còn đủ tồn kho khả dụng hoặc đã hết hạn!', 1;
+          THROW 50003, N'Lô hàng nguồn không còn đủ tồn kho khả dụng (sau khi trừ lượng đã giữ cho phiếu điều chuyển khác) hoặc đã hết hạn!', 1;
 
         INSERT INTO dbo.stock_transfers (
           transfer_code, from_store_id, to_store_id, product_id, source_batch_id,
@@ -849,11 +875,30 @@ class SqlStockTransferRepository {
 
         IF @curStatus = N'IN_TRANSIT'
         BEGIN
+          DECLARE @cancelWarnDays INT = 7;
+          SELECT @cancelWarnDays = COALESCE(p.custom_warning_days, c.default_warning_days, 7)
+          FROM dbo.batches b
+          INNER JOIN dbo.products p ON b.product_id = p.id
+          INNER JOIN dbo.categories c ON p.category_id = c.id
+          WHERE b.id = @sourceBatchId;
+
           UPDATE dbo.batches WITH (UPDLOCK, ROWLOCK)
-          SET current_quantity = current_quantity + @qty
+          SET current_quantity = current_quantity + @qty,
+              initial_quantity = CASE
+                WHEN current_quantity + @qty > initial_quantity THEN current_quantity + @qty
+                ELSE initial_quantity
+              END,
+              status = CASE
+                WHEN status = 'DISPOSED' THEN
+                  CASE
+                    WHEN expiry_date <= CAST(GETDATE() AS DATE) THEN 'EXPIRED'
+                    WHEN DATEDIFF(day, CAST(GETDATE() AS DATE), expiry_date) <= ISNULL(@cancelWarnDays, 7) THEN 'WARNING'
+                    ELSE 'ACTIVE'
+                  END
+                ELSE status
+              END
           WHERE id = @sourceBatchId
-            AND ISNULL(store_id, 1) = @fromStoreId
-            AND current_quantity + @qty <= initial_quantity;
+            AND ISNULL(store_id, 1) = @fromStoreId;
 
           IF @@ROWCOUNT = 0
             THROW 50003, N'Không thể hoàn trả tồn kho cho lô nguồn khi hủy phiếu đang vận chuyển!', 1;

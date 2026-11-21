@@ -157,12 +157,21 @@ class SqlSupplierRepository extends ISupplierRepository {
       throw new Error(`Không tìm thấy nhà cung cấp với ID [${id}].`);
     }
 
-    if (existing.productCount > 0) {
-      throw new Error(`Không thể xóa nhà cung ứng "${existing.name}" vì đang có ${existing.productCount} sản phẩm liên kết.`);
+    const refRows = await SqlConnection.queryJson(`
+      SELECT
+        ISNULL((SELECT COUNT(*) FROM products p WHERE p.default_supplier_id = ${sId}), 0) AS allProductCount,
+        ISNULL((SELECT COUNT(*) FROM purchase_orders po WHERE po.supplier_id = ${sId}), 0) AS allPoCount,
+        ISNULL((SELECT COUNT(*) FROM goods_receipts gr WHERE gr.supplier_id = ${sId}), 0) AS allReceiptCount;
+    `);
+    const refs = refRows[0] || {};
+    if (Number(refs.allProductCount || 0) > 0) {
+      throw new Error(`Không thể xóa nhà cung ứng "${existing.name}" vì đang có ${refs.allProductCount} sản phẩm liên kết (bao gồm sản phẩm đã ngừng kinh doanh).`);
     }
-
-    if (existing.poCount > 0) {
-      throw new Error(`Không thể xóa nhà cung ứng "${existing.name}" vì đang có ${existing.poCount} đơn đặt hàng (PO) liên kết.`);
+    if (Number(refs.allPoCount || 0) > 0) {
+      throw new Error(`Không thể xóa nhà cung ứng "${existing.name}" vì đang có ${refs.allPoCount} đơn đặt hàng (PO) liên kết.`);
+    }
+    if (Number(refs.allReceiptCount || 0) > 0) {
+      throw new Error(`Không thể xóa nhà cung ứng "${existing.name}" vì đang có ${refs.allReceiptCount} phiếu nhập kho liên kết.`);
     }
 
     const sql = `DELETE FROM suppliers WHERE id = ${sId};`;

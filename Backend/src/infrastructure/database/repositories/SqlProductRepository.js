@@ -28,7 +28,7 @@ class SqlProductRepository extends IProductRepository {
         p.image_url AS imageUrl,
         p.is_active AS isActive,
         p.created_at AS createdAt,
-        ISNULL((SELECT SUM(current_quantity) FROM batches WHERE product_id = p.id AND status != 'EXPIRED' AND current_quantity > 0), 0) AS totalStock
+        ISNULL((SELECT SUM(current_quantity) FROM batches WHERE product_id = p.id AND status IN ('ACTIVE', 'WARNING') AND expiry_date > CAST(GETDATE() AS DATE) AND current_quantity > 0), 0) AS totalStock
       FROM products p
       LEFT JOIN categories c ON p.category_id = c.id
       LEFT JOIN suppliers sup ON p.default_supplier_id = sup.id
@@ -66,7 +66,7 @@ class SqlProductRepository extends IProductRepository {
         p.image_url AS imageUrl,
         p.is_active AS isActive,
         p.created_at AS createdAt,
-        ISNULL((SELECT SUM(current_quantity) FROM batches WHERE product_id = p.id AND status != 'EXPIRED' AND current_quantity > 0), 0) AS totalStock
+        ISNULL((SELECT SUM(current_quantity) FROM batches WHERE product_id = p.id AND status IN ('ACTIVE', 'WARNING') AND expiry_date > CAST(GETDATE() AS DATE) AND current_quantity > 0), 0) AS totalStock
       FROM products p
       LEFT JOIN categories c ON p.category_id = c.id
       LEFT JOIN suppliers sup ON p.default_supplier_id = sup.id

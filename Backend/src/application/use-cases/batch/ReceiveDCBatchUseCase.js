@@ -1,5 +1,6 @@
 // src/application/use-cases/batch/ReceiveDCBatchUseCase.js
 const ShelfLife = require('../../../domain/value-objects/ShelfLife');
+const { formatLocalDateYMD, toVnDayStartMs } = require('../../../domain/utils/dateUtils');
 
 /**
  * Use Case: Tiếp nhận đợt hàng từ xe tải Kho tổng DC Biên Hòa (Mục 21.2 & Rule 7)
@@ -39,6 +40,12 @@ class ReceiveDCBatchUseCase {
       if (!linkedPo) {
         const err = new Error(`Đơn đặt hàng PO #${purchaseOrderId} không tồn tại!`);
         err.statusCode = 404;
+        throw err;
+      }
+      if (Number(linkedPo.storeId || 1) !== targetStoreId) {
+        const err = new Error(`Đơn đặt hàng [${linkedPo.orderCode}] thuộc Chi nhánh #${linkedPo.storeId || 1}, không khớp Chi nhánh nhận hàng #${targetStoreId}!`);
+        err.statusCode = 403;
+        err.code = 'ERR_STORE_SCOPE_FORBIDDEN';
         throw err;
       }
       const poSt = String(linkedPo.status || '').toUpperCase();
@@ -86,30 +93,31 @@ class ReceiveDCBatchUseCase {
       const exp = new Date(expRaw);
       const imp = new Date(receiptDate || new Date());
 
-      if (isNaN(mfg.getTime()) || isNaN(exp.getTime())) {
-        throw new Error(`Lô hàng ${b.batchCode || prod.name}: Định dạng ngày sản xuất hoặc ngày hết hạn không hợp lệ!`);
+      if (isNaN(mfg.getTime()) || isNaN(exp.getTime()) || isNaN(imp.getTime())) {
+        throw new Error(`Lô hàng ${b.batchCode || prod.name}: Định dạng ngày sản xuất, ngày nhận hoặc ngày hết hạn không hợp lệ!`);
       }
 
+      const impYmd = formatLocalDateYMD(imp);
+
       // 1. Kiểm tra ngày hết hạn bắt buộc phải lớn hơn ngày sản xuất và ngày sản xuất không sau ngày nhận
-      const toUtcDayMs = (d) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-      if (toUtcDayMs(exp) <= toUtcDayMs(mfg)) {
+      if (toVnDayStartMs(exp) <= toVnDayStartMs(mfg)) {
         const err = new Error(`Lô hàng ${b.batchCode || prod.name}: Hạn sử dụng (${expRaw}) phải lớn hơn Ngày sản xuất (${mfgRaw})!`);
         err.statusCode = 400;
         err.code = 'ERR_INVALID_DATES';
         throw err;
       }
-      if (toUtcDayMs(mfg) > toUtcDayMs(imp)) {
-        const err = new Error(`Lô hàng ${b.batchCode || prod.name}: Ngày sản xuất (${mfgRaw}) không thể lớn hơn Ngày nhận hàng (${imp.toISOString().slice(0, 10)})!`);
+      if (toVnDayStartMs(mfg) > toVnDayStartMs(imp)) {
+        const err = new Error(`Lô hàng ${b.batchCode || prod.name}: Ngày sản xuất (${mfgRaw}) không thể lớn hơn Ngày nhận hàng (${impYmd})!`);
         err.statusCode = 400;
         err.code = 'ERR_INVALID_DATES';
         throw err;
       }
 
       // 1.1 Khóa cứng hàng đã hết hạn trước hoặc ngay thời điểm tiếp nhận (Rule 5 & Rule 7 SSOT)
-      if (toUtcDayMs(exp) <= toUtcDayMs(imp)) {
+      if (toVnDayStartMs(exp) <= toVnDayStartMs(imp)) {
         throw new Error(
           `TỪ CHỐI NHẬN HÀNG (RULE 5 & RULE 7): Lô hàng "${prod.name}" đã hết hạn sử dụng tại thời điểm giao hàng ` +
-          `(HSD: ${expRaw} <= Ngày nhận: ${imp.toISOString().slice(0, 10)}). Nghiêm cấm nhập hàng hết hạn vào cửa hàng!`
+          `(HSD: ${expRaw} <= Ngày nhận: ${impYmd}). Nghiêm cấm nhập hàng hết hạn vào cửa hàng!`
         );
       }
 
@@ -126,14 +134,17 @@ class ReceiveDCBatchUseCase {
       }
 
       // 3. Tự động sinh mã lô theo quy chuẩn LOT-DC-[SKU]-[YYYYMMDD]-[Số thứ tự]-[Hậu tố] nếu chưa có
-      const datePart = imp.toISOString().slice(0, 10).replace(/-/g, '');
+      const datePart = impYmd.replace(/-/g, '');
       const uniqueSuffix = Date.now().toString().slice(-4);
       const defaultBatchCode = `LOT-DC-${prod.sku}-${datePart}-${i + 1}-${uniqueSuffix}`;
       const finalBatchCode = b.batchCode ? String(b.batchCode).trim() : defaultBatchCode;
 
-      const qty = Number(b.initialQuantity || b.quantity || b.quantityReceived);
-      if (isNaN(qty) || qty <= 0) {
-        throw new Error(`Số lượng nhập của sản phẩm "${prod.name}" phải là số lớn hơn 0!`);
+      const qty = Number(b.initialQuantity !== undefined ? b.initialQuantity : (b.quantity !== undefined ? b.quantity : b.quantityReceived));
+      if (!Number.isInteger(qty) || qty <= 0) {
+        const err = new Error(`Số lượng nhập của sản phẩm "${prod.name}" phải là số nguyên lớn hơn 0!`);
+        err.statusCode = 400;
+        err.code = 'ERR_INVALID_QUANTITY';
+        throw err;
       }
 
       const cost = Number(b.importPrice !== undefined ? b.importPrice : prod.costPrice);
@@ -163,6 +174,7 @@ class ReceiveDCBatchUseCase {
       receiptNumber,
       supplierId: Number(supplierId),
       storeId: targetStoreId,
+      purchaseOrderId: purchaseOrderId ? Number(purchaseOrderId) : null,
       receivedBy: Number(receivedBy),
       receiptDate: new Date(receiptDate),
       totalCost: Math.round(calculatedTotalCost),
@@ -170,10 +182,28 @@ class ReceiveDCBatchUseCase {
       batches: validatedBatches
     });
 
-    // 4.1. Nếu tiếp nhận theo Đơn đặt hàng PO, tự động chuyển trạng thái PO sang DELIVERED
+    // 4.1. Nếu tiếp nhận theo Đơn đặt hàng PO, chỉ chuyển sang DELIVERED khi đã nhận đủ toàn bộ mặt hàng trong PO
+    let poMarkedDelivered = false;
     if (purchaseOrderId && this.purchaseOrderRepository) {
       try {
-        await this.purchaseOrderRepository.updateOrderStatus(Number(purchaseOrderId), 'DELIVERED', Number(receivedBy));
+        const poItems = Array.isArray(linkedPo?.items) ? linkedPo.items : [];
+        let shouldMarkDelivered = poItems.length === 0;
+        if (poItems.length > 0 && typeof this.goodsReceiptRepository.getReceivedQuantitiesByPurchaseOrder === 'function') {
+          const receivedMap = await this.goodsReceiptRepository.getReceivedQuantitiesByPurchaseOrder(Number(purchaseOrderId));
+          shouldMarkDelivered = poItems.every(it => {
+            const requiredQty = Number(it.approvedQuantity || it.suggestedQuantity || 0);
+            const recQty = Number(receivedMap[Number(it.productId)] || 0);
+            return recQty >= requiredQty;
+          });
+        } else if (poItems.length > 0) {
+          shouldMarkDelivered = poItems.every(it =>
+            validatedBatches.some(vb => Number(vb.productId) === Number(it.productId))
+          );
+        }
+        if (shouldMarkDelivered) {
+          await this.purchaseOrderRepository.updateOrderStatus(Number(purchaseOrderId), 'DELIVERED', Number(receivedBy));
+          poMarkedDelivered = true;
+        }
       } catch (poErr) {
         console.warn('Không thể cập nhật trạng thái PO sang DELIVERED:', poErr.message);
       }
@@ -195,6 +225,7 @@ class ReceiveDCBatchUseCase {
       success: true,
       receiptId: receiptResult.receiptId,
       receiptNumber,
+      poMarkedDelivered,
       totalCost: Math.round(calculatedTotalCost),
       totalBatchesReceived: validatedBatches.length,
       batches: validatedBatches,

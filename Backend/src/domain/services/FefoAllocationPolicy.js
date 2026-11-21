@@ -1,4 +1,6 @@
 // src/domain/services/FefoAllocationPolicy.js
+const { formatLocalDateYMD, toVnDayStartMs } = require('../utils/dateUtils');
+
 /**
  * Domain Service: Chính sách Phân bổ Xuất kho Bán lẻ theo chuẩn FEFO (Rule 2 & Rule 3)
  * Tự động bóc tách lô có hạn sử dụng gần nhất ra xuất trước.
@@ -36,22 +38,22 @@ class FefoAllocationPolicy {
       throw new Error(`Giá niêm yết sản phẩm không hợp lệ: ${sellingPrice}`);
     }
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const todayMs = toVnDayStartMs(new Date());
 
     // 1. Lọc các lô còn tồn và còn hạn sử dụng hợp lệ (Rule 5: DaysLeft > 0)
     const validBatches = availableBatches
       .map(b => {
-        const exp = new Date(b.expiryDate || b.expiry_date);
-        exp.setHours(0, 0, 0, 0);
-        const daysLeft = Math.round((exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        const expStr = formatLocalDateYMD(b.expiryDate || b.expiry_date);
+        const expMs = toVnDayStartMs(expStr);
+        const daysLeft = Math.round((expMs - todayMs) / (1000 * 60 * 60 * 24));
         const currentQty = Number(b.currentQuantity !== undefined ? b.currentQuantity : b.current_quantity);
         const discountPct = Number(b.discountPercent !== undefined ? b.discountPercent : (b.discount_percent || 0));
 
         return {
           id: b.id,
           batchCode: b.batchCode || b.batch_code,
-          expiryDate: exp,
+          expiryDateStr: expStr,
+          expiryMs: expMs,
           daysLeft,
           currentQuantity: currentQty,
           discountPercent: discountPct,
@@ -68,7 +70,7 @@ class FefoAllocationPolicy {
 
     // 2. Sắp xếp thứ tự ưu tiên FEFO: expiryDate ASC (hạn gần ra trước), id ASC
     validBatches.sort((a, b) => {
-      const timeDiff = a.expiryDate.getTime() - b.expiryDate.getTime();
+      const timeDiff = a.expiryMs - b.expiryMs;
       if (timeDiff !== 0) return timeDiff;
       return a.id - b.id;
     });
@@ -112,7 +114,7 @@ class FefoAllocationPolicy {
       allocations.push({
         batchId: batch.id,
         batchCode: batch.batchCode,
-        expiryDate: batch.expiryDate.toISOString().slice(0, 10),
+        expiryDate: batch.expiryDateStr,
         daysLeft: batch.daysLeft,
         quantityAllocated: takeQty,
         discountPercent: batch.discountPercent,

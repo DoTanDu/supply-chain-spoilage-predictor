@@ -1,6 +1,7 @@
 // src/infrastructure/database/repositories/SqlSpoilageRepository.js
 const SqlConnection = require('../sqlConnection');
 const ISpoilageRepository = require('../../../domain/interfaces/ISpoilageRepository');
+const { formatLocalDateYMD } = require('../../../domain/utils/dateUtils');
 
 class SqlSpoilageRepository extends ISpoilageRepository {
   /**
@@ -13,7 +14,7 @@ class SqlSpoilageRepository extends ISpoilageRepository {
     const sr = params.spoilageRecord || params;
     const code = SqlConnection.escapeSql(sr.recordCode);
     const bId = Number(params.batchId || sr.batchId);
-    const safeDate = SqlConnection.escapeSql(new Date(sr.disposedDate || new Date()).toISOString().slice(0, 10));
+    const safeDate = SqlConnection.escapeSql(formatLocalDateYMD(sr.disposedDate || new Date()));
     const qty = Number(params.quantityDisposed || sr.quantityDisposed);
     const cost = Number(sr.costLoss);
     const reason = SqlConnection.escapeSql(sr.reason || 'EXPIRED');
@@ -34,26 +35,38 @@ class SqlSpoilageRepository extends ISpoilageRepository {
           THROW 50002, N'Số lượng tiêu hủy vượt quá số lượng tồn hiện tại của lô hàng!', 1;
         END
     ` : `
-        -- Pha 1: Nhân viên lập đề xuất PENDING - Xác nhận lượng tồn khả dụng nhưng CHƯA trừ kho (Mục 14.3 SSOT)
-        IF NOT EXISTS (SELECT 1 FROM batches WITH (HOLDLOCK) WHERE id = ${bId} AND current_quantity >= ${qty})
+        -- Pha 1: Nhân viên lập đề xuất PENDING - Xác nhận lượng tồn khả dụng (sau khi trừ các phiếu đang chờ duyệt) nhưng CHƯA trừ kho (Mục 14.3 SSOT)
+        DECLARE @curBatchQty INT = 0, @pendingQty INT = 0;
+        SELECT @curBatchQty = current_quantity
+        FROM batches WITH (UPDLOCK, HOLDLOCK)
+        WHERE id = ${bId};
+
+        SELECT @pendingQty = ISNULL(SUM(quantity_disposed), 0)
+        FROM spoilage_records WITH (HOLDLOCK)
+        WHERE batch_id = ${bId} AND approved_by IS NULL;
+
+        IF @curBatchQty IS NULL OR (@curBatchQty - @pendingQty) < ${qty}
         BEGIN
-          THROW 50002, N'Số lượng đề xuất hủy vượt quá số lượng tồn hiện tại của lô hàng!', 1;
+          THROW 50002, N'Số lượng đề xuất hủy vượt quá số lượng tồn khả dụng (đã tính các phiếu đang chờ duyệt) của lô hàng!', 1;
         END
     `;
 
     const transactionSql = `
       BEGIN TRANSACTION;
       BEGIN TRY
+        DECLARE @batchStoreId INT = 1;
+        SELECT @batchStoreId = ISNULL(store_id, 1) FROM batches WHERE id = ${bId};
+
         ${updateBatchSql}
 
         DECLARE @newSpoilId INT;
 
-        -- Chèn vào Sổ hao hụt tài chính bất biến SpoilageRecords
+        -- Chèn vào Sổ hao hụt tài chính bất biến SpoilageRecords (gán đúng store_id của lô hàng)
         INSERT INTO spoilage_records (
-          record_code, batch_id, disposed_date, quantity_disposed, cost_loss,
+          record_code, batch_id, store_id, disposed_date, quantity_disposed, cost_loss,
           reason, notes, performed_by, approved_by, created_at
         ) VALUES (
-          ${code}, ${bId}, ${safeDate}, ${qty}, ${cost},
+          ${code}, ${bId}, ISNULL(@batchStoreId, 1), ${safeDate}, ${qty}, ${cost},
           ${reason}, ${notes}, ${performedBy}, ${approvedBy}, GETDATE()
         );
 
@@ -206,7 +219,8 @@ class SqlSpoilageRepository extends ISpoilageRepository {
           sr.quantity_disposed AS quantityDisposed,
           sr.cost_loss AS costLoss,
           u2.full_name AS approvedByName,
-          'APPROVED' AS status
+          'APPROVED' AS status,
+          CASE WHEN @alreadyApproved = 1 THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END AS alreadyApproved
         FROM spoilage_records sr
         INNER JOIN batches b ON sr.batch_id = b.id
         LEFT JOIN users u2 ON sr.approved_by = u2.id
@@ -225,6 +239,8 @@ class SqlSpoilageRepository extends ISpoilageRepository {
 
   /**
    * Tính tổng thiệt hại tài chính theo khoảng thời gian và phân rã 5 nhóm nguyên nhân chuẩn ReFED/GS1
+   * Chỉ tổng hợp các biên bản đã được phê duyệt chốt sổ (approved_by IS NOT NULL);
+   * trả thêm pendingRecords và pendingCostLoss để tham chiếu.
    */
   async getLossSummary(startDate = null, endDate = null, storeId = null) {
     let whereClause = '1=1';
@@ -235,24 +251,26 @@ class SqlSpoilageRepository extends ISpoilageRepository {
       whereClause += ` AND sr.disposed_date <= ${SqlConnection.escapeSql(endDate)}`;
     }
     if (storeId && String(storeId).toUpperCase() !== 'ALL' && !isNaN(Number(storeId))) {
-      whereClause += ` AND b.store_id = ${Number(storeId)}`;
+      whereClause += ` AND ISNULL(b.store_id, 1) = ${Number(storeId)}`;
     }
 
     const sql = `
       SELECT 
-        COUNT(sr.id) AS totalRecords,
-        COALESCE(SUM(sr.quantity_disposed), 0) AS totalQuantityDisposed,
-        COALESCE(SUM(sr.cost_loss), 0) AS totalCostLoss,
-        COALESCE(SUM(CASE WHEN sr.reason IN ('EXPIRED', 'EXP_SPOILAGE') THEN sr.cost_loss ELSE 0 END), 0) AS expiredCostLoss,
-        COALESCE(SUM(CASE WHEN sr.reason IN ('DAMAGED', 'PKG_DAMAGE') THEN sr.cost_loss ELSE 0 END), 0) AS damagedCostLoss,
-        COALESCE(SUM(CASE WHEN sr.reason IN ('SPOILED', 'TEMP_ABUSE') THEN sr.cost_loss ELSE 0 END), 0) AS spoiledCostLoss,
-        COALESCE(SUM(CASE WHEN sr.reason = 'INTERNAL_SHRINK' THEN sr.cost_loss ELSE 0 END), 0) AS internalShrinkCostLoss,
-        COALESCE(SUM(CASE WHEN sr.reason = 'DONATION' THEN sr.cost_loss ELSE 0 END), 0) AS donationCostLoss,
-        COALESCE(SUM(CASE WHEN sr.reason IN ('EXPIRED', 'EXP_SPOILAGE') THEN 1 ELSE 0 END), 0) AS expSpoilageCount,
-        COALESCE(SUM(CASE WHEN sr.reason IN ('DAMAGED', 'PKG_DAMAGE') THEN 1 ELSE 0 END), 0) AS pkgDamageCount,
-        COALESCE(SUM(CASE WHEN sr.reason IN ('SPOILED', 'TEMP_ABUSE') THEN 1 ELSE 0 END), 0) AS tempAbuseCount,
-        COALESCE(SUM(CASE WHEN sr.reason = 'INTERNAL_SHRINK' THEN 1 ELSE 0 END), 0) AS internalShrinkCount,
-        COALESCE(SUM(CASE WHEN sr.reason = 'DONATION' THEN 1 ELSE 0 END), 0) AS donationCount
+        COALESCE(SUM(CASE WHEN sr.approved_by IS NOT NULL THEN 1 ELSE 0 END), 0) AS totalRecords,
+        COALESCE(SUM(CASE WHEN sr.approved_by IS NOT NULL THEN sr.quantity_disposed ELSE 0 END), 0) AS totalQuantityDisposed,
+        COALESCE(SUM(CASE WHEN sr.approved_by IS NOT NULL THEN sr.cost_loss ELSE 0 END), 0) AS totalCostLoss,
+        COALESCE(SUM(CASE WHEN sr.approved_by IS NULL THEN 1 ELSE 0 END), 0) AS pendingRecords,
+        COALESCE(SUM(CASE WHEN sr.approved_by IS NULL THEN sr.cost_loss ELSE 0 END), 0) AS pendingCostLoss,
+        COALESCE(SUM(CASE WHEN sr.approved_by IS NOT NULL AND sr.reason IN ('EXPIRED', 'EXP_SPOILAGE') THEN sr.cost_loss ELSE 0 END), 0) AS expiredCostLoss,
+        COALESCE(SUM(CASE WHEN sr.approved_by IS NOT NULL AND sr.reason IN ('DAMAGED', 'PKG_DAMAGE') THEN sr.cost_loss ELSE 0 END), 0) AS damagedCostLoss,
+        COALESCE(SUM(CASE WHEN sr.approved_by IS NOT NULL AND sr.reason IN ('SPOILED', 'TEMP_ABUSE') THEN sr.cost_loss ELSE 0 END), 0) AS spoiledCostLoss,
+        COALESCE(SUM(CASE WHEN sr.approved_by IS NOT NULL AND sr.reason = 'INTERNAL_SHRINK' THEN sr.cost_loss ELSE 0 END), 0) AS internalShrinkCostLoss,
+        COALESCE(SUM(CASE WHEN sr.approved_by IS NOT NULL AND sr.reason = 'DONATION' THEN sr.cost_loss ELSE 0 END), 0) AS donationCostLoss,
+        COALESCE(SUM(CASE WHEN sr.approved_by IS NOT NULL AND sr.reason IN ('EXPIRED', 'EXP_SPOILAGE') THEN 1 ELSE 0 END), 0) AS expSpoilageCount,
+        COALESCE(SUM(CASE WHEN sr.approved_by IS NOT NULL AND sr.reason IN ('DAMAGED', 'PKG_DAMAGE') THEN 1 ELSE 0 END), 0) AS pkgDamageCount,
+        COALESCE(SUM(CASE WHEN sr.approved_by IS NOT NULL AND sr.reason IN ('SPOILED', 'TEMP_ABUSE') THEN 1 ELSE 0 END), 0) AS tempAbuseCount,
+        COALESCE(SUM(CASE WHEN sr.approved_by IS NOT NULL AND sr.reason = 'INTERNAL_SHRINK' THEN 1 ELSE 0 END), 0) AS internalShrinkCount,
+        COALESCE(SUM(CASE WHEN sr.approved_by IS NOT NULL AND sr.reason = 'DONATION' THEN 1 ELSE 0 END), 0) AS donationCount
       FROM spoilage_records sr
       INNER JOIN batches b ON sr.batch_id = b.id
       WHERE ${whereClause};
@@ -305,7 +323,9 @@ class SqlSpoilageRepository extends ISpoilageRepository {
   /**
    * Lấy Top sản phẩm phát sinh hao hụt tài chính nhiều nhất (Mục 11.2 Đặc tả SSOT)
    */
-  async getTopSpoilageProducts(limit = 5) {
+  async getTopSpoilageProducts(limit = 5, storeId = null) {
+    const hasStore = storeId && String(storeId).toUpperCase() !== 'ALL' && !isNaN(Number(storeId));
+    const storeFilter = hasStore ? `AND ISNULL(b.store_id, 1) = ${Number(storeId)}` : '';
     const sql = `
       SELECT TOP (${Number(limit)})
         p.id AS productId,
@@ -320,6 +340,8 @@ class SqlSpoilageRepository extends ISpoilageRepository {
       INNER JOIN batches b ON sr.batch_id = b.id
       INNER JOIN products p ON b.product_id = p.id
       LEFT JOIN categories c ON p.category_id = c.id
+      WHERE sr.approved_by IS NOT NULL
+        ${storeFilter}
       GROUP BY p.id, p.sku, p.name, p.unit, c.name
       ORDER BY SUM(sr.cost_loss) DESC, SUM(sr.quantity_disposed) DESC;
     `;
@@ -329,18 +351,23 @@ class SqlSpoilageRepository extends ISpoilageRepository {
   /**
    * Lấy xu hướng chi phí tiêu hủy hao hụt trong N ngày gần nhất phục vụ biểu đồ Trend
    */
-  async getDailySpoilageTrend(days = 14) {
+  async getDailySpoilageTrend(days = 14, storeId = null) {
     const safeDays = Number(days);
+    const hasStore = storeId && String(storeId).toUpperCase() !== 'ALL' && !isNaN(Number(storeId));
+    const storeFilter = hasStore ? `AND ISNULL(b.store_id, 1) = ${Number(storeId)}` : '';
     const sql = `
       SELECT 
-        CONVERT(VARCHAR(10), disposed_date, 23) AS disposedDate,
-        COALESCE(SUM(cost_loss), 0) AS totalCostLoss,
-        COALESCE(SUM(quantity_disposed), 0) AS totalQuantityDisposed,
-        COUNT(id) AS recordCount
-      FROM spoilage_records
-      WHERE disposed_date >= DATEADD(day, -${safeDays - 1}, CAST(GETDATE() AS DATE))
-      GROUP BY disposed_date
-      ORDER BY disposed_date ASC;
+        CONVERT(VARCHAR(10), sr.disposed_date, 23) AS disposedDate,
+        COALESCE(SUM(sr.cost_loss), 0) AS totalCostLoss,
+        COALESCE(SUM(sr.quantity_disposed), 0) AS totalQuantityDisposed,
+        COUNT(sr.id) AS recordCount
+      FROM spoilage_records sr
+      INNER JOIN batches b ON sr.batch_id = b.id
+      WHERE sr.approved_by IS NOT NULL
+        AND sr.disposed_date >= DATEADD(day, -${safeDays - 1}, CAST(GETDATE() AS DATE))
+        ${storeFilter}
+      GROUP BY sr.disposed_date
+      ORDER BY sr.disposed_date ASC;
     `;
     return await SqlConnection.queryJson(sql);
   }

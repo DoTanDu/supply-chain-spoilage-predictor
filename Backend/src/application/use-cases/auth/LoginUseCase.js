@@ -70,6 +70,8 @@ class LoginUseCase {
       if (entry && entry.lockedUntil && entry.lockedUntil > Date.now()) {
         const remainingMinutes = Math.ceil((entry.lockedUntil - Date.now()) / 60000);
         throw new Error(`Tài khoản Quản trị viên đang tạm thời bị khóa do nhập sai mật khẩu quá 5 lần. Vui lòng thử lại sau ${remainingMinutes} phút.`);
+      } else if (entry && entry.lockedUntil && entry.lockedUntil <= Date.now()) {
+        failedAttemptsMap.delete(lookupKey);
       }
     }
 

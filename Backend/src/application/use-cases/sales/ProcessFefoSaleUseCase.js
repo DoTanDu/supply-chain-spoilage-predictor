@@ -67,11 +67,15 @@ class ProcessFefoSaleUseCase {
     const detailedAllocationsSummary = [];
     const fefoDetails = [];
 
-    // 3. Xử lý từng sản phẩm trong giỏ hàng: Bóc tách và bẻ lô theo chuẩn FEFO
+    // 3. Xác thực từng dòng giỏ hàng và gộp các dòng trùng productId trước khi phân bổ FEFO (tránh đọc trùng lô khi giỏ hàng tách 2 dòng cùng SKU)
+    const aggregatedMap = new Map();
+    const productCache = new Map();
+    const batchesCache = new Map();
+
     for (const cartItem of items) {
       const pId = Number(cartItem.productId || cartItem.id);
-      const rawQty = cartItem.quantity !== undefined 
-        ? cartItem.quantity 
+      const rawQty = cartItem.quantity !== undefined
+        ? cartItem.quantity
         : (cartItem.quantitySold !== undefined ? cartItem.quantitySold : 1);
       const qty = Number(rawQty);
 
@@ -82,25 +86,31 @@ class ProcessFefoSaleUseCase {
         throw err;
       }
 
-      // Lấy thông tin sản phẩm
-      const product = await this.productRepository.findById(pId);
+      let product = productCache.get(pId);
       if (!product) {
-        const err = new Error(`Sản phẩm với ID [${pId}] không tồn tại trong hệ thống!`);
-        err.statusCode = 404;
-        err.code = 'ERR_PRODUCT_NOT_FOUND';
-        throw err;
-      }
-      if (!product.isActive) {
-        const err = new Error(`Sản phẩm "${product.name}" hiện đang ngừng kinh doanh, không thể xuất bán!`);
-        err.statusCode = 400;
-        err.code = 'ERR_PRODUCT_INACTIVE';
-        throw err;
+        product = await this.productRepository.findById(pId);
+        if (!product) {
+          const err = new Error(`Sản phẩm với ID [${pId}] không tồn tại trong hệ thống!`);
+          err.statusCode = 404;
+          err.code = 'ERR_PRODUCT_NOT_FOUND';
+          throw err;
+        }
+        if (!product.isActive) {
+          const err = new Error(`Sản phẩm "${product.name}" hiện đang ngừng kinh doanh, không thể xuất bán!`);
+          err.statusCode = 400;
+          err.code = 'ERR_PRODUCT_INACTIVE';
+          throw err;
+        }
+        productCache.set(pId, product);
       }
 
-      // Lấy toàn bộ các lô của sản phẩm tại ĐÚNG chi nhánh
-      const allBatches = (typeof this.batchRepository.findByProductId === 'function')
-        ? await this.batchRepository.findByProductId(pId, targetStoreId)
-        : [];
+      let allBatches = batchesCache.get(pId);
+      if (!allBatches) {
+        allBatches = (typeof this.batchRepository.findByProductId === 'function')
+          ? await this.batchRepository.findByProductId(pId, targetStoreId)
+          : [];
+        batchesCache.set(pId, allBatches);
+      }
 
       // Nếu chỉ định đích danh mã lô mà lô đó đã hết hạn -> Chặn ngay
       if (cartItem.batchId || cartItem.batchCode) {
@@ -119,12 +129,21 @@ class ProcessFefoSaleUseCase {
         }
       }
 
+      const prev = aggregatedMap.get(pId) || 0;
+      aggregatedMap.set(pId, prev + qty);
+    }
+
+    // 3.1 Phân bổ FEFO theo từng sản phẩm đã gộp tổng số lượng mua
+    for (const [pId, qty] of aggregatedMap.entries()) {
+      const product = productCache.get(pId);
+      const allBatches = batchesCache.get(pId) || [];
+
       // Lấy danh sách các lô khả dụng theo chuẩn FEFO tại ĐÚNG chi nhánh
       const availableBatches = await this.batchRepository.findAvailableByProductIdFefo(pId, targetStoreId);
       if (!availableBatches || availableBatches.length === 0) {
         // Kiểm tra xem sản phẩm có lô nào còn tồn nhưng đã hết hạn sử dụng không (Rule 5)
-        const hasExpiredBatches = allBatches.some(b => 
-          Number(b.currentQuantity || b.current_quantity) > 0 && 
+        const hasExpiredBatches = allBatches.some(b =>
+          Number(b.currentQuantity || b.current_quantity) > 0 &&
           (Number(b.daysLeft) <= 0 || b.status === 'EXPIRED')
         );
         if (hasExpiredBatches) {

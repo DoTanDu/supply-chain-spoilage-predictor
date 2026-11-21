@@ -210,8 +210,9 @@ class SqlUserRepository extends IUserRepository {
 
     let resolvedRoleCode = roleCode ? roleCode.toUpperCase() : null;
     if (roleCode || roleId) {
-      const finalRoleCode = (roleCode || (roleId ? codeMap[Number(roleId)] : 'CASHIER')).toUpperCase();
-      const finalRoleId = Number(roleId) || roleMap[finalRoleCode] || 3;
+      const normalizedFromCode = roleCode ? String(roleCode).toUpperCase().trim() : null;
+      const finalRoleCode = normalizedFromCode || (roleId ? codeMap[Number(roleId)] : 'CASHIER');
+      const finalRoleId = (normalizedFromCode && roleMap[normalizedFromCode]) || Number(roleId) || roleMap[finalRoleCode] || 3;
       resolvedRoleCode = codeMap[finalRoleId] || finalRoleCode;
       updates.push(`role_id = ${finalRoleId}`);
     }

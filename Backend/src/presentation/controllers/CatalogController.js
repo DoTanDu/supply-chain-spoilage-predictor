@@ -220,10 +220,14 @@ class CatalogController {
         return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm.' });
       }
 
-      if (updateData.sellingPrice !== undefined && updateData.costPrice !== undefined) {
-        if (Number(updateData.sellingPrice) < Number(updateData.costPrice)) {
-          return res.status(400).json({ success: false, message: 'Giá bán lẻ không được nhỏ hơn giá vốn nhập kho!' });
-        }
+      const effectiveSellingPrice = updateData.sellingPrice !== undefined
+        ? Number(updateData.sellingPrice)
+        : Number(existing.sellingPrice);
+      const effectiveCostPrice = updateData.costPrice !== undefined
+        ? Number(updateData.costPrice)
+        : Number(existing.costPrice);
+      if (effectiveSellingPrice < effectiveCostPrice) {
+        return res.status(400).json({ success: false, message: 'Giá bán lẻ không được nhỏ hơn giá vốn nhập kho!' });
       }
 
       // Kiểm tra chống trùng lặp sản phẩm (Rule 9 SSOT: trùng SKU hoặc tên tương đồng >= 85% với sản phẩm khác)

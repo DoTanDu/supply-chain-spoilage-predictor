@@ -1,8 +1,21 @@
 // src/presentation/controllers/ForecastController.js
-const { resolveStoreScope, assertStoreOwnership, isChainOwner } = require('../middlewares/storeScope');
+const { resolveStoreScope, assertStoreOwnership, isChainOwner, normalizeRoleCode } = require('../middlewares/storeScope');
+const { formatLocalDateYMD } = require('../../domain/utils/dateUtils');
 const SqlConnection = require('../../infrastructure/database/sqlConnection');
 const ensureSmartSupplySchema = require('../../infrastructure/database/ensureSmartSupplySchema');
 const RealEnvironmentService = require('../../infrastructure/services/RealEnvironmentService');
+
+const PO_STATUS_MAP = Object.freeze({
+  PENDING: 'DRAFT',
+  DRAFT: 'DRAFT',
+  APPROVED: 'APPROVED',
+  SHIPPING: 'SUBMITTED',
+  SUBMITTED: 'SUBMITTED',
+  COMPLETED: 'DELIVERED',
+  RECEIVED: 'DELIVERED',
+  DELIVERED: 'DELIVERED',
+  CANCELLED: 'CANCELLED'
+});
 
 class ForecastController {
   constructor({
@@ -78,7 +91,7 @@ class ForecastController {
 
       const items = ropResult.allForecasts || [];
       let savedCount = 0;
-      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayStr = formatLocalDateYMD(new Date());
 
       for (const it of items) {
         const pId = Number(it.productId);
@@ -96,7 +109,7 @@ class ForecastController {
             ${Number(it.upperBound || 0)},
             ${Number(it.spoilageRiskQty || 0)},
             ${Number(it.netSuggestedOrderQuantity ?? it.suggestedOrderQuantity ?? 0)},
-            ${SqlConnection.escapeSql(it.modelName || 'LightGBM-M5-Pretrained')},
+            ${SqlConnection.escapeSql(it.modelName || 'ROP-Live-Sales-Weather')},
             ${maeVal},
             GETDATE()
           );
@@ -142,6 +155,25 @@ class ForecastController {
     }
   }
 
+  async _assertManagerPoLimit(reqUser, existingOrder) {
+    if (isChainOwner(reqUser)) return null;
+    await ensureSmartSupplySchema();
+    const cfgRows = await SqlConnection.queryJson(`
+      SELECT TOP 1 CAST(manager_po_approval_limit AS FLOAT) AS limitAmount
+      FROM dbo.enterprise_config WHERE id = 1;
+    `).catch(() => []);
+    const mgrLimit = Number(cfgRows[0]?.limitAmount ?? 5000000);
+    const orderCost = Number(existingOrder.totalEstimatedCost || 0);
+    if (orderCost > mgrLimit) {
+      return {
+        success: false,
+        code: 'ERR_PO_EXCEEDS_MANAGER_LIMIT',
+        message: `Đơn PO ${existingOrder.orderCode} có giá trị ${orderCost.toLocaleString('vi-VN')} đ vượt hạn mức duyệt của Quản lý (${mgrLimit.toLocaleString('vi-VN')} đ). Vui lòng chuyển Chủ chuỗi (OWNER) phê duyệt.`
+      };
+    }
+    return null;
+  }
+
   async updatePOStatus(req, res, next) {
     try {
       const { id } = req.params;
@@ -155,32 +187,42 @@ class ForecastController {
       }
 
       const { status, notes } = req.body;
-      const nextStatusUpper = String(status || req.body.newStatus || '').toUpperCase().trim();
+      const rawStatusUpper = String(status || req.body.newStatus || '').toUpperCase().trim();
+      const normalizedNextStatus = PO_STATUS_MAP[rawStatusUpper];
+      if (!normalizedNextStatus) {
+        return res.status(400).json({
+          success: false,
+          code: 'ERR_INVALID_PO_STATUS',
+          message: `Trạng thái đơn đặt hàng [${status || req.body.newStatus || ''}] không hợp lệ! Chỉ chấp nhận: DRAFT, APPROVED, SUBMITTED, DELIVERED, CANCELLED.`
+        });
+      }
+
+      // Khóa SoD: Nhân viên (CASHIER/STAFF) chỉ được phép xác nhận đã nhận hàng (DELIVERED), không được duyệt/gửi/hủy PO
+      const normalizedRole = normalizeRoleCode(req.user?.roleCode);
+      if (normalizedRole !== 'ADMIN' && normalizedRole !== 'STORE_MANAGER' && normalizedNextStatus !== 'DELIVERED') {
+        return res.status(403).json({
+          success: false,
+          statusCode: 403,
+          code: 'ERR_UNAUTHORIZED_ROLE',
+          message: `Từ chối truy cập (403 Forbidden). Vai trò [${req.user?.roleCode}] chỉ được phép xác nhận đã nhận hàng (DELIVERED), không có quyền chuyển PO sang [${normalizedNextStatus}].`
+        });
+      }
+
       const approvedBy = req.user ? req.user.id : (req.body.approvedBy || 2);
       const approvedByName = req.user ? req.user.fullName : (req.body.approvedByName || 'Cửa hàng trưởng');
 
       // Kiểm tra hạn mức thẩm quyền duyệt PO của MANAGER (theo enterprise_config)
-      if (!isChainOwner(req.user) && (nextStatusUpper === 'APPROVED' || nextStatusUpper === 'SUBMITTED')) {
-        await ensureSmartSupplySchema();
-        const cfgRows = await SqlConnection.queryJson(`
-          SELECT TOP 1 CAST(manager_po_approval_limit AS FLOAT) AS limitAmount
-          FROM dbo.enterprise_config WHERE id = 1;
-        `).catch(() => []);
-        const mgrLimit = Number(cfgRows[0]?.limitAmount ?? 5000000);
-        const orderCost = Number(existingOrder.totalEstimatedCost || 0);
-        if (orderCost > mgrLimit) {
-          return res.status(403).json({
-            success: false,
-            code: 'ERR_PO_EXCEEDS_MANAGER_LIMIT',
-            message: `Đơn PO ${existingOrder.orderCode} có giá trị ${orderCost.toLocaleString('vi-VN')} đ vượt hạn mức duyệt của Quản lý (${mgrLimit.toLocaleString('vi-VN')} đ). Vui lòng chuyển Chủ chuỗi (OWNER) phê duyệt.`
-          });
+      if (normalizedNextStatus === 'APPROVED' || normalizedNextStatus === 'SUBMITTED') {
+        const limitErr = await this._assertManagerPoLimit(req.user, existingOrder);
+        if (limitErr) {
+          return res.status(403).json(limitErr);
         }
       }
 
       const result = await this.updatePurchaseOrderStatusUseCase.execute({
         orderId: id,
-        status: status || req.body.newStatus,
-        newStatus: status || req.body.newStatus,
+        status: normalizedNextStatus,
+        newStatus: normalizedNextStatus,
         approvedBy,
         managerId: approvedBy,
         approvedByName,
@@ -242,6 +284,11 @@ class ForecastController {
       const ownership = assertStoreOwnership(req.user, existingOrder.storeId, `đơn đặt hàng PO #${id}`);
       if (!ownership.ok) {
         return res.status(ownership.statusCode).json(ownership.error);
+      }
+
+      const limitErr = await this._assertManagerPoLimit(req.user, existingOrder);
+      if (limitErr) {
+        return res.status(403).json(limitErr);
       }
 
       const approvedBy = req.user ? req.user.id : 2;

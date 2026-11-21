@@ -63,6 +63,7 @@ class GetReportsAnalyticsUseCase {
         FROM dbo.spoilage_records sr
         INNER JOIN dbo.batches b ON sr.batch_id = b.id
         WHERE ${batchScope}
+          AND sr.approved_by IS NOT NULL
           AND sr.disposed_date >= DATEADD(day, -${safeDays}, CAST(GETDATE() AS DATE))
         GROUP BY ISNULL(sr.reason, N'EXP_SPOILAGE')
         ORDER BY SUM(sr.cost_loss) DESC;
@@ -80,6 +81,8 @@ class GetReportsAnalyticsUseCase {
         INNER JOIN dbo.products p ON b.product_id = p.id
         LEFT JOIN dbo.categories c ON p.category_id = c.id
         WHERE ${batchScope}
+          AND sr.approved_by IS NOT NULL
+          AND sr.disposed_date >= DATEADD(day, -${safeDays}, CAST(GETDATE() AS DATE))
         GROUP BY p.id, p.sku, p.name, c.name
         ORDER BY SUM(sr.cost_loss) DESC;
       `),
@@ -97,7 +100,8 @@ class GetReportsAnalyticsUseCase {
           UNION
           SELECT DISTINCT CONVERT(VARCHAR(10), disposed_date, 23) AS dayStr
           FROM dbo.spoilage_records
-          WHERE disposed_date >= DATEADD(day, -${safeDays}, CAST(GETDATE() AS DATE))
+          WHERE approved_by IS NOT NULL
+            AND disposed_date >= DATEADD(day, -${safeDays}, CAST(GETDATE() AS DATE))
         ) d
         LEFT JOIN (
           SELECT CONVERT(VARCHAR(10), sh.sale_date, 23) AS dayStr, SUM(sh.total_amount) AS revenue, SUM(sh.quantity_sold) AS unitsSold
@@ -110,6 +114,7 @@ class GetReportsAnalyticsUseCase {
           FROM dbo.spoilage_records sr
           INNER JOIN dbo.batches b ON sr.batch_id = b.id
           WHERE ${batchScope}
+            AND sr.approved_by IS NOT NULL
           GROUP BY CONVERT(VARCHAR(10), sr.disposed_date, 23)
         ) sp ON d.dayStr = sp.dayStr
         ORDER BY d.dayStr ASC;
@@ -120,7 +125,14 @@ class GetReportsAnalyticsUseCase {
           ISNULL(SUM(CASE WHEN b.current_quantity > 0 AND b.status IN ('ACTIVE', 'WARNING') THEN b.current_quantity ELSE 0 END), 0) AS availableUnits,
           ISNULL(SUM(CASE WHEN b.current_quantity > 0 AND b.status IN ('ACTIVE', 'WARNING') THEN b.current_quantity * b.import_price ELSE 0 END), 0) AS inventoryCost,
           ISNULL(SUM(CASE WHEN b.current_quantity > 0 AND DATEDIFF(day, CAST(GETDATE() AS DATE), b.expiry_date) BETWEEN 1 AND 7 THEN b.current_quantity * b.import_price ELSE 0 END), 0) AS nearExpiryRiskCost,
-          ISNULL(SUM(CASE WHEN b.discount_percent > 0 THEN (b.initial_quantity - b.current_quantity) * b.import_price ELSE 0 END), 0) AS markdownRescuedValue,
+          ISNULL((
+            SELECT SUM(sh.quantity_sold * b2.import_price)
+            FROM dbo.sales_history sh
+            INNER JOIN dbo.batches b2 ON sh.batch_id = b2.id
+            WHERE ${isSpecificStore ? `ISNULL(b2.store_id, 1) = ${numericStoreId}` : '1=1'}
+              AND b2.discount_percent > 0
+              AND sh.sale_date >= DATEADD(day, -${safeDays}, CAST(GETDATE() AS DATE))
+          ), 0) AS markdownRescuedValue,
           ISNULL(SUM(CASE WHEN b.current_quantity > 0 AND DATEDIFF(day, CAST(GETDATE() AS DATE), b.expiry_date) <= 0 THEN 1 ELSE 0 END), 0) AS expiredBatchCount
         FROM dbo.products p
         LEFT JOIN dbo.batches b ON p.id = b.product_id AND (${batchScope})
@@ -137,7 +149,8 @@ class GetReportsAnalyticsUseCase {
           ISNULL(SUM(CASE WHEN po.status <> 'CANCELLED' THEN po.total_estimated_cost ELSE 0 END), 0) AS totalBudget,
           AVG(CAST(DATEDIFF(hour, po.created_at, ISNULL(po.updated_at, po.created_at)) AS FLOAT) / 24.0) AS avgProcessingDays
         FROM dbo.purchase_orders po
-        WHERE ${poScope};
+        WHERE ${poScope}
+          AND po.created_at >= DATEADD(day, -${safeDays}, CAST(GETDATE() AS DATE));
       `),
       SqlConnection.queryJson(`
         SELECT
@@ -152,7 +165,8 @@ class GetReportsAnalyticsUseCase {
         FROM dbo.stock_transfers st
         LEFT JOIN dbo.batches b ON st.source_batch_id = b.id
         LEFT JOIN dbo.products p ON st.product_id = p.id
-        WHERE ${trfScope};
+        WHERE ${trfScope}
+          AND st.created_at >= DATEADD(day, -${safeDays}, CAST(GETDATE() AS DATE));
       `),
       SqlConnection.queryJson(`
         SELECT
@@ -180,12 +194,12 @@ class GetReportsAnalyticsUseCase {
           sp.status,
           sp.default_lead_time_days AS leadTimeDays,
           ISNULL((SELECT SUM(sh.total_amount) FROM dbo.sales_history sh WHERE ISNULL(sh.store_id, 1) = sp.id AND sh.sale_date >= DATEADD(day, -${safeDays}, CAST(GETDATE() AS DATE))), 0) AS salesRevenue,
-          ISNULL((SELECT SUM(sr.cost_loss) FROM dbo.spoilage_records sr INNER JOIN dbo.batches b ON sr.batch_id = b.id WHERE ISNULL(b.store_id, 1) = sp.id AND sr.disposed_date >= DATEADD(day, -${safeDays}, CAST(GETDATE() AS DATE))), 0) AS spoilageLoss,
-          ISNULL((SELECT SUM(sr.quantity_disposed) FROM dbo.spoilage_records sr INNER JOIN dbo.batches b ON sr.batch_id = b.id WHERE ISNULL(b.store_id, 1) = sp.id AND sr.disposed_date >= DATEADD(day, -${safeDays}, CAST(GETDATE() AS DATE))), 0) AS disposedUnits,
+          ISNULL((SELECT SUM(sr.cost_loss) FROM dbo.spoilage_records sr INNER JOIN dbo.batches b ON sr.batch_id = b.id WHERE ISNULL(b.store_id, 1) = sp.id AND sr.approved_by IS NOT NULL AND sr.disposed_date >= DATEADD(day, -${safeDays}, CAST(GETDATE() AS DATE))), 0) AS spoilageLoss,
+          ISNULL((SELECT SUM(sr.quantity_disposed) FROM dbo.spoilage_records sr INNER JOIN dbo.batches b ON sr.batch_id = b.id WHERE ISNULL(b.store_id, 1) = sp.id AND sr.approved_by IS NOT NULL AND sr.disposed_date >= DATEADD(day, -${safeDays}, CAST(GETDATE() AS DATE))), 0) AS disposedUnits,
           ISNULL((SELECT SUM(b.current_quantity * b.import_price) FROM dbo.batches b WHERE ISNULL(b.store_id, 1) = sp.id AND b.current_quantity > 0 AND b.status IN ('ACTIVE', 'WARNING')), 0) AS inventoryCost,
-          ISNULL((SELECT SUM((b.initial_quantity - b.current_quantity) * b.import_price) FROM dbo.batches b WHERE ISNULL(b.store_id, 1) = sp.id AND b.discount_percent > 0), 0) AS markdownRescued,
-          ISNULL((SELECT SUM(st.transfer_quantity * ISNULL(b.import_price, ISNULL(p.cost_price, 0)) - st.shipping_cost) FROM dbo.stock_transfers st LEFT JOIN dbo.batches b ON st.source_batch_id = b.id LEFT JOIN dbo.products p ON st.product_id = p.id WHERE (st.from_store_id = sp.id OR st.to_store_id = sp.id) AND st.status IN ('APPROVED', 'IN_TRANSIT', 'RECEIVED')), 0) AS transferNetSaved,
-          ISNULL((SELECT COUNT(*) FROM dbo.purchase_orders po WHERE ISNULL(po.store_id, 1) = sp.id AND po.status <> 'CANCELLED'), 0) AS poCount
+          ISNULL((SELECT SUM(sh.quantity_sold * b.import_price) FROM dbo.sales_history sh INNER JOIN dbo.batches b ON sh.batch_id = b.id WHERE ISNULL(b.store_id, 1) = sp.id AND b.discount_percent > 0 AND sh.sale_date >= DATEADD(day, -${safeDays}, CAST(GETDATE() AS DATE))), 0) AS markdownRescued,
+          ISNULL((SELECT SUM(st.transfer_quantity * ISNULL(b.import_price, ISNULL(p.cost_price, 0)) - st.shipping_cost) FROM dbo.stock_transfers st LEFT JOIN dbo.batches b ON st.source_batch_id = b.id LEFT JOIN dbo.products p ON st.product_id = p.id WHERE st.from_store_id = sp.id AND st.status IN ('APPROVED', 'IN_TRANSIT', 'RECEIVED') AND st.created_at >= DATEADD(day, -${safeDays}, CAST(GETDATE() AS DATE))), 0) AS transferNetSaved,
+          ISNULL((SELECT COUNT(*) FROM dbo.purchase_orders po WHERE ISNULL(po.store_id, 1) = sp.id AND po.status <> 'CANCELLED' AND po.created_at >= DATEADD(day, -${safeDays}, CAST(GETDATE() AS DATE))), 0) AS poCount
         FROM dbo.store_profile sp
         ${isSpecificStore ? `WHERE sp.id = ${numericStoreId}` : ''}
         ORDER BY sp.id ASC;
@@ -201,15 +215,16 @@ class GetReportsAnalyticsUseCase {
 
     const totalRevenue = Number(sales.totalRevenue || 0);
     const totalCostLoss = Number(spoil.totalCostLoss || 0);
-    const denom = totalRevenue + totalCostLoss;
-    const spoilageRatePercent = denom > 0 ? Number(((totalCostLoss / denom) * 100).toFixed(2)) : 0;
+    const approvedCostLoss = Number(spoil.approvedCostLoss || 0);
+    const denom = totalRevenue + approvedCostLoss;
+    const spoilageRatePercent = denom > 0 ? Number(((approvedCostLoss / denom) * 100).toFixed(2)) : 0;
 
     const savedTransferVal = Number(trf.savedValue || 0);
     const shippingCost = Number(trf.totalShippingCost || 0);
     const transferNetBenefit = savedTransferVal - shippingCost;
     const markdownRescuedValue = Number(batch.markdownRescuedValue || 0);
     const totalRescuedValue = markdownRescuedValue + savedTransferVal;
-    const rescueDenom = totalRescuedValue + totalCostLoss;
+    const rescueDenom = totalRescuedValue + approvedCostLoss;
     const rescueRatePercent = rescueDenom > 0 ? Number(((totalRescuedValue / rescueDenom) * 100).toFixed(1)) : 0;
 
     // Đếm SKU dưới ROP (stockout risk) từ bảng products + batches hiện tại

@@ -43,6 +43,24 @@ class UpdatePurchaseOrderStatusUseCase {
       throw err;
     }
 
+    // Kiểm tra máy trạng thái chuyển đổi vòng đời PO hợp lệ
+    const currentStatusRaw = String(order.status || 'DRAFT').toUpperCase().trim();
+    const currentStatus = STATUS_MAP[currentStatusRaw] || currentStatusRaw;
+    const ALLOWED_TRANSITIONS = {
+      DRAFT: ['DRAFT', 'APPROVED', 'SUBMITTED', 'CANCELLED'],
+      APPROVED: ['APPROVED', 'SUBMITTED', 'DELIVERED', 'CANCELLED'],
+      SUBMITTED: ['SUBMITTED', 'DELIVERED', 'CANCELLED'],
+      DELIVERED: [],
+      CANCELLED: []
+    };
+    const allowedNext = ALLOWED_TRANSITIONS[currentStatus] || [];
+    if (!allowedNext.includes(statusNorm)) {
+      const err = new Error(`Không thể chuyển trạng thái đơn PO ${order.orderCode} từ [${currentStatus}] sang [${statusNorm}]!`);
+      err.statusCode = 400;
+      err.code = 'ERR_INVALID_PO_TRANSITION';
+      throw err;
+    }
+
     // Cập nhật trạng thái
     await this.purchaseOrderRepository.updateOrderStatus(orderId, statusNorm, targetManagerId);
 
@@ -53,7 +71,7 @@ class UpdatePurchaseOrderStatusUseCase {
         : `Cập nhật trạng thái đơn ${order.orderCode} thành [${statusNorm}].`;
 
       await this.auditLogRepository.log({
-        userId: managerId ? Number(managerId) : null,
+        userId: targetManagerId ? Number(targetManagerId) : null,
         userName: managerName,
         action: 'UPDATE_PO_STATUS',
         entityName: 'PURCHASE_ORDERS',

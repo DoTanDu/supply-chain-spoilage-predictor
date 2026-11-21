@@ -1,5 +1,5 @@
 // src/presentation/controllers/SpoilageController.js
-const { resolveStoreScope, assertStoreOwnership } = require('../middlewares/storeScope');
+const { resolveStoreScope, assertStoreOwnership, normalizeRoleCode } = require('../middlewares/storeScope');
 
 class SpoilageController {
   constructor({ disposeSpoiledGoodsUseCase, getSpoilageLedgerUseCase, spoilageRepository, batchRepository, auditLogRepository }) {
@@ -48,10 +48,26 @@ class SpoilageController {
         }
       }
 
+      // Kiểm tra hợp lệ toàn bộ danh sách trước khi thực thi ghi nhận
+      const normalizedItems = [];
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i] || {};
+        const batchId = item.batchId || item.id;
+        const qty = Number(item.quantityDisposed !== undefined ? item.quantityDisposed : item.quantity);
+        if (!batchId || !Number.isInteger(qty) || qty <= 0) {
+          return res.status(400).json({
+            success: false,
+            errorCode: 'ERR_INVALID_QUANTITY',
+            message: `Dòng thứ ${i + 1} không hợp lệ (batchId hoặc số lượng nguyên > 0 bị thiếu/sai).`
+          });
+        }
+        normalizedItems.push({ ...item, batchId, qty });
+      }
+
       const performedBy = req.user ? req.user.id : (req.body.performedBy || 3);
       const performedByName = req.user ? (req.user.fullName || req.user.username) : (req.body.performedByName || 'Nhân viên ca trực');
-      const userRole = req.user ? req.user.roleCode : '';
-      const canAutoApprove = userRole === 'ADMIN' || userRole === 'STORE_MANAGER';
+      const normalizedRole = normalizeRoleCode(req.user ? req.user.roleCode : '');
+      const canAutoApprove = normalizedRole === 'ADMIN' || normalizedRole === 'STORE_MANAGER';
       const approvedBy = canAutoApprove ? (req.user ? req.user.id : (req.body.approvedBy || 2)) : null;
       const approvedByName = canAutoApprove ? (req.user ? (req.user.fullName || req.user.username) : 'Cửa hàng trưởng LHU Mart') : null;
 
@@ -59,10 +75,8 @@ class SpoilageController {
       let totalLoss = 0;
       let totalQuantity = 0;
 
-      for (const item of items) {
-        const batchId = item.batchId || item.id;
-        const qty = Number(item.quantityDisposed !== undefined ? item.quantityDisposed : item.quantity);
-        if (!batchId || isNaN(qty) || qty <= 0) continue;
+      for (const item of normalizedItems) {
+        const { batchId, qty } = item;
 
         const itemReason = item.reason || reason;
         const itemNotes = item.notes !== undefined && item.notes !== '' ? item.notes : notes;
@@ -127,8 +141,8 @@ class SpoilageController {
       // Tuân thủ nguyên tắc Tách biệt trách nhiệm (SoD - Mục 4 & 16 SSOT):
       // Chỉ ADMIN và STORE_MANAGER mới có thẩm quyền tự phê duyệt ngay khi lập phiếu;
       // CASHIER (Nhân viên cửa hàng) lập phiếu ở trạng thái PENDING (approvedBy = null) chờ Quản lý duyệt.
-      const userRole = req.user ? req.user.roleCode : '';
-      const canAutoApprove = userRole === 'ADMIN' || userRole === 'STORE_MANAGER';
+      const normalizedRole = normalizeRoleCode(req.user ? req.user.roleCode : '');
+      const canAutoApprove = normalizedRole === 'ADMIN' || normalizedRole === 'STORE_MANAGER';
       const approvedBy = canAutoApprove ? (req.user ? req.user.id : (req.body.approvedBy || 2)) : null;
       const approvedByName = canAutoApprove ? (req.user ? (req.user.fullName || req.user.username) : 'Cửa hàng trưởng LHU Mart') : null;
 
@@ -184,7 +198,7 @@ class SpoilageController {
         });
       }
 
-      if (this.auditLogRepository) {
+      if (this.auditLogRepository && !updated.alreadyApproved) {
         await this.auditLogRepository.log({
           userId: approverId,
           userName: approverName,
@@ -197,7 +211,9 @@ class SpoilageController {
 
       res.json({
         success: true,
-        message: `Đã phê duyệt biên bản tiêu hủy [${updated.recordCode || id}] và chốt Sổ hao hụt tài chính!`,
+        message: updated.alreadyApproved
+          ? `Biên bản tiêu hủy [${updated.recordCode || id}] đã được phê duyệt trước đó.`
+          : `Đã phê duyệt biên bản tiêu hủy [${updated.recordCode || id}] và chốt Sổ hao hụt tài chính!`,
         data: updated
       });
     } catch (err) {

@@ -1,6 +1,7 @@
 // src/infrastructure/database/repositories/SqlSaleRepository.js
 const SqlConnection = require('../sqlConnection');
 const ISaleRepository = require('../../../domain/interfaces/ISaleRepository');
+const { formatLocalDateYMD } = require('../../../domain/utils/dateUtils');
 
 class SqlSaleRepository extends ISaleRepository {
   /**
@@ -9,7 +10,7 @@ class SqlSaleRepository extends ISaleRepository {
   async executeFefoCheckoutTransaction({ saleOrder, batchDeductions = [] }) {
     const txnCode = SqlConnection.escapeSql(saleOrder.transactionCode);
     const safeCashier = saleOrder.cashierId ? Number(saleOrder.cashierId) : 'NULL';
-    const safeDate = SqlConnection.escapeSql(new Date(saleOrder.saleDate || new Date()).toISOString().slice(0, 10));
+    const safeDate = SqlConnection.escapeSql(formatLocalDateYMD(saleOrder.saleDate || new Date()));
     const safeDayOfWeek = SqlConnection.escapeSql(saleOrder.dayOfWeek || 'MONDAY');
     const safeWeather = SqlConnection.escapeSql(saleOrder.weather || 'SUNNY');
     const safeHoliday = saleOrder.isHoliday ? 1 : 0;
@@ -26,11 +27,14 @@ class SqlSaleRepository extends ISaleRepository {
       const price = Number(item.salePrice);
       const total = Number(item.lineTotal);
 
-      // 1. Khóa dòng và trừ số lượng tồn kho (bảo vệ chống âm kho & tranh chấp đồng thời bằng UPDLOCK, ROWLOCK - Rule 3 & Mục 10)
+      // 1. Khóa dòng và trừ số lượng tồn kho (bảo vệ chống âm kho & tranh chấp đồng thời bằng UPDLOCK, ROWLOCK - Rule 3, Rule 5 & Mục 10)
       batchUpdates.push(`
         UPDATE batches WITH (UPDLOCK, ROWLOCK)
         SET current_quantity = current_quantity - ${qty}
-        WHERE id = ${bId} AND current_quantity >= ${qty} AND status IN ('ACTIVE', 'WARNING');
+        WHERE id = ${bId}
+          AND current_quantity >= ${qty}
+          AND status IN ('ACTIVE', 'WARNING')
+          AND expiry_date > CAST(GETDATE() AS DATE);
         IF @@ROWCOUNT = 0
           THROW 50001, N'Tranh chấp tồn kho đồng thời (Rule 3): Lô hàng không còn đủ số lượng khả dụng để xuất bán!', 1;
       `);
@@ -165,7 +169,9 @@ class SqlSaleRepository extends ISaleRepository {
   /**
    * Lấy Top sản phẩm có tốc độ bán nhanh nhất (Mục 11.2 Đặc tả SSOT)
    */
-  async getTopSellingProducts(limit = 5) {
+  async getTopSellingProducts(limit = 5, storeId = null) {
+    const hasStore = storeId && String(storeId).toUpperCase() !== 'ALL' && !isNaN(Number(storeId));
+    const storeFilter = hasStore ? `WHERE ISNULL(sh.store_id, 1) = ${Number(storeId)}` : '';
     const sql = `
       SELECT TOP (${Number(limit)})
         p.id AS productId,
@@ -180,6 +186,7 @@ class SqlSaleRepository extends ISaleRepository {
       FROM sales_history sh
       INNER JOIN products p ON sh.product_id = p.id
       LEFT JOIN categories c ON p.category_id = c.id
+      ${storeFilter}
       GROUP BY p.id, p.sku, p.name, p.unit, c.name
       ORDER BY SUM(sh.quantity_sold) DESC, SUM(sh.total_amount) DESC;
     `;
@@ -318,22 +325,25 @@ class SqlSaleRepository extends ISaleRepository {
       const rawStoreCode = String(raw.storeCode || '').toUpperCase().trim();
       const targetStoreId = scopedSid || Number(raw.storeId) || storeCodeMap[rawStoreCode] || 1;
 
-      const matchedBatch = (batches || []).find(b => Number(b.productId) === Number(prod.id) && Number(b.storeId || 1) === targetStoreId)
-        || (batches || []).find(b => Number(b.productId) === Number(prod.id));
+      const matchedBatch = (batches || []).find(b => Number(b.productId) === Number(prod.id) && Number(b.storeId || 1) === targetStoreId);
 
       if (!matchedBatch) {
-        errors.push({ row: rowNum, sku: prod.sku, message: `Sản phẩm [${prod.sku}] chưa có lô hàng nào trong kho để đối chiếu.` });
+        errors.push({ row: rowNum, sku: prod.sku, message: `Sản phẩm [${prod.sku}] chưa có lô hàng nào tại Chi nhánh #${targetStoreId} để đối chiếu.` });
         return;
       }
 
       const unitPrice = (raw.salePrice !== undefined && raw.salePrice !== null && String(raw.salePrice) !== '')
         ? Number(raw.salePrice)
-        : Number(prod.sellingPrice || 25000);
+        : Number(prod.sellingPrice);
+      if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+        errors.push({ row: rowNum, sku: prod.sku, message: `Sản phẩm [${prod.sku}] không có giá bán hợp lệ (file import thiếu sale_price và danh mục chưa có giá niêm yết).` });
+        return;
+      }
       const totalAmount = Math.round(qty * unitPrice);
 
       const parsedDate = raw.saleDate ? new Date(raw.saleDate) : new Date();
       const validDate = isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
-      const dateStr = validDate.toISOString().slice(0, 10);
+      const dateStr = formatLocalDateYMD(validDate);
       const dow = daysOfWeek[validDate.getDay()] || 'MONDAY';
       const txnCode = raw.transactionCode
         ? String(raw.transactionCode).trim()
@@ -393,14 +403,17 @@ class SqlSaleRepository extends ISaleRepository {
   /**
    * Tính tổng doanh số bán lẻ trong ngày hôm nay cho Dashboard
    */
-  async getTodaySalesSummary() {
+  async getTodaySalesSummary(storeId = null) {
+    const hasStore = storeId && String(storeId).toUpperCase() !== 'ALL' && !isNaN(Number(storeId));
+    const storeFilter = hasStore ? `AND ISNULL(store_id, 1) = ${Number(storeId)}` : '';
     const sql = `
       SELECT 
         COUNT(DISTINCT transaction_code) AS todayTransactionsCount,
         COALESCE(SUM(quantity_sold), 0) AS todayTotalQuantity,
         COALESCE(SUM(total_amount), 0) AS todayTotalRevenue
       FROM sales_history
-      WHERE sale_date = CAST(GETDATE() AS DATE);
+      WHERE sale_date = CAST(GETDATE() AS DATE)
+        ${storeFilter};
     `;
     const rows = await SqlConnection.queryJson(sql);
     return rows.length > 0 ? rows[0] : { todayTransactionsCount: 0, todayTotalQuantity: 0, todayTotalRevenue: 0 };
@@ -409,13 +422,16 @@ class SqlSaleRepository extends ISaleRepository {
   /**
    * Lấy tổng doanh số và số hóa đơn bán lẻ tích lũy toàn thời gian (phục vụ tính Spoilage Rate % Mục 11.1)
    */
-  async getTotalSalesSummary() {
+  async getTotalSalesSummary(storeId = null) {
+    const hasStore = storeId && String(storeId).toUpperCase() !== 'ALL' && !isNaN(Number(storeId));
+    const storeFilter = hasStore ? `WHERE ISNULL(store_id, 1) = ${Number(storeId)}` : '';
     const sql = `
       SELECT 
         COUNT(DISTINCT transaction_code) AS totalTransactionsCount,
         COALESCE(SUM(quantity_sold), 0) AS totalQuantitySold,
         COALESCE(SUM(total_amount), 0) AS totalSalesRevenue
-      FROM sales_history;
+      FROM sales_history
+      ${storeFilter};
     `;
     const rows = await SqlConnection.queryJson(sql);
     return rows.length > 0 ? rows[0] : { totalTransactionsCount: 0, totalQuantitySold: 0, totalSalesRevenue: 0 };
@@ -424,8 +440,10 @@ class SqlSaleRepository extends ISaleRepository {
   /**
    * Lấy xu hướng doanh số bán hàng trong N ngày gần nhất phục vụ biểu đồ Trend
    */
-  async getDailySalesTrend(days = 14) {
+  async getDailySalesTrend(days = 14, storeId = null) {
     const safeDays = Number(days);
+    const hasStore = storeId && String(storeId).toUpperCase() !== 'ALL' && !isNaN(Number(storeId));
+    const storeFilter = hasStore ? `AND ISNULL(store_id, 1) = ${Number(storeId)}` : '';
     const sql = `
       SELECT 
         CONVERT(VARCHAR(10), sale_date, 23) AS saleDate,
@@ -434,6 +452,7 @@ class SqlSaleRepository extends ISaleRepository {
         COUNT(DISTINCT transaction_code) AS transactionCount
       FROM sales_history
       WHERE sale_date >= DATEADD(day, -${safeDays - 1}, CAST(GETDATE() AS DATE))
+        ${storeFilter}
       GROUP BY sale_date
       ORDER BY sale_date ASC;
     `;
@@ -443,7 +462,9 @@ class SqlSaleRepository extends ISaleRepository {
   /**
    * Truy vấn doanh số thực tế 100% theo 4 ca trực trong ngày từ sales_history
    */
-  async getSalesByShift() {
+  async getSalesByShift(storeId = null) {
+    const hasStore = storeId && String(storeId).toUpperCase() !== 'ALL' && !isNaN(Number(storeId));
+    const storeFilter = hasStore ? `WHERE ISNULL(store_id, 1) = ${Number(storeId)}` : '';
     const sql = `
       SELECT 
         CASE 
@@ -455,6 +476,7 @@ class SqlSaleRepository extends ISaleRepository {
         COUNT(DISTINCT transaction_code) AS billCount,
         COALESCE(SUM(total_amount), 0) AS totalRevenue
       FROM sales_history
+      ${storeFilter}
       GROUP BY 
         CASE 
           WHEN DATEPART(hour, created_at) >= 6 AND DATEPART(hour, created_at) < 11 THEN 'MORNING'

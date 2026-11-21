@@ -203,8 +203,9 @@ class AuthController {
       });
 
       // Reset bộ đếm số lần sai khi Admin reset mật khẩu cho nhân viên
-      if (result.data && result.data.username) {
-        LoginUseCase.resetFailedAttempts(result.data.username);
+      const resetUsername = result?.username || result?.data?.username;
+      if (resetUsername) {
+        LoginUseCase.resetFailedAttempts(resetUsername);
       }
 
       res.json(result);

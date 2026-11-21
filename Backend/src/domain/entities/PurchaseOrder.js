@@ -61,13 +61,18 @@ class PurchaseOrder {
     unitCost
   }) {
     const suggested = Number(suggestedQuantity);
-    const approved = approvedQuantity !== null ? Number(approvedQuantity) : suggested;
+    const approved = approvedQuantity !== null && approvedQuantity !== undefined
+      ? Number(approvedQuantity)
+      : suggested;
     const cost = Number(unitCost);
 
-    if (suggested <= 0) {
+    if (!Number.isFinite(suggested) || suggested <= 0) {
       throw new Error('Số lượng đề xuất đặt hàng phải lớn hơn 0!');
     }
-    if (cost < 0) {
+    if (!Number.isFinite(approved) || approved <= 0) {
+      throw new Error('Số lượng duyệt đặt hàng (approvedQuantity) phải là số hợp lệ lớn hơn 0!');
+    }
+    if (!Number.isFinite(cost) || cost < 0) {
       throw new Error('Đơn giá vốn không được nhỏ hơn 0!');
     }
 

@@ -8,6 +8,7 @@ const { resolveStoreScope } = require('../middlewares/storeScope');
 const router = express.Router();
 const transferReadGuard = roleMiddleware(['ADMIN', 'STORE_MANAGER', 'CASHIER'], { pageKey: 'stock-transfer' });
 const transferManageGuard = roleMiddleware(['ADMIN', 'STORE_MANAGER'], { pageKey: 'stock-transfer' });
+const aiInferenceGuard = roleMiddleware(['ADMIN', 'STORE_MANAGER'], { allowedPages: ['ai-forecast', 'stock-transfer'] });
 
 // GET /api/stock-transfers/ai-matrix - Ma trận Cân bằng Cung-Cầu từ SQL Server + Thời tiết & Lịch lễ thực tế
 router.get('/ai-matrix', transferReadGuard, async (req, res, next) => {
@@ -41,7 +42,7 @@ router.get('/ai-matrix', transferReadGuard, async (req, res, next) => {
 
 // POST /api/stock-transfers/ai-inference - Kiểm thử trực tiếp Model (.pkl) trên dữ liệu SQL Server + thời tiết Open-Meteo
 // Spawn tiến trình Python nên chỉ ADMIN & STORE_MANAGER được gọi; limit là số nguyên dương có trần.
-router.post('/ai-inference', transferManageGuard, async (req, res, next) => {
+router.post('/ai-inference', aiInferenceGuard, async (req, res, next) => {
   try {
     const parsedLimit = Number.parseInt(req.body?.limit ?? req.query?.limit ?? 10, 10);
     const limit = Number.isInteger(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 50) : 10;

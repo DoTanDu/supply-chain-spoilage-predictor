@@ -45,6 +45,7 @@ class SqlAuditLogRepository extends IAuditLogRepository {
       SELECT TOP (${Number(limit)})
         sal.id,
         sal.user_id AS userId,
+        COALESCE(u.full_name, u.username, N'Hệ thống') AS userName,
         sal.action_type AS actionType,
         sal.entity_name AS entityName,
         sal.entity_id AS entityId,

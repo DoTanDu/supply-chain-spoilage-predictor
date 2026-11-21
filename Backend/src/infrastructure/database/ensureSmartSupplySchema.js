@@ -70,6 +70,58 @@ async function ensureSmartSupplySchema() {
           description = N'Nhập kho, xuất bán FEFO, kiểm kê lô, đảo kệ cận hạn & giao nhận điều chuyển'
       WHERE code = 'CASHIER';
 
+      -- Đảm bảo cột store_id trên spoilage_records và đồng bộ ngược từ batches.store_id
+      IF COL_LENGTH('dbo.spoilage_records', 'store_id') IS NULL
+      BEGIN
+        ALTER TABLE dbo.spoilage_records ADD store_id INT NOT NULL CONSTRAINT DF_SpoilageRecords_StoreId DEFAULT 1;
+      END;
+
+      UPDATE sr
+      SET sr.store_id = ISNULL(b.store_id, 1)
+      FROM dbo.spoilage_records sr
+      INNER JOIN dbo.batches b ON sr.batch_id = b.id
+      WHERE ISNULL(sr.store_id, 1) <> ISNULL(b.store_id, 1);
+
+      -- Đảm bảo cột purchase_order_id trên goods_receipts
+      IF COL_LENGTH('dbo.goods_receipts', 'purchase_order_id') IS NULL
+      BEGIN
+        ALTER TABLE dbo.goods_receipts ADD purchase_order_id INT NULL;
+      END;
+
+      -- Đồng bộ Trigger TR_Batches_PreventNegativeStock theo Rule 5 (DaysLeft <= 0 => EXPIRED)
+      IF OBJECT_ID('dbo.TR_Batches_PreventNegativeStock', 'TR') IS NOT NULL
+      BEGIN
+        EXEC(N'
+          ALTER TRIGGER [dbo].[TR_Batches_PreventNegativeStock]
+          ON [dbo].[batches]
+          AFTER UPDATE
+          AS
+          BEGIN
+              SET NOCOUNT ON;
+              IF EXISTS (SELECT 1 FROM inserted WHERE [current_quantity] < 0)
+              BEGIN
+                  RAISERROR (N''LỖI NGHIỆP VỤ (RULE 3): Số lượng tồn kho không được phép nhỏ hơn 0!'', 16, 1);
+                  ROLLBACK TRANSACTION;
+                  RETURN;
+              END
+
+              IF EXISTS (
+                  SELECT 1 FROM inserted
+                  WHERE [expiry_date] <= CAST(GETDATE() AS DATE)
+                    AND [status] IN (''ACTIVE'', ''WARNING'')
+              )
+              BEGIN
+                  UPDATE b
+                  SET b.[status] = ''EXPIRED''
+                  FROM [dbo].[batches] b
+                  INNER JOIN inserted i ON b.[id] = i.[id]
+                  WHERE i.[expiry_date] <= CAST(GETDATE() AS DATE)
+                    AND b.[status] IN (''ACTIVE'', ''WARNING'');
+              END
+          END
+        ');
+      END;
+
       -- Loại bỏ hoàn toàn dữ liệu dự báo giả lập cũ sinh từ tệp JSON/CSV mẫu
       IF OBJECT_ID('dbo.ai_forecasts', 'U') IS NOT NULL
       BEGIN

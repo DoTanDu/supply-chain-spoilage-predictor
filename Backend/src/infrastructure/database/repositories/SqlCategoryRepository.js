@@ -115,7 +115,10 @@ class SqlCategoryRepository extends ICategoryRepository {
   /**
    * Thống kê toàn diện cơ cấu rủi ro tồn kho và hao hụt theo từng ngành hàng FMCG cho Dashboard
    */
-  async getCategoryBreakdown() {
+  async getCategoryBreakdown(storeId = null) {
+    const hasStore = storeId && String(storeId).toUpperCase() !== 'ALL' && !isNaN(Number(storeId));
+    const batchStoreFilter = hasStore ? `AND ISNULL(b.store_id, 1) = ${Number(storeId)}` : '';
+    const spoilStoreFilter = hasStore ? `AND ISNULL(sb.store_id, 1) = ${Number(storeId)}` : '';
     const sql = `
       SELECT 
         c.id AS categoryId,
@@ -134,10 +137,12 @@ class SqlCategoryRepository extends ICategoryRepository {
           INNER JOIN batches sb ON sr.batch_id = sb.id
           INNER JOIN products sp ON sb.product_id = sp.id
           WHERE sp.category_id = c.id
+            AND sr.approved_by IS NOT NULL
+            ${spoilStoreFilter}
         ), 0) AS totalSpoilageLoss
       FROM categories c
       LEFT JOIN products p ON p.category_id = c.id
-      LEFT JOIN batches b ON b.product_id = p.id AND b.current_quantity > 0 AND b.status IN ('ACTIVE', 'WARNING')
+      LEFT JOIN batches b ON b.product_id = p.id AND b.current_quantity > 0 AND b.status IN ('ACTIVE', 'WARNING') ${batchStoreFilter}
       GROUP BY c.id, c.code, c.name, c.storage_temperature, c.default_warning_days
       ORDER BY c.id ASC;
     `;

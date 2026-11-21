@@ -13,7 +13,7 @@ class SqlStoreProfileRepository extends IStoreProfileRepository {
         s.store_name AS storeName,
         s.address,
         s.phone,
-        ISNULL(s.manager_id, 4) AS managerId,
+        s.manager_id AS managerId,
         u.full_name AS managerName,
         s.default_dc_supplier_id AS defaultDcSupplierId,
         sup.name AS defaultDcSupplierName,
@@ -28,7 +28,7 @@ class SqlStoreProfileRepository extends IStoreProfileRepository {
         s.status,
         s.updated_at AS updatedAt
       FROM store_profile s
-      LEFT JOIN users u ON ISNULL(s.manager_id, 4) = u.id
+      LEFT JOIN users u ON s.manager_id = u.id
       LEFT JOIN suppliers sup ON s.default_dc_supplier_id = sup.id
       WHERE s.id = ${safeStoreId}
       ORDER BY s.id ASC
@@ -128,8 +128,8 @@ class SqlStoreProfileRepository extends IStoreProfileRepository {
     const safeCritDays = Number(data.criticalWarningDays || 3);
     const safeOpenTime = SqlConnection.escapeSql(data.openTime || '06:00');
     const safeCloseTime = SqlConnection.escapeSql(data.closeTime || '22:00');
-    const safeSkus = Number(data.shelfCapacitySkus || 1200);
-    const safeUnits = Number(data.shelfCapacityUnits || 4000);
+    const safeSkus = Number(data.shelfCapacitySkus || 1500);
+    const safeUnits = Number(data.shelfCapacityUnits || 5000);
     const safeStatus = SqlConnection.escapeSql(data.status || 'OPEN');
 
     const sql = `

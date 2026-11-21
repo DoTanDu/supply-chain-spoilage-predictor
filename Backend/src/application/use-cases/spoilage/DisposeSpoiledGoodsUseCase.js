@@ -37,8 +37,8 @@ class DisposeSpoiledGoodsUseCase {
     }
 
     const qty = Number(quantityDisposed);
-    if (isNaN(qty) || qty <= 0) {
-      const err = new Error(`Số lượng tiêu hủy không hợp lệ: ${quantityDisposed}. Phải lớn hơn 0!`);
+    if (!Number.isInteger(qty) || qty <= 0) {
+      const err = new Error(`Số lượng tiêu hủy không hợp lệ: ${quantityDisposed}. Phải là số nguyên dương lớn hơn 0!`);
       err.statusCode = 400;
       err.code = 'ERR_INVALID_QUANTITY';
       throw err;

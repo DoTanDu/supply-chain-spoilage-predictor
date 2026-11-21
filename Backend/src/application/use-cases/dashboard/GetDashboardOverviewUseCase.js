@@ -28,12 +28,12 @@ class GetDashboardOverviewUseCase {
           ISNULL((SELECT SUM(b.current_quantity * b.import_price) FROM dbo.batches b WHERE ISNULL(b.store_id, 1) = sp.id AND b.status IN ('ACTIVE', 'WARNING') AND b.current_quantity > 0), 0) AS totalInventoryValue,
           ISNULL((SELECT SUM(b.initial_quantity * b.import_price) FROM dbo.batches b WHERE ISNULL(b.store_id, 1) = sp.id), 1) AS totalImportValue,
           ISNULL((SELECT SUM(sh.total_amount) FROM dbo.sales_history sh WHERE ISNULL(sh.store_id, 1) = sp.id), 0) AS totalSalesRevenue,
-          ISNULL((SELECT SUM(sr.cost_loss) FROM dbo.spoilage_records sr WHERE ISNULL(sr.store_id, 1) = sp.id), 0) AS totalSpoilageLoss,
+          ISNULL((SELECT SUM(sr.cost_loss) FROM dbo.spoilage_records sr INNER JOIN dbo.batches b ON sr.batch_id = b.id WHERE ISNULL(b.store_id, 1) = sp.id AND sr.approved_by IS NOT NULL), 0) AS totalSpoilageLoss,
           ISNULL((SELECT COUNT(*) FROM dbo.vw_Batches_ShelfLife_Alerts v WHERE ISNULL(v.store_id, 1) = sp.id AND v.current_quantity > 0 AND v.alert_color = 'YELLOW'), 0) AS yellowBatchesCount,
           ISNULL((SELECT COUNT(*) FROM dbo.vw_Batches_ShelfLife_Alerts v WHERE ISNULL(v.store_id, 1) = sp.id AND v.current_quantity > 0 AND v.alert_color = 'RED'), 0) AS redBatchesCount,
           ISNULL((SELECT COUNT(*) FROM dbo.vw_Batches_ShelfLife_Alerts v WHERE ISNULL(v.store_id, 1) = sp.id AND v.current_quantity > 0 AND v.alert_color = 'EXPIRED'), 0) AS expiredBatchesCount,
-          ISNULL((SELECT SUM((b.initial_quantity - b.current_quantity) * b.import_price) FROM dbo.batches b WHERE ISNULL(b.store_id, 1) = sp.id AND b.discount_percent > 0), 0) AS markdownRescuedValue,
-          ISNULL((SELECT SUM(st.transfer_quantity * ISNULL(b.import_price, ISNULL(p.cost_price, 0))) FROM dbo.stock_transfers st LEFT JOIN dbo.batches b ON st.source_batch_id = b.id LEFT JOIN dbo.products p ON st.product_id = p.id WHERE (st.from_store_id = sp.id OR st.to_store_id = sp.id) AND st.status IN ('APPROVED', 'IN_TRANSIT', 'RECEIVED')), 0) AS transferRescuedValue,
+          ISNULL((SELECT SUM(sh.quantity_sold * b.import_price) FROM dbo.sales_history sh INNER JOIN dbo.batches b ON sh.batch_id = b.id WHERE ISNULL(b.store_id, 1) = sp.id AND b.discount_percent > 0), 0) AS markdownRescuedValue,
+          ISNULL((SELECT SUM(st.transfer_quantity * ISNULL(b.import_price, ISNULL(p.cost_price, 0))) FROM dbo.stock_transfers st LEFT JOIN dbo.batches b ON st.source_batch_id = b.id LEFT JOIN dbo.products p ON st.product_id = p.id WHERE st.from_store_id = sp.id AND st.status IN ('APPROVED', 'IN_TRANSIT', 'RECEIVED')), 0) AS transferRescuedValue,
           ISNULL((SELECT COUNT(*) FROM dbo.stock_transfers st WHERE (st.from_store_id = sp.id OR st.to_store_id = sp.id) AND st.status IN ('PROPOSED', 'APPROVED', 'IN_TRANSIT', 'RECEIVED')), 0) AS transferOrdersCount,
           ISNULL((SELECT COUNT(*) FROM dbo.products pr WHERE pr.is_active = 1 AND ISNULL((SELECT SUM(b2.current_quantity) FROM dbo.batches b2 WHERE ISNULL(b2.store_id, 1) = sp.id AND b2.product_id = pr.id AND b2.status IN ('ACTIVE', 'WARNING') AND b2.current_quantity > 0), 0) <= pr.min_stock_level), 0) AS lowStockSkuCount
         FROM dbo.store_profile sp
@@ -115,17 +115,17 @@ class GetDashboardOverviewUseCase {
     ] = await Promise.all([
       this.storeProfileRepository.getProfile(numericStoreId || 1),
       this.batchRepository.findAllWithAlerts(batchFilter),
-      this.saleRepository.getTodaySalesSummary(),
-      this.saleRepository.getTotalSalesSummary ? this.saleRepository.getTotalSalesSummary() : Promise.resolve({ totalSalesRevenue: 0 }),
+      this.saleRepository.getTodaySalesSummary(numericStoreId),
+      this.saleRepository.getTotalSalesSummary ? this.saleRepository.getTotalSalesSummary(numericStoreId) : Promise.resolve({ totalSalesRevenue: 0 }),
       this.spoilageRepository.getLossSummary(null, null, numericStoreId),
-      this.saleRepository.getTopSellingProducts ? this.saleRepository.getTopSellingProducts(5) : Promise.resolve([]),
-      this.spoilageRepository.getTopSpoilageProducts ? this.spoilageRepository.getTopSpoilageProducts(5) : Promise.resolve([]),
+      this.saleRepository.getTopSellingProducts ? this.saleRepository.getTopSellingProducts(5, numericStoreId) : Promise.resolve([]),
+      this.spoilageRepository.getTopSpoilageProducts ? this.spoilageRepository.getTopSpoilageProducts(5, numericStoreId) : Promise.resolve([]),
       this.productRepository ? this.productRepository.findAll() : Promise.resolve([]),
-      this.saleRepository.getDailySalesTrend ? this.saleRepository.getDailySalesTrend(14) : Promise.resolve([]),
-      this.spoilageRepository.getDailySpoilageTrend ? this.spoilageRepository.getDailySpoilageTrend(14) : Promise.resolve([]),
-      this.categoryRepository && this.categoryRepository.getCategoryBreakdown ? this.categoryRepository.getCategoryBreakdown() : Promise.resolve([]),
+      this.saleRepository.getDailySalesTrend ? this.saleRepository.getDailySalesTrend(14, numericStoreId) : Promise.resolve([]),
+      this.spoilageRepository.getDailySpoilageTrend ? this.spoilageRepository.getDailySpoilageTrend(14, numericStoreId) : Promise.resolve([]),
+      this.categoryRepository && this.categoryRepository.getCategoryBreakdown ? this.categoryRepository.getCategoryBreakdown(numericStoreId) : Promise.resolve([]),
       this._fetchCrossStoreBenchmark(),
-      this.saleRepository.getSalesByShift ? this.saleRepository.getSalesByShift() : Promise.resolve([])
+      this.saleRepository.getSalesByShift ? this.saleRepository.getSalesByShift(numericStoreId) : Promise.resolve([])
     ]);
 
     const crossStoreBenchmark = isSpecificStore && Array.isArray(crossStoreBenchmarkRaw)
@@ -171,10 +171,16 @@ class GetDashboardOverviewUseCase {
     const sales14Map = this.saleRepository?.getSalesHistoryStatsAllProducts
       ? await this.saleRepository.getSalesHistoryStatsAllProducts(14, numericStoreId).catch(() => ({}))
       : {};
+    const stockByProductMap = new Map();
+    for (const b of activeOnShelfBatches) {
+      const pId = Number(b.productId);
+      stockByProductMap.set(pId, (stockByProductMap.get(pId) || 0) + Number(b.currentQuantity || 0));
+    }
+
     const ropAlertItems = [];
     for (const item of productsWithStock) {
       const p = item.entity;
-      const currentStock = Number(item.totalStock || 0);
+      const currentStock = Number(stockByProductMap.get(Number(p.id)) || 0);
       const safetyStock = Math.max(1, Number(p.minStockLevel || 15));
       const totalSold14 = Number(sales14Map[p.id]?.totalUnitsSold || 0);
       const baseDemand = totalSold14 > 0 ? Number((totalSold14 / 14).toFixed(2)) : 0;

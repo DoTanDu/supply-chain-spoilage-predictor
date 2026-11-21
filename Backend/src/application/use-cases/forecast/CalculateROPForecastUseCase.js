@@ -305,9 +305,11 @@ class CalculateROPForecastUseCase {
       const incomingTransferQty = Number(incomingTrfMap[Number(p.id)] || 0);
       const incomingQuantity = incomingOrderQty + incomingTransferQty;
       const netAvailableStock = currentStock + incomingQuantity;
-      const rawOrderQty = Math.max(ropAnalysis.suggestedOrderQuantity || 0, Math.max(0, predictedSales7d - netAvailableStock));
-      const rawNetOrder = Math.max(0, rawOrderQty - incomingQuantity);
+      const ropNeed = Math.max(0, (ropAnalysis.suggestedOrderQuantity || 0) - incomingQuantity);
+      const forecastNeed = Math.max(0, predictedSales7d - netAvailableStock);
+      const rawNetOrder = Math.max(ropNeed, forecastNeed);
       const orderQty = rawNetOrder > 0 ? Math.ceil(rawNetOrder / packSize) * packSize : 0;
+      ropAnalysis.isReorderNeeded = Boolean(netAvailableStock <= ropAnalysis.reorderPoint && orderQty > 0);
       const poCost = Math.round(orderQty * Number(p.costPrice || 0));
       const transferQty = isSingleStore ? 0 : orderQty;
       const hasCentralDc = Boolean(entCfg.hasCentralWarehouse);
