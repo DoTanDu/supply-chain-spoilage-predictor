@@ -153,7 +153,8 @@ class SqlStockTransferRepository {
       SqlConnection.queryJson(`
         SELECT p.id AS product_id, p.sku, p.name, p.standard_shelf_life_days AS shelf_life,
                p.cost_price AS cost, p.selling_price AS price,
-               p.min_stock_level AS minStockLevel, ISNULL(c.name, N'FMCG') AS categoryName
+               p.min_stock_level AS minStockLevel, ISNULL(c.name, N'FMCG') AS categoryName,
+               COALESCE(c.storage_temperature, N'Nhiệt độ phòng (25°C)') AS storageTemperature
         FROM dbo.products p
         LEFT JOIN dbo.categories c ON p.category_id = c.id
         WHERE p.is_active = 1
@@ -299,6 +300,9 @@ class SqlStockTransferRepository {
 
       const surplusStores = isSingleStore ? [] : storeCells.filter(c => c.surplusQty >= 6).sort((a, b) => b.surplusQty - a.surplusQty);
       const deficitStores = isSingleStore ? [] : storeCells.filter(c => c.deficitQty >= 6).sort((a, b) => b.deficitQty - a.deficitQty);
+      const storageTemp = String(prod.storageTemperature || 'Nhiệt độ phòng (25°C)');
+      const isColdChain = /(lạnh|mát|đông|0°c|2°c|4°c|8°c|-18|2-8|0-4)/i.test(storageTemp);
+      const estShippingCost = isColdChain ? 35000 : 25000;
 
       if (!isSingleStore && surplusStores.length > 0 && deficitStores.length > 0) {
         const surplusBatches = [];
@@ -315,7 +319,7 @@ class SqlStockTransferRepository {
                 batchCode: b.batchCode,
                 batchQty: bQty,
                 daysLeft: Number(b.daysLeft),
-                shippingCost: 0
+                shippingCost: estShippingCost
               });
             }
           }
@@ -331,13 +335,13 @@ class SqlStockTransferRepository {
               storeCode: d.storeCode,
               storeName: d.storeName,
               deficitQty: d.deficitQty,
-              shippingCost: 0
+              shippingCost: estShippingCost
             }))
           });
         }
       }
 
-      productContexts.push({ prod, storeCells, surplusStores, deficitStores });
+      productContexts.push({ prod, storeCells, surplusStores, deficitStores, storageTemp, isColdChain, estShippingCost });
     }
 
     let solverResult = null;
@@ -355,7 +359,7 @@ class SqlStockTransferRepository {
     const orToolsTransferProposals = [];
 
     for (const ctx of productContexts) {
-      const { prod, storeCells, surplusStores, deficitStores } = ctx;
+      const { prod, storeCells, surplusStores, deficitStores, storageTemp, isColdChain, estShippingCost } = ctx;
       let totalTransferredForProd = 0;
       const productTransfers = [];
       const pidKey = String(prod.product_id);
@@ -374,10 +378,17 @@ class SqlStockTransferRepository {
           if (dCell) dCell.deficitQty = Math.max(0, dCell.deficitQty - transferQty);
           totalTransferredForProd += transferQty;
 
+          const shipCost = Number(sp.shippingCost || estShippingCost);
+          const savedVal = Number(sp.savedSpoilageValue || 0);
+          const netBenefit = Number(sp.netFinancialBenefit ?? (savedVal - shipCost));
+          if (netBenefit <= 0) continue;
+
           const proposal = {
             productId: prod.product_id,
             sku: prod.sku,
             productName: prod.name,
+            storageTemperature: storageTemp,
+            isColdChain,
             unitCost: Number(prod.cost || 0),
             unitPrice: Number(prod.price || 0),
             fromStoreId: Number(sp.fromStoreId),
@@ -390,10 +401,10 @@ class SqlStockTransferRepository {
             sourceBatchCode: sp.sourceBatchCode,
             sourceBatchDaysLeft: Number(sp.sourceBatchDaysLeft),
             transferQuantity: transferQty,
-            shippingCost: Number(sp.shippingCost || 0),
-            savedSpoilageValue: Number(sp.savedSpoilageValue || 0),
-            netFinancialBenefit: Number(sp.netFinancialBenefit || 0),
-            aiReason: `${sp.fromStoreName} dư ${availBefore} ĐV, ${sp.toStoreName} thiếu ${neededBefore} ĐV. OR-Tools MILP tối ưu chuyển ${transferQty} ĐV từ lô ${sp.sourceBatchCode} (còn ${sp.sourceBatchDaysLeft} ngày HSD).`
+            shippingCost: shipCost,
+            savedSpoilageValue: savedVal,
+            netFinancialBenefit: netBenefit,
+            aiReason: `${sp.fromStoreName} dư ${availBefore} ĐV, ${sp.toStoreName} thiếu ${neededBefore} ĐV. OR-Tools MILP tối ưu chuyển ${transferQty} ĐV từ lô ${sp.sourceBatchCode} (còn ${sp.sourceBatchDaysLeft} ngày HSD • ${storageTemp} • Phí ${shipCost.toLocaleString('vi-VN')}đ).`
           };
           productTransfers.push(proposal);
           orToolsTransferProposals.push(proposal);
@@ -412,7 +423,7 @@ class SqlStockTransferRepository {
               const transferQty = chosenBatch ? Math.min(desiredQty, Number(chosenBatch.currentQuantity || 0)) : 0;
               if (!chosenBatch || transferQty < 1) continue;
 
-              const shippingCost = 0;
+              const shippingCost = estShippingCost;
               const savedSpoilageValue = Math.round(transferQty * Number(prod.cost || 0));
               const netBenefit = savedSpoilageValue - shippingCost;
 
@@ -426,6 +437,8 @@ class SqlStockTransferRepository {
                   productId: prod.product_id,
                   sku: prod.sku,
                   productName: prod.name,
+                  storageTemperature: storageTemp,
+                  isColdChain,
                   unitCost: Number(prod.cost || 0),
                   unitPrice: Number(prod.price || 0),
                   fromStoreId: sStore.storeId,
@@ -441,7 +454,7 @@ class SqlStockTransferRepository {
                   shippingCost,
                   savedSpoilageValue,
                   netFinancialBenefit: netBenefit,
-                  aiReason: `${sStore.storeName} dư ${avail} ĐV, ${dStore.storeName} thiếu ${needed} ĐV. Điều chuyển ${transferQty} ĐV từ lô ${chosenBatch.batchCode} (còn ${chosenBatch.daysLeft} ngày HSD).`
+                  aiReason: `${sStore.storeName} dư ${avail} ĐV, ${dStore.storeName} thiếu ${needed} ĐV. Điều chuyển ${transferQty} ĐV từ lô ${chosenBatch.batchCode} (còn ${chosenBatch.daysLeft} ngày HSD • ${storageTemp} • Phí ${shippingCost.toLocaleString('vi-VN')}đ).`
                 };
                 productTransfers.push(proposal);
                 orToolsTransferProposals.push(proposal);
@@ -453,11 +466,13 @@ class SqlStockTransferRepository {
 
       const remainingDeficit = storeCells.reduce((acc, c) => acc + c.deficitQty, 0);
       const remainingSurplus = storeCells.reduce((acc, c) => acc + c.surplusQty, 0);
+      const markdownFallbackRecommended = Boolean(!isSingleStore && remainingSurplus >= 6 && remainingDeficit >= 6 && totalTransferredForProd === 0);
 
       matrixByProduct.push({
         productId: prod.product_id,
         sku: prod.sku,
         productName: prod.name,
+        storageTemperature: storageTemp,
         shelfLifeDays: prod.shelf_life,
         unitCost: Number(prod.cost || 0),
         unitPrice: Number(prod.price || 0),
@@ -467,6 +482,7 @@ class SqlStockTransferRepository {
         optimalInternalTransferQty: totalTransferredForProd,
         optimalDcOrderQty: remainingDeficit,
         markdownClearanceQty: remainingSurplus,
+        markdownFallbackRecommended,
         transferProposals: productTransfers
       });
     }
@@ -578,6 +594,16 @@ class SqlStockTransferRepository {
       ? 0
       : Number(shippingCost);
     const reqUserId = Number(requestedBy || 2);
+
+    const activeStoresRes = await SqlConnection.queryJson(`
+      SELECT COUNT(*) AS activeCount FROM dbo.store_profile WHERE ISNULL(status, 'OPEN') <> 'SUSPENDED'
+    `);
+    if (Number(activeStoresRes?.[0]?.activeCount || 0) <= 1) {
+      const err = new Error('Chế độ Cửa hàng độc lập (1 chi nhánh) không hỗ trợ tạo phiếu điều chuyển liên chi nhánh.');
+      err.statusCode = 400;
+      err.code = 'ERR_SINGLE_STORE_NO_TRANSFER';
+      throw err;
+    }
 
     if (!Number.isInteger(fId) || fId <= 0 || !Number.isInteger(tId) || tId <= 0) {
       const err = new Error('Mã chi nhánh xuất và chi nhánh nhận phải là số nguyên dương hợp lệ!');

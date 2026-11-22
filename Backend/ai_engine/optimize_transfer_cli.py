@@ -115,6 +115,9 @@ def solve_product_transfers(prod):
             d = deficit_stores[di]
             shipping_cost = float(d.get("shippingCost", b.get("shippingCost", 0.0)))
             saved_value = round(qty * unit_cost)
+            net_benefit = saved_value - shipping_cost
+            if net_benefit <= 0:
+                continue
             proposals.append({
                 "productId": product_id,
                 "fromStoreId": int(b["storeId"]),
@@ -129,7 +132,7 @@ def solve_product_transfers(prod):
                 "transferQuantity": qty,
                 "shippingCost": shipping_cost,
                 "savedSpoilageValue": saved_value,
-                "netFinancialBenefit": saved_value - shipping_cost,
+                "netFinancialBenefit": net_benefit,
                 "solverBackend": solver_used
             })
 

@@ -158,6 +158,69 @@ async function ensureSmartSupplySchema() {
           );
         END;
       END;
+
+      -- 3 Stored Procedures nghiệp vụ chuẩn hóa cho SSMS & báo cáo quản trị
+      EXEC(N'
+        CREATE OR ALTER PROCEDURE dbo.sp_GetStoreInventoryHealth
+          @StoreId INT = NULL
+        AS
+        BEGIN
+          SET NOCOUNT ON;
+          SELECT
+            COUNT(*) AS totalBatches,
+            ISNULL(SUM(b.current_quantity), 0) AS totalUnits,
+            ISNULL(SUM(b.current_quantity * ISNULL(b.import_price, 0)), 0) AS totalInventoryCost,
+            ISNULL(SUM(CASE WHEN DATEDIFF(day, CAST(GETDATE() AS DATE), b.expiry_date) <= 0 THEN b.current_quantity ELSE 0 END), 0) AS expiredUnits,
+            ISNULL(SUM(CASE WHEN DATEDIFF(day, CAST(GETDATE() AS DATE), b.expiry_date) BETWEEN 1 AND 3 THEN b.current_quantity ELSE 0 END), 0) AS criticalRedUnits,
+            ISNULL(SUM(CASE WHEN DATEDIFF(day, CAST(GETDATE() AS DATE), b.expiry_date) BETWEEN 4 AND 7 THEN b.current_quantity ELSE 0 END), 0) AS warningYellowUnits,
+            ISNULL(SUM(CASE WHEN DATEDIFF(day, CAST(GETDATE() AS DATE), b.expiry_date) > 7 THEN b.current_quantity ELSE 0 END), 0) AS safeGreenUnits
+          FROM dbo.batches b
+          WHERE b.current_quantity > 0
+            AND b.status <> ''DISPOSED''
+            AND (@StoreId IS NULL OR ISNULL(b.store_id, 1) = @StoreId);
+        END
+      ');
+
+      EXEC(N'
+        CREATE OR ALTER PROCEDURE dbo.sp_GetSpoilageFinancialSummary
+          @StoreId INT = NULL,
+          @Days INT = 30
+        AS
+        BEGIN
+          SET NOCOUNT ON;
+          SELECT
+            ISNULL(sr.reason, N''EXP_SPOILAGE'') AS reason,
+            COUNT(*) AS recordCount,
+            ISNULL(SUM(sr.quantity_disposed), 0) AS totalDisposedUnits,
+            ISNULL(SUM(sr.cost_loss), 0) AS totalCostLoss
+          FROM dbo.spoilage_records sr
+          INNER JOIN dbo.batches b ON sr.batch_id = b.id
+          WHERE sr.approved_by IS NOT NULL
+            AND sr.disposed_date >= DATEADD(day, -ISNULL(@Days, 30), CAST(GETDATE() AS DATE))
+            AND (@StoreId IS NULL OR ISNULL(sr.store_id, b.store_id) = @StoreId)
+          GROUP BY ISNULL(sr.reason, N''EXP_SPOILAGE'')
+          ORDER BY SUM(sr.cost_loss) DESC;
+        END
+      ');
+
+      EXEC(N'
+        CREATE OR ALTER PROCEDURE dbo.sp_GetChainBalanceOverview
+        AS
+        BEGIN
+          SET NOCOUNT ON;
+          SELECT
+            sp.id AS storeId,
+            sp.store_code AS storeCode,
+            sp.store_name AS storeName,
+            ISNULL((SELECT COUNT(*) FROM dbo.batches b WHERE ISNULL(b.store_id, 1) = sp.id AND b.current_quantity > 0 AND b.status IN (''ACTIVE'', ''WARNING'')), 0) AS activeBatches,
+            ISNULL((SELECT SUM(b.current_quantity) FROM dbo.batches b WHERE ISNULL(b.store_id, 1) = sp.id AND b.current_quantity > 0 AND b.status IN (''ACTIVE'', ''WARNING'')), 0) AS totalUnits,
+            ISNULL((SELECT SUM(sh.total_amount) FROM dbo.sales_history sh WHERE ISNULL(sh.store_id, 1) = sp.id AND sh.sale_date >= DATEADD(day, -14, CAST(GETDATE() AS DATE))), 0) AS salesRevenue14d,
+            ISNULL((SELECT SUM(sr.cost_loss) FROM dbo.spoilage_records sr INNER JOIN dbo.batches b ON sr.batch_id = b.id WHERE ISNULL(sr.store_id, b.store_id) = sp.id AND sr.approved_by IS NOT NULL AND sr.disposed_date >= DATEADD(day, -14, CAST(GETDATE() AS DATE))), 0) AS spoilageLoss14d
+          FROM dbo.store_profile sp
+          WHERE ISNULL(sp.status, ''OPEN'') <> ''SUSPENDED''
+          ORDER BY sp.id ASC;
+        END
+      ');
     `;
 
     await SqlConnection.executeSql(migrationSql);

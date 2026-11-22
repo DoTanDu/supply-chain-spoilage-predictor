@@ -376,16 +376,25 @@ export default function StockTransferView({
                         </td>
                       );
                     })}
-                    <td data-label="Đề xuất" style={{ maxWidth: '280px' }}>
+                    <td data-label="Đề xuất" style={{ maxWidth: '300px' }}>
                       {primaryProposal ? (
                         <div>
                           <div style={{ fontWeight: 700, color: 'var(--primary)', fontSize: '0.8rem' }}>
                             Chuyển {primaryProposal.transferQuantity} ĐV ({primaryProposal.fromStoreCode} → {primaryProposal.toStoreCode})
                           </div>
-                          <div style={{ fontSize: '0.74rem', color: 'var(--safe-green-light)', fontWeight: 600 }}>
-                            Cứu {Number(primaryProposal.savedSpoilageValue || 0).toLocaleString('vi-VN')}đ • Ròng +{Number(primaryProposal.netFinancialBenefit || 0).toLocaleString('vi-VN')}đ
+                          <div style={{ fontSize: '0.73rem', color: 'var(--safe-green-light)', fontWeight: 600 }}>
+                            Cứu {Number(primaryProposal.savedSpoilageValue || 0).toLocaleString('vi-VN')}đ • Phí {Number(primaryProposal.shippingCost || 0).toLocaleString('vi-VN')}đ • Ròng +{Number(primaryProposal.netFinancialBenefit || 0).toLocaleString('vi-VN')}đ
                           </div>
+                          {primaryProposal.storageTemperature && (
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: '2px' }}>
+                              Bảo quản: {primaryProposal.storageTemperature}
+                            </div>
+                          )}
                         </div>
+                      ) : item.markdownFallbackRecommended ? (
+                        <span style={{ fontSize: '0.76rem', color: 'var(--warning-amber)', fontWeight: 600 }}>
+                          Phí chuyển &gt; Lợi ích • Gợi ý xả hàng tại chỗ (Markdown)
+                        </span>
                       ) : (
                         <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
                           Không cần chuyển • Gợi ý đặt DC: {item.optimalDcOrderQty} ĐV
