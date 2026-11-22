@@ -6,6 +6,7 @@ const WeatherCondition = require('../../../domain/value-objects/WeatherCondition
 const RealEnvironmentService = require('../../services/RealEnvironmentService');
 
 const PREDICT_CLI_PATH = path.join(__dirname, '../../../../ai_engine/predict_cli.py');
+const OPTIMIZE_TRANSFER_CLI_PATH = path.join(__dirname, '../../../../ai_engine/optimize_transfer_cli.py');
 
 class SqlStockTransferRepository {
   /**
@@ -87,6 +88,53 @@ class SqlStockTransferRepository {
         }
       });
       child.stdin.write(JSON.stringify({ rows: payloadRows }));
+      child.stdin.end();
+    });
+  }
+
+  /**
+   * Gọi Google OR-Tools MILP (Python SCIP/CBC) để tối ưu phương án điều chuyển liên chi nhánh
+   */
+  async runOrToolsTransferOptimizer(payload) {
+    return new Promise((resolve, reject) => {
+      const pyBin = process.platform === 'win32' ? 'py' : 'python3';
+      const child = spawn(pyBin, [OPTIMIZE_TRANSFER_CLI_PATH], { windowsHide: true });
+      let stdout = '';
+      let stderr = '';
+      let settled = false;
+
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          try { child.kill(); } catch {}
+          reject(new Error('Google OR-Tools optimizer timeout (> 8000ms)'));
+        }
+      }, 8000);
+
+      child.stdout.on('data', d => { stdout += d.toString(); });
+      child.stderr.on('data', d => { stderr += d.toString(); });
+      child.on('error', err => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          reject(err);
+        }
+      });
+      child.on('close', (code) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (code !== 0) {
+          return reject(new Error(stderr || `OR-Tools CLI exited with code ${code}`));
+        }
+        try {
+          resolve(JSON.parse(stdout.trim()));
+        } catch (parseErr) {
+          reject(new Error('Lỗi phân tích JSON từ Google OR-Tools CLI: ' + parseErr.message));
+        }
+      });
+
+      child.stdin.write(JSON.stringify(payload));
       child.stdin.end();
     });
   }
@@ -191,8 +239,8 @@ class SqlStockTransferRepository {
           return { condition: wKey, isHoliday: dayNum === 0 || dayNum === 6 };
         });
 
-    const matrixByProduct = [];
-    const orToolsTransferProposals = [];
+    const productContexts = [];
+    const orToolsPayloadProducts = [];
 
     for (const prod of (products || [])) {
       const storeCells = [];
@@ -252,10 +300,105 @@ class SqlStockTransferRepository {
       const surplusStores = isSingleStore ? [] : storeCells.filter(c => c.surplusQty >= 6).sort((a, b) => b.surplusQty - a.surplusQty);
       const deficitStores = isSingleStore ? [] : storeCells.filter(c => c.deficitQty >= 6).sort((a, b) => b.deficitQty - a.deficitQty);
 
+      if (!isSingleStore && surplusStores.length > 0 && deficitStores.length > 0) {
+        const surplusBatches = [];
+        for (const sStore of surplusStores) {
+          for (const b of (sStore.fefoBatches || [])) {
+            const bQty = Number(b.currentQuantity || 0);
+            if (bQty >= 6 && Number(b.daysLeft || 0) >= 2) {
+              surplusBatches.push({
+                storeId: sStore.storeId,
+                storeCode: sStore.storeCode,
+                storeName: sStore.storeName,
+                maxStoreSurplus: sStore.surplusQty,
+                batchId: b.id,
+                batchCode: b.batchCode,
+                batchQty: bQty,
+                daysLeft: Number(b.daysLeft),
+                shippingCost: 0
+              });
+            }
+          }
+        }
+        if (surplusBatches.length > 0) {
+          orToolsPayloadProducts.push({
+            productId: prod.product_id,
+            unitCost: Number(prod.cost || 0),
+            minTransferQty: 6,
+            surplusBatches,
+            deficitStores: deficitStores.map(d => ({
+              storeId: d.storeId,
+              storeCode: d.storeCode,
+              storeName: d.storeName,
+              deficitQty: d.deficitQty,
+              shippingCost: 0
+            }))
+          });
+        }
+      }
+
+      productContexts.push({ prod, storeCells, surplusStores, deficitStores });
+    }
+
+    let solverResult = null;
+    if (orToolsPayloadProducts.length > 0) {
+      try {
+        solverResult = await this.runOrToolsTransferOptimizer({ products: orToolsPayloadProducts });
+      } catch (err) {
+        console.warn('[AI 3 FALLBACK] Google OR-Tools CLI unavailable, using FEFO-Chain-Rebalance:', err.message);
+        solverResult = null;
+      }
+    }
+
+    const usedOrTools = Boolean(solverResult && solverResult.success && solverResult.proposalsByProduct);
+    const matrixByProduct = [];
+    const orToolsTransferProposals = [];
+
+    for (const ctx of productContexts) {
+      const { prod, storeCells, surplusStores, deficitStores } = ctx;
       let totalTransferredForProd = 0;
       const productTransfers = [];
+      const pidKey = String(prod.product_id);
 
-      if (!isSingleStore) {
+      if (!isSingleStore && usedOrTools && Array.isArray(solverResult.proposalsByProduct[pidKey])) {
+        const solvedList = solverResult.proposalsByProduct[pidKey];
+        for (const sp of solvedList) {
+          const transferQty = Number(sp.transferQuantity || 0);
+          if (transferQty < 1) continue;
+
+          const sCell = storeCells.find(c => c.storeId === Number(sp.fromStoreId));
+          const dCell = storeCells.find(c => c.storeId === Number(sp.toStoreId));
+          const availBefore = sCell ? sCell.surplusQty : transferQty;
+          const neededBefore = dCell ? dCell.deficitQty : transferQty;
+          if (sCell) sCell.surplusQty = Math.max(0, sCell.surplusQty - transferQty);
+          if (dCell) dCell.deficitQty = Math.max(0, dCell.deficitQty - transferQty);
+          totalTransferredForProd += transferQty;
+
+          const proposal = {
+            productId: prod.product_id,
+            sku: prod.sku,
+            productName: prod.name,
+            unitCost: Number(prod.cost || 0),
+            unitPrice: Number(prod.price || 0),
+            fromStoreId: Number(sp.fromStoreId),
+            fromStoreCode: sp.fromStoreCode,
+            fromStoreName: sp.fromStoreName,
+            toStoreId: Number(sp.toStoreId),
+            toStoreCode: sp.toStoreCode,
+            toStoreName: sp.toStoreName,
+            sourceBatchId: Number(sp.sourceBatchId),
+            sourceBatchCode: sp.sourceBatchCode,
+            sourceBatchDaysLeft: Number(sp.sourceBatchDaysLeft),
+            transferQuantity: transferQty,
+            shippingCost: Number(sp.shippingCost || 0),
+            savedSpoilageValue: Number(sp.savedSpoilageValue || 0),
+            netFinancialBenefit: Number(sp.netFinancialBenefit || 0),
+            aiReason: `${sp.fromStoreName} dư ${availBefore} ĐV, ${sp.toStoreName} thiếu ${neededBefore} ĐV. OR-Tools MILP tối ưu chuyển ${transferQty} ĐV từ lô ${sp.sourceBatchCode} (còn ${sp.sourceBatchDaysLeft} ngày HSD).`
+          };
+          productTransfers.push(proposal);
+          orToolsTransferProposals.push(proposal);
+        }
+      } else if (!isSingleStore) {
         for (const sStore of surplusStores) {
           for (const dStore of deficitStores) {
             const avail = sStore.surplusQty;
@@ -340,8 +483,8 @@ class SqlStockTransferRepository {
         };
 
     return {
-      modelVersion: 'ROP-Live-Sales-Weather',
-      optimizerEngine: 'FEFO-Chain-Rebalance',
+      modelVersion: 'LightGBM + ROP-Live-Sales-Weather',
+      optimizerEngine: usedOrTools ? solverResult.optimizerEngine : 'FEFO-Chain-Rebalance',
       datasetFile: 'SQL Server retail_spoilage_db + Open-Meteo',
       totalDatasetRows: (salesRows14d || []).length,
       metrics: resolvedMetrics,

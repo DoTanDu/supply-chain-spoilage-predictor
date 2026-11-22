@@ -8,7 +8,10 @@ import os
 import sys
 import json
 import pickle
+import warnings
 import numpy as np
+
+warnings.filterwarnings("ignore")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PKL_PATH = os.path.join(BASE_DIR, "pretrained_lgbm_model.pkl")
@@ -61,7 +64,7 @@ def run_live_sql_inference(payload):
 
     output = {
         "success": True,
-        "modelName": "LightGBM-HistGBT (.pkl SQL Server + Open-Meteo Live)",
+        "modelName": f"{bundle.get('modelLibrary', 'LightGBM')} (.pkl SQL Server + Open-Meteo Live)",
         "datasetPath": "SQL Server dbo.sales_history + Open-Meteo Live",
         "totalDatasetRows": len(rows),
         "metrics": real_metrics,

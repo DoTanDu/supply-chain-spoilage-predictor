@@ -17,14 +17,16 @@ import json
 import pickle
 import csv
 import math
+import warnings
 import numpy as np
-from sklearn.ensemble import HistGradientBoostingRegressor
+import lightgbm as lgb
 from sklearn.metrics import mean_absolute_error, mean_squared_error
+
+warnings.filterwarnings("ignore")
 
 OUT_DIR = os.path.dirname(os.path.abspath(__file__))
 CSV_PATH = os.path.join(OUT_DIR, "sample_retail_dataset.csv")
 PKL_PATH = os.path.join(OUT_DIR, "pretrained_lgbm_model.pkl")
-JSON_MODEL_PATH = os.path.join(OUT_DIR, "pretrained_lgbm_weights.json")
 
 # Danh sách 3 chi nhánh cửa hàng trong chuỗi MVP
 STORES = [
@@ -132,14 +134,15 @@ def train_and_export():
     X_train, X_test = X[:split_idx], X[split_idx:]
     y_train, y_test = y[:split_idx], y[split_idx:]
 
-    # Huấn luyện mô hình HistGradientBoostingRegressor (LightGBM algorithm)
-    model = HistGradientBoostingRegressor(
-        max_iter=150,
+    # Huấn luyện mô hình LightGBM Regressor thật
+    model = lgb.LGBMRegressor(
+        n_estimators=150,
         learning_rate=0.06,
-        max_leaf_nodes=31,
-        min_samples_leaf=10,
-        l2_regularization=0.5,
-        random_state=42
+        num_leaves=31,
+        min_child_samples=10,
+        reg_lambda=0.5,
+        random_state=42,
+        verbosity=-1
     )
     model.fit(X_train, y_train)
 
@@ -149,10 +152,11 @@ def train_and_export():
     mape = float(np.mean(np.abs((y_test - y_pred) / np.maximum(y_test, 1.0))) * 100.0)
     confidence = round(max(0.85, min(0.99, 1.0 - mape / 100.0)), 4)
 
-    # Lưu Pre-trained Model (.pkl)
+    # Lưu Pre-trained LightGBM Model (.pkl)
     with open(PKL_PATH, "wb") as f:
         pickle.dump({
             "model": model,
+            "modelLibrary": f"LightGBM {lgb.__version__}",
             "feature_cols": feature_cols,
             "metrics": {
                 "mae": round(mae, 3),
@@ -164,74 +168,8 @@ def train_and_export():
             }
         }, f)
 
-    # Xuất bảng dự báo mẫu (Sample Predictions) & Trọng số đặc trưng ra JSON để Backend API đọc siêu tốc
-    sample_predictions = []
-    for store in STORES:
-        for prod in PRODUCTS:
-            # Lấy dòng gần nhất của cặp (store, product) trong dataset
-            matching = [r for r in rows if r["store_id"] == store["store_id"] and r["product_id"] == prod["product_id"]]
-            latest = matching[-1]
-            # Dự báo 7 ngày tới dưới 3 kịch bản thời tiết
-            for w_label, w_code, temp in [("NORMAL", 0, 31.0), ("SUNNY", 1, 35.5), ("RAINY", 2, 25.0)]:
-                daily_preds = []
-                for d_step in range(7):
-                    dow = (int(latest["day_of_week"]) + d_step + 1) % 7
-                    is_wknd = 1 if dow >= 5 else 0
-                    feat_vec = np.array([[
-                        float(store["store_id"]),
-                        float(prod["product_id"]),
-                        float(dow),
-                        float(is_wknd),
-                        0.0,
-                        float(w_code),
-                        float(temp),
-                        float(latest["discount_pct"]),
-                        float(prod["shelf_life"]),
-                        float(latest["lag_1d"]),
-                        float(latest["lag_7d"]),
-                        float(latest["rolling_mean_7d"]),
-                        float(latest["rolling_mean_14d"])
-                    ]])
-                    p_val = float(max(1.0, model.predict(feat_vec)[0]))
-                    daily_preds.append(round(p_val, 2))
-
-                sample_predictions.append({
-                    "storeId": store["store_id"],
-                    "storeCode": store["store_code"],
-                    "storeName": store["store_name"],
-                    "productId": prod["product_id"],
-                    "sku": prod["sku"],
-                    "productName": prod["name"],
-                    "weather": w_label,
-                    "rollingMean14d": latest["rolling_mean_14d"],
-                    "predictedDailySeries": daily_preds,
-                    "predictedDemand7d": round(sum(daily_preds), 1)
-                })
-
-    export_payload = {
-        "modelVersion": "LightGBM-HistGBT-v2.1-Pretrained",
-        "optimizerEngine": "Google-OR-Tools-MILP-v1.4",
-        "datasetFile": "sample_retail_dataset.csv",
-        "totalDatasetRows": len(rows),
-        "featureColumns": feature_cols,
-        "metrics": {
-            "mae": round(mae, 3),
-            "rmse": round(rmse, 3),
-            "mapePct": round(mape, 2),
-            "confidenceScore": confidence,
-            "trainSamples": int(len(X_train)),
-            "testSamples": int(len(X_test))
-        },
-        "stores": STORES,
-        "products": PRODUCTS,
-        "predictions": sample_predictions
-    }
-
-    with open(JSON_MODEL_PATH, "w", encoding="utf-8") as f:
-        json.dump(export_payload, f, ensure_ascii=False, indent=2)
-
     print(f"[AI ENGINE] Dataset generated: {CSV_PATH} ({len(rows)} rows)")
-    print(f"[AI ENGINE] Pre-trained model saved: {PKL_PATH}")
+    print(f"[AI ENGINE] Pre-trained LightGBM {lgb.__version__} model saved: {PKL_PATH}")
     print(f"[AI ENGINE] Metrics -> MAE: {mae:.3f} | RMSE: {rmse:.3f} | MAPE: {mape:.2f}% | Confidence: {confidence*100:.2f}%")
 
 if __name__ == "__main__":
