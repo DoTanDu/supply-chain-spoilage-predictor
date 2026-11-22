@@ -29,6 +29,20 @@ import ChangePasswordModal from './ChangePasswordModal';
 import { MENU_CONFIG } from './Sidebar';
 import { canAccessPage, normalizeRole } from '../utils/pagePermissions';
 
+function getShortBranchLocation(profile) {
+  const addr = String(profile?.address || '').trim();
+  const addrMatch = addr.match(/(?:P\.|Phường|Xã|Thị trấn|Quận|Q\.)\s*([^,]+)/i);
+  if (addrMatch && addrMatch[1]) {
+    return addrMatch[1].trim();
+  }
+  const name = String(profile?.storeName || '').trim();
+  const nameMatch = name.match(/Chi nhánh\s+([^(-]+)/i);
+  if (nameMatch && nameMatch[1]) {
+    return nameMatch[1].trim();
+  }
+  return '';
+}
+
 export default function Header({
   currentUser,
   currentRole,
@@ -76,10 +90,35 @@ export default function Header({
     return () => window.removeEventListener('click', closeMenus);
   }, []);
 
+  const chainStoreCount = Number(storeProfile?.chainStoreCount || 0);
+  const listActiveCount = storesList.filter(s => String(s.status || 'OPEN').toUpperCase() !== 'SUSPENDED').length;
+  const activeStoresCount = chainStoreCount > 0 ? chainStoreCount : (listActiveCount || (isSingleStore ? 1 : 3));
+
+  const parsedSelected = Number(selectedStoreId);
+  const contextStoreId = isOwner
+    ? (selectedStoreId && selectedStoreId !== 'ALL' && Number.isInteger(parsedSelected) && parsedSelected > 0 ? parsedSelected : 1)
+    : Number(currentUser?.storeId || 1);
+
+  const branchAccountsByStore = {
+    1: {
+      manager: { username: 'manager', fullName: 'Đỗ Tấn Du (MANAGER)', roleName: 'Quản lý CN #1' },
+      staff: { username: 'cashier', fullName: 'Đoàn Minh Quân (STAFF)', roleName: 'Nhân viên CN #1' }
+    },
+    2: {
+      manager: { username: 'manager2', fullName: 'Quản lý CN #2', roleName: 'CN #2 • Tân Phong' },
+      staff: { username: 'staff2', fullName: 'Nhân viên CN #2', roleName: 'CN #2 • Tân Phong' }
+    },
+    3: {
+      manager: { username: 'manager3', fullName: 'Quản lý CN #3', roleName: 'CN #3 • Trảng Dài' },
+      staff: { username: 'staff3', fullName: 'Nhân viên CN #3', roleName: 'CN #3 • Trảng Dài' }
+    }
+  };
+  const selectedBranchAcc = branchAccountsByStore[contextStoreId] || branchAccountsByStore[1];
+
   const systemAccounts = [
-    { username: 'admin', fullName: 'Quản trị viên (OWNER)', roleCode: 'ADMIN', roleName: 'Chủ chuỗi / Admin', color: '#4f46e5' },
-    { username: 'manager', fullName: 'Đỗ Tấn Du (MANAGER)', roleCode: 'STORE_MANAGER', roleName: 'Quản lý cửa hàng', color: '#2563eb' },
-    { username: 'cashier', fullName: 'Đoàn Minh Quân (STAFF)', roleCode: 'CASHIER', roleName: 'Nhân viên cửa hàng', color: '#047857' }
+    { username: 'admin', fullName: 'Quản trị viên (OWNER)', roleCode: 'ADMIN', roleName: `Chủ chuỗi (${activeStoresCount} CN)`, color: '#4f46e5' },
+    { ...selectedBranchAcc.manager, roleCode: 'STORE_MANAGER', color: '#2563eb' },
+    { ...selectedBranchAcc.staff, roleCode: 'CASHIER', color: '#047857' }
   ];
 
   const getRoleBadgeStyle = (code) => {
@@ -104,7 +143,6 @@ export default function Header({
       (b.currentQuantity ?? b.quantity ?? 0) > 0
   );
 
-  const activeStoresCount = storesList.filter(s => String(s.status || 'OPEN').toUpperCase() !== 'SUSPENDED').length || (isSingleStore ? 1 : 3);
   const currentStoreLabel = isOwner
     ? (selectedStoreId === 'ALL'
       ? `Toàn chuỗi (${activeStoresCount} cửa hàng)`
@@ -256,11 +294,25 @@ export default function Header({
           ) : (
             <div
               className="ss-badge ss-badge-info"
-              style={{ marginLeft: '6px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
-              title="Dữ liệu bị cô lập theo chi nhánh bạn được phân công"
+              style={{
+                marginLeft: '6px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                maxWidth: '380px',
+                overflow: 'hidden',
+                whiteSpace: 'nowrap'
+              }}
+              title={storeProfile?.address ? `CN #${currentUser?.storeId || 1} — ${storeProfile.storeName || ''} (${storeProfile.address})` : currentStoreLabel}
             >
-              <Lock size={12} aria-hidden="true" />
-              <span>CN #{currentUser?.storeId || 1} (Phân quyền riêng)</span>
+              <Building2 size={12} aria-hidden="true" style={{ flexShrink: 0 }} />
+              <span>
+                CN #{currentUser?.storeId || 1}
+                {(() => {
+                  const loc = getShortBranchLocation(storeProfile);
+                  return loc ? ` • ${loc}` : '';
+                })()}
+              </span>
             </div>
           )}
         </div>

@@ -41,19 +41,19 @@ echo   🔌 Địa chỉ API:      http://localhost:5000
 echo   🗄️  Cơ sở dữ liệu:    (localdb)\mssqllocaldb -> retail_spoilage_db
 echo.
 echo -------------------------------------------------------------------------------
-echo   🔑 DANH SÁCH TÀI KHOẢN ĐĂNG NHẬP MẪU THEO 3 VAI TRÒ (3 ACTOR - RBAC SSOT):
+echo   🔑 DANH SÁCH TÀI KHOẢN ĐĂNG NHẬP MẪU THEO 3 VAI TRÒ (Mật khẩu chung: 123456):
 echo -------------------------------------------------------------------------------
-echo   1. Chủ chuỗi / Quản trị viên (ADMIN):
-echo      - Tài khoản: admin        Mật khẩu: Password123@
+echo   1. Chủ chuỗi / Quản trị viên (OWNER - Toàn chuỗi 3 CN):
+echo      - Tài khoản: admin        Mật khẩu: 123456
 echo      - Quyền hạn: Toàn quyền chuỗi 3 chi nhánh, quản lý nhân sự, cấu hình hệ thống.
 echo.
-echo   2. Quản lý Cửa hàng (STORE_MANAGER - Đỗ Tấn Du):
-echo      - Tài khoản: manager      Mật khẩu: Password123@
-echo      - Quyền hạn: Điều hành KPI, giảm giá 15-50%, duyệt tiêu hủy & đặt hàng DC.
+echo   2. Quản lý Cửa hàng (MANAGER - Cô lập theo chi nhánh):
+echo      - CN #1 (Bửu Long):   manager   ^| CN #2 (Tân Phong): manager2  ^| CN #3 (Trảng Dài): manager3
+echo      - Quyền hạn: Điều hành KPI, giảm giá 15-50%, duyệt tiêu hủy & đặt/điều phối hàng chi nhánh.
 echo.
-echo   3. Nhân viên Cửa hàng - POS & Kho kệ (CASHIER - Đoàn Minh Quân):
-echo      - Tài khoản: cashier      Mật khẩu: Password123@
-echo      - Quyền hạn: Bán lẻ POS tự động bẻ lô FEFO, nhận hàng DC (RSL >= 70%), đảo kệ & bàn giao ca.
+echo   3. Nhân viên Cửa hàng (STAFF - POS & Kho kệ):
+echo      - CN #1 (Bửu Long):   cashier   ^| CN #2 (Tân Phong): staff2    ^| CN #3 (Trảng Dài): staff3
+echo      - Quyền hạn: Bán lẻ POS tự động bẻ lô FEFO, nhận hàng DC (RSL >= 70%), đảo kệ & giao nhận điều chuyển.
 echo -------------------------------------------------------------------------------
 echo.
 echo   ℹ️  Để tắt toàn bộ hệ thống, hãy chạy file: stop_lhu_mart.bat
