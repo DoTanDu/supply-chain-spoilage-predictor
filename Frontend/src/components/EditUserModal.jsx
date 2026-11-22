@@ -207,7 +207,7 @@ export default function EditUserModal({
   const roles = [
     { code: 'ADMIN', label: 'Chủ Chuỗi / Admin', icon: Shield, color: '#7c3aed', desc: 'Toàn quyền cấu hình chuỗi chi nhánh, quản trị nhân sự, xem báo cáo' },
     { code: 'STORE_MANAGER', label: 'Quản Lý Cửa Hàng', icon: Store, color: '#4f46e5', desc: 'Điều hành cửa hàng, duyệt giảm giá xả hàng, duyệt tiêu hủy & đặt hàng DC' },
-    { code: 'CASHIER', label: 'Nhân Viên Cửa Hàng', icon: ShoppingCart, color: '#2563eb', desc: 'Bán lẻ POS chuẩn FEFO, tiếp nhận hàng DC, đảo kệ mặt tiền & bàn giao ca' }
+    { code: 'CASHIER', label: 'Nhân Viên Cửa Hàng', icon: ShoppingCart, color: '#2563eb', desc: 'Bán lẻ POS chuẩn FEFO, tiếp nhận hàng DC, đảo kệ mặt tiền & giao nhận điều chuyển' }
   ];
 
   return (

@@ -434,6 +434,7 @@ class SqlBatchRepository extends IBatchRepository {
 
       UPDATE dbo.batches
       SET current_quantity = @newQty,
+          initial_quantity = CASE WHEN @newQty > initial_quantity THEN @newQty ELSE initial_quantity END,
           status = CASE
             WHEN @newQty = 0 THEN 'DISPOSED'
             WHEN @expDate <= CAST(GETDATE() AS DATE) THEN 'EXPIRED'

@@ -51,7 +51,7 @@ export default function CreateUserModal({ isOpen, onClose, onUserCreated, stores
       color: '#3b82f6',
       bg: 'rgba(59, 130, 246, 0.08)',
       border: 'rgba(59, 130, 246, 0.3)',
-      desc: 'Bán lẻ POS chuẩn FEFO, tiếp nhận xe DC, đảo kệ & bàn giao ca trực'
+      desc: 'Bán lẻ POS chuẩn FEFO, tiếp nhận hàng DC, đảo kệ & giao nhận điều chuyển'
     },
     {
       code: 'STORE_MANAGER',
