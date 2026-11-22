@@ -47,6 +47,8 @@ async function syncExpiredBatchesIfDue() {
 
 class SqlBatchRepository extends IBatchRepository {
   async findById(id) {
+    const safeId = Number(id);
+    if (!Number.isInteger(safeId) || safeId <= 0) return null;
     const sql = `
       SELECT TOP 1 
         id, receipt_id AS receiptId, ISNULL(store_id, 1) AS storeId, batch_code AS batchCode, product_id AS productId,
@@ -55,7 +57,7 @@ class SqlBatchRepository extends IBatchRepository {
         import_price AS importPrice, discount_percent AS discountPercent,
         status, is_shelf_rotated AS isShelfRotated, created_at AS createdAt
       FROM batches
-      WHERE id = ${Number(id)};
+      WHERE id = ${safeId};
     `;
     const rows = await SqlConnection.queryJson(sql);
     return rows.length > 0 ? rows[0] : null;

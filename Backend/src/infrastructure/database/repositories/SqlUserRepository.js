@@ -21,6 +21,8 @@ class SqlUserRepository extends IUserRepository {
   }
 
   async findById(id) {
+    const safeId = Number(id);
+    if (!Number.isInteger(safeId) || safeId <= 0) return null;
     await this.ensurePagePermissionsColumn();
     const sql = `
       SELECT 
@@ -40,7 +42,7 @@ class SqlUserRepository extends IUserRepository {
         u.updated_at AS updatedAt
       FROM users u
       LEFT JOIN roles r ON u.role_id = r.id
-      WHERE u.id = ${Number(id)}
+      WHERE u.id = ${safeId}
     `;
     const res = await SqlConnection.queryJson(sql);
     if (!res || !res.length) return null;

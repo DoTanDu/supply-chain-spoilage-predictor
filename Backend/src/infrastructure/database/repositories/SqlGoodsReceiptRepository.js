@@ -122,6 +122,8 @@ class SqlGoodsReceiptRepository extends IGoodsReceiptRepository {
   }
 
   async findById(id) {
+    const safeId = Number(id);
+    if (!Number.isInteger(safeId) || safeId <= 0) return null;
     const sql = `
       SELECT 
         gr.id,
@@ -138,7 +140,7 @@ class SqlGoodsReceiptRepository extends IGoodsReceiptRepository {
       FROM goods_receipts gr
       INNER JOIN suppliers s ON gr.supplier_id = s.id
       INNER JOIN users u ON gr.received_by = u.id
-      WHERE gr.id = ${Number(id)};
+      WHERE gr.id = ${safeId};
     `;
     const rows = await SqlConnection.queryJson(sql);
     return rows.length > 0 ? rows[0] : null;

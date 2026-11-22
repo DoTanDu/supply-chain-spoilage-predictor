@@ -26,6 +26,8 @@ class SqlCategoryRepository extends ICategoryRepository {
   }
 
   async findById(id) {
+    const safeId = Number(id);
+    if (!Number.isInteger(safeId) || safeId <= 0) return null;
     const sql = `
       SELECT 
         c.id, 
@@ -36,7 +38,7 @@ class SqlCategoryRepository extends ICategoryRepository {
         c.description, 
         c.created_at AS createdAt
       FROM categories c
-      WHERE c.id = ${Number(id)}
+      WHERE c.id = ${safeId}
     `;
     const res = await SqlConnection.queryJson(sql);
     if (!res || !res.length) return null;

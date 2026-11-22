@@ -43,6 +43,8 @@ class SqlProductRepository extends IProductRepository {
   }
 
   async findById(id) {
+    const safeId = Number(id);
+    if (!Number.isInteger(safeId) || safeId <= 0) return null;
     const sql = `
       SELECT 
         p.id,
@@ -70,7 +72,7 @@ class SqlProductRepository extends IProductRepository {
       FROM products p
       LEFT JOIN categories c ON p.category_id = c.id
       LEFT JOIN suppliers sup ON p.default_supplier_id = sup.id
-      WHERE p.id = ${Number(id)}
+      WHERE p.id = ${safeId}
     `;
     const res = await SqlConnection.queryJson(sql);
     if (!res || !res.length) return null;

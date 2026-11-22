@@ -73,6 +73,7 @@ class SqlPurchaseOrderRepository extends IPurchaseOrderRepository {
 
   async findById(orderId) {
     const id = Number(orderId);
+    if (!Number.isInteger(id) || id <= 0) return null;
     const orderSql = `
       SELECT 
         po.id,
