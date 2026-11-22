@@ -52,6 +52,7 @@ const REASON_LABELS = {
   TEMP_ABUSE: 'Sự cố chuỗi lạnh',
   SPOILED: 'Hư hỏng bảo quản',
   INTERNAL_SHRINK: 'Hao hụt kiểm kê',
+  DONATION: 'Chuyển quyên góp thực phẩm',
   QUALITY_REJECT: 'Không đạt chất lượng'
 };
 
@@ -717,6 +718,7 @@ export default function SpoilageAlertsView({
               <option value="PKG_DAMAGE">Lỗi bao bì / Rách móp</option>
               <option value="TEMP_ABUSE">Sự cố chuỗi lạnh</option>
               <option value="INTERNAL_SHRINK">Hao hụt kiểm kê</option>
+              <option value="DONATION">Chuyển quyên góp thực phẩm</option>
             </select>
           </div>
           <div className="ss-field">

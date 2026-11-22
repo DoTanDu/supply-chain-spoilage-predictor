@@ -102,13 +102,17 @@ export default function PrintSpoilageReceiptModal({
   const totalCostLoss = Number(record.costLoss ?? record.totalLoss ?? (qty * cost));
   const isApproved = record.status === 'APPROVED';
 
-  const reasonDesc = record.reason === 'EXPIRED'
-    ? 'Hết hạn sử dụng theo date in bao bì'
-    : record.reason === 'DAMAGED'
-      ? 'Hư hỏng vật lý / móp méo / rách vỡ bao bì'
-      : record.reason === 'SPOILED'
-        ? 'Biến chất / chua hỏng do đứt chuỗi lạnh'
-        : (record.reason || 'Tiêu hủy định kỳ');
+  const reasonDescMap = {
+    EXPIRED: 'Hết hạn sử dụng theo date in bao bì',
+    EXP_SPOILAGE: 'Quá hạn sử dụng tự nhiên (ReFED)',
+    DAMAGED: 'Hư hỏng vật lý / móp méo / rách vỡ bao bì',
+    PKG_DAMAGE: 'Lỗi bao bì / rách móp / phồng rộp',
+    SPOILED: 'Biến chất / chua hỏng do đứt chuỗi lạnh',
+    TEMP_ABUSE: 'Sự cố tủ mát / đứt chuỗi lạnh bảo quản',
+    INTERNAL_SHRINK: 'Hao hụt kiểm kê nội bộ',
+    DONATION: 'Chuyển quyên góp thực phẩm / thu hồi nhân đạo'
+  };
+  const reasonDesc = reasonDescMap[String(record.reason || '').toUpperCase()] || record.reason || 'Tiêu hủy định kỳ';
 
   const handlePrint = () => {
     window.print();

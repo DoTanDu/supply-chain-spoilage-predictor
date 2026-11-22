@@ -47,7 +47,7 @@ class SpoilageRecord {
 
     const reasonNormalized = String(reason || 'EXPIRED').toUpperCase();
     if (!SpoilageRecord.REASONS.includes(reasonNormalized)) {
-      throw new Error(`Lý do tiêu hủy không hợp lệ: ${reason}. Chỉ chấp nhận: EXPIRED, DAMAGED, SPOILED`);
+      throw new Error(`Lý do tiêu hủy không hợp lệ: ${reason}. Chỉ chấp nhận: ${SpoilageRecord.REASONS.join(', ')}`);
     }
 
     this.id = id;

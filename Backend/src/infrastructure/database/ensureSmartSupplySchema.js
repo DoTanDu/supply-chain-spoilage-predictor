@@ -128,6 +128,36 @@ async function ensureSmartSupplySchema() {
         DELETE FROM dbo.ai_forecasts
         WHERE model_name = N'LightGBM-HistGBT-v2.1';
       END
+
+      -- Đồng bộ ràng buộc CHECK cột reason trên spoilage_records cho đủ 3 mã cũ + 5 mã ReFED
+      IF OBJECT_ID('dbo.spoilage_records', 'U') IS NOT NULL
+      BEGIN
+        DECLARE @dropReasonCkSql NVARCHAR(MAX) = N'';
+        SELECT @dropReasonCkSql = @dropReasonCkSql +
+          N'ALTER TABLE dbo.spoilage_records DROP CONSTRAINT [' + cc.name + N']; '
+        FROM sys.check_constraints cc
+        WHERE cc.parent_object_id = OBJECT_ID('dbo.spoilage_records')
+          AND cc.definition LIKE '%reason%'
+          AND cc.name <> 'CK_SpoilageRecords_Reason';
+
+        IF LEN(@dropReasonCkSql) > 0
+          EXEC sp_executesql @dropReasonCkSql;
+
+        IF NOT EXISTS (
+          SELECT 1 FROM sys.check_constraints
+          WHERE parent_object_id = OBJECT_ID('dbo.spoilage_records')
+            AND name = 'CK_SpoilageRecords_Reason'
+        )
+        BEGIN
+          ALTER TABLE dbo.spoilage_records
+          ADD CONSTRAINT CK_SpoilageRecords_Reason CHECK (
+            [reason] IN (
+              'EXPIRED', 'DAMAGED', 'SPOILED',
+              'EXP_SPOILAGE', 'PKG_DAMAGE', 'TEMP_ABUSE', 'INTERNAL_SHRINK', 'DONATION'
+            )
+          );
+        END;
+      END;
     `;
 
     await SqlConnection.executeSql(migrationSql);
