@@ -24,13 +24,13 @@ export const SMARTSUPPLY_PAGES = [
     id: 'ai-forecast',
     label: '04. AI Forecast',
     description: 'Dự báo nhu cầu trong 7 ngày',
-    defaultRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER']
+    defaultRoles: ['ADMIN', 'STORE_MANAGER']
   },
   {
     id: 'smart-ordering',
     label: '05. Smart Ordering',
     description: 'Gợi ý nhập hàng, duyệt đơn',
-    defaultRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER']
+    defaultRoles: ['ADMIN', 'STORE_MANAGER']
   },
   {
     id: 'stock-transfer',
@@ -54,7 +54,7 @@ export const SMARTSUPPLY_PAGES = [
     id: 'settings-integration',
     label: '09. Settings & Integration',
     description: 'Tài khoản, phân quyền, kết nối POS, nhà cung cấp',
-    defaultRoles: ['ADMIN', 'STORE_MANAGER', 'CASHIER']
+    defaultRoles: ['ADMIN']
   }
 ];
 

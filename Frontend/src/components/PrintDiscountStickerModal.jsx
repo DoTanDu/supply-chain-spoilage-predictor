@@ -28,6 +28,7 @@ export default function PrintDiscountStickerModal({
 }) {
   const [selectedDiscount, setSelectedDiscount] = useState(initialDiscount);
   const [printCopies, setPrintCopies] = useState(1);
+  const [copiedGs1, setCopiedGs1] = useState(false);
 
   // Cập nhật mức giảm giá khi lô thay đổi
   useEffect(() => {
@@ -84,6 +85,26 @@ export default function PrintDiscountStickerModal({
   const currentStock = batch.currentQuantity !== undefined 
     ? Number(batch.currentQuantity) 
     : Number(batch.quantity || 1);
+
+  const gs1ExpiryYyMmDd = (() => {
+    if (!rawExp) return '261231';
+    const d = new Date(rawExp);
+    if (isNaN(d.getTime())) return '261231';
+    const yy = String(d.getFullYear()).slice(-2);
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yy}${mm}${dd}`;
+  })();
+  const gs1Gtin14 = String(sku).replace(/\D/g, '').padStart(14, '0').slice(-14);
+  const gs1StickerPayload = `(01)${gs1Gtin14}(17)${gs1ExpiryYyMmDd}(10)${batchCode}`;
+
+  const handleCopyGs1 = async () => {
+    try {
+      await navigator.clipboard.writeText(gs1StickerPayload);
+      setCopiedGs1(true);
+      setTimeout(() => setCopiedGs1(false), 2000);
+    } catch {}
+  };
 
   const handlePrint = () => {
     window.print();
@@ -392,6 +413,43 @@ export default function PrintDiscountStickerModal({
               lineHeight: 1.4
             }}>
               Sticker khổ 85mm tiêu chuẩn phù hợp dán trực tiếp lên nắp chai, thân hộp hoặc góc bao bì thực phẩm
+            </div>
+
+            <div style={{
+              width: '100%',
+              maxWidth: '440px',
+              background: 'var(--bg-surface, #ffffff)',
+              border: '1px solid var(--border-subtle, #e2e8f0)',
+              borderRadius: '8px',
+              padding: '10px 12px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '10px',
+              flexWrap: 'wrap'
+            }}>
+              <div style={{ minWidth: 0, flex: '1 1 220px' }}>
+                <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#475569' }}>MÃ QUÉT GS1-128 TẠI QUẦY POS (ĐỊNH DANH ĐÚNG LÔ GIẢM GIÁ):</div>
+                <div style={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 700, color: '#0f172a', wordBreak: 'break-all', marginTop: '2px' }}>
+                  {gs1StickerPayload}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleCopyGs1}
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  background: copiedGs1 ? '#dcfce7' : '#f8fafc',
+                  color: copiedGs1 ? '#166534' : '#0f172a',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                {copiedGs1 ? 'Đã sao chép GS1' : 'Sao chép mã GS1'}
+              </button>
             </div>
 
           </div>

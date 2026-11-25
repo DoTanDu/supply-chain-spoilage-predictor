@@ -1,6 +1,7 @@
 // src/application/use-cases/sales/ProcessFefoSaleUseCase.js
 const SaleOrder = require('../../../domain/entities/SaleOrder');
 const FefoAllocationPolicy = require('../../../domain/services/FefoAllocationPolicy');
+const LightGbmForecastEngine = require('../../../infrastructure/services/LightGbmForecastEngine');
 
 /**
  * Use Case: Thanh toán Bán lẻ tại quầy POS theo chuẩn FEFO (Mục 21.1 & Rule 2, Rule 3)
@@ -67,8 +68,9 @@ class ProcessFefoSaleUseCase {
     const detailedAllocationsSummary = [];
     const fefoDetails = [];
 
-    // 3. Xác thực từng dòng giỏ hàng và gộp các dòng trùng productId trước khi phân bổ FEFO (tránh đọc trùng lô khi giỏ hàng tách 2 dòng cùng SKU)
-    const aggregatedMap = new Map();
+    // 3. Xác thực từng dòng giỏ hàng (tách riêng dòng đích danh lô vs dòng FEFO tự động)
+    const aggregatedList = [];
+    const aggregatedIdxByKey = new Map();
     const productCache = new Map();
     const batchesCache = new Map();
 
@@ -112,36 +114,66 @@ class ProcessFefoSaleUseCase {
         batchesCache.set(pId, allBatches);
       }
 
-      // Nếu chỉ định đích danh mã lô mà lô đó đã hết hạn -> Chặn ngay
-      if (cartItem.batchId || cartItem.batchCode) {
+      const prefBatchId = cartItem.batchId ? Number(cartItem.batchId) : null;
+      const prefBatchCode = cartItem.batchCode ? String(cartItem.batchCode).trim() : null;
+
+      // Nếu chỉ định đích danh mã lô (từ quét GS1-128 / tem giảm giá) -> xác thực tồn tại & chưa hết hạn (Rule 5)
+      if (prefBatchId || prefBatchCode) {
         const targetBatch = allBatches.find(b =>
-          (cartItem.batchId && b.id === Number(cartItem.batchId)) ||
-          (cartItem.batchCode && (b.batchCode === cartItem.batchCode || b.batch_code === cartItem.batchCode))
+          (prefBatchId && Number(b.id) === prefBatchId) ||
+          (prefBatchCode && String(b.batchCode || b.batch_code || '').trim().toUpperCase() === prefBatchCode.toUpperCase())
         );
-        if (targetBatch) {
-          const daysLeft = Number(targetBatch.daysLeft !== undefined ? targetBatch.daysLeft : 0);
-          if (daysLeft <= 0 || targetBatch.status === 'EXPIRED') {
-            const err = new Error(`Lô hàng [${targetBatch.batchCode || targetBatch.batch_code}] đã hết hạn sử dụng (DaysLeft <= 0). Khóa cứng xuất bán POS theo Rule 5!`);
-            err.statusCode = 400;
-            err.code = 'ERR_BATCH_EXPIRED';
-            throw err;
-          }
+        if (!targetBatch) {
+          const err = new Error(`Không tìm thấy mã lô [${prefBatchCode || prefBatchId}] của sản phẩm "${product.name}" tại Chi nhánh #${targetStoreId}!`);
+          err.statusCode = 404;
+          err.code = 'ERR_BATCH_NOT_FOUND';
+          throw err;
+        }
+        const daysLeft = Number(targetBatch.daysLeft !== undefined ? targetBatch.daysLeft : 0);
+        if (daysLeft <= 0 || targetBatch.status === 'EXPIRED') {
+          const err = new Error(`Lô hàng [${targetBatch.batchCode || targetBatch.batch_code}] đã hết hạn sử dụng (DaysLeft <= 0). Khóa cứng xuất bán POS theo Rule 5!`);
+          err.statusCode = 400;
+          err.code = 'ERR_BATCH_EXPIRED';
+          throw err;
+        }
+        if (targetBatch.status === 'DISPOSED') {
+          const err = new Error(`Lô hàng [${targetBatch.batchCode || targetBatch.batch_code}] đã tiêu hủy hoặc xuất hết!`);
+          err.statusCode = 400;
+          err.code = 'ERR_INSUFFICIENT_STOCK';
+          throw err;
         }
       }
 
-      const prev = aggregatedMap.get(pId) || 0;
-      aggregatedMap.set(pId, prev + qty);
+      const aggKey = `${pId}::${prefBatchId || prefBatchCode || 'FEFO'}::${cartItem.strictBatch ? '1' : '0'}`;
+      if (aggregatedIdxByKey.has(aggKey)) {
+        const entry = aggregatedList[aggregatedIdxByKey.get(aggKey)];
+        entry.qty += qty;
+      } else {
+        aggregatedIdxByKey.set(aggKey, aggregatedList.length);
+        aggregatedList.push({
+          pId,
+          qty,
+          preferredBatchId: prefBatchId,
+          preferredBatchCode: prefBatchCode,
+          strictBatch: Boolean(cartItem.strictBatch)
+        });
+      }
     }
 
-    // 3.1 Phân bổ FEFO theo từng sản phẩm đã gộp tổng số lượng mua
-    for (const [pId, qty] of aggregatedMap.entries()) {
+    // 3.1 Phân bổ FEFO (hoặc ưu tiên lô được quét đích danh) theo từng nhóm sản phẩm
+    const consumedMap = new Map();
+    for (const entry of aggregatedList) {
+      const { pId, qty, preferredBatchId, preferredBatchCode, strictBatch } = entry;
       const product = productCache.get(pId);
       const allBatches = batchesCache.get(pId) || [];
 
-      // Lấy danh sách các lô khả dụng theo chuẩn FEFO tại ĐÚNG chi nhánh
-      const availableBatches = await this.batchRepository.findAvailableByProductIdFefo(pId, targetStoreId);
+      const rawAvailableBatches = await this.batchRepository.findAvailableByProductIdFefo(pId, targetStoreId);
+      const availableBatches = (rawAvailableBatches || []).map(b => ({
+        ...b,
+        currentQuantity: Math.max(0, Number(b.currentQuantity ?? b.current_quantity ?? 0) - Number(consumedMap.get(Number(b.id)) || 0))
+      }));
+
       if (!availableBatches || availableBatches.length === 0) {
-        // Kiểm tra xem sản phẩm có lô nào còn tồn nhưng đã hết hạn sử dụng không (Rule 5)
         const hasExpiredBatches = allBatches.some(b =>
           Number(b.currentQuantity || b.current_quantity) > 0 &&
           (Number(b.daysLeft) <= 0 || b.status === 'EXPIRED')
@@ -166,17 +198,19 @@ class ProcessFefoSaleUseCase {
         throw err;
       }
 
-      // Áp dụng Chính sách phân bổ FEFO (tự động bẻ đơn qua nhiều lô nếu cần)
       const allocationResult = FefoAllocationPolicy.allocate({
         productId: product.id,
         productName: product.name,
         requestedQuantity: qty,
         sellingPrice: product.sellingPrice,
-        availableBatches
+        availableBatches,
+        preferredBatchId,
+        preferredBatchCode,
+        strictBatch
       });
 
-      // Thêm từng dòng lô đã bẻ vào SaleOrder
       for (const line of allocationResult.allocations) {
+        consumedMap.set(Number(line.batchId), Number(consumedMap.get(Number(line.batchId)) || 0) + Number(line.quantityAllocated));
         saleOrder.addItem({
           productId: product.id,
           batchId: line.batchId,
@@ -212,6 +246,7 @@ class ProcessFefoSaleUseCase {
     let transactionResult;
     try {
       transactionResult = await this.saleRepository.executeFefoCheckoutTransaction({ saleOrder });
+      LightGbmForecastEngine.clearCache();
     } catch (err) {
       if (err.message && (err.message.includes('Tranh chấp tồn kho') || err.message.includes('50001'))) {
         err.statusCode = 409;

@@ -30,9 +30,14 @@ def run_live_sql_inference(payload):
     sq_errors = []
     pct_errors = []
 
-    for r in rows:
-        feat = np.array([[float(r.get(c, 0)) for c in feature_cols]])
-        pred_daily = float(max(0.0, model.predict(feat)[0]))
+    if rows:
+        feat_matrix = np.array([[float(r.get(c, 0)) for c in feature_cols] for r in rows], dtype=float)
+        pred_all = np.maximum(0.0, model.predict(feat_matrix))
+    else:
+        pred_all = np.array([], dtype=float)
+
+    for idx, r in enumerate(rows):
+        pred_daily = float(pred_all[idx])
         actual_daily = float(r.get("actual_demand", 0))
         abs_err = abs(actual_daily - pred_daily)
         abs_errors.append(abs_err)
@@ -41,6 +46,7 @@ def run_live_sql_inference(payload):
             pct_errors.append(abs_err / actual_daily * 100.0)
 
         results.append({
+            "rowKey": r.get("row_key"),
             "storeId": int(r.get("store_id", 1)),
             "storeCode": r.get("store_code", "RETAIL-STORE-01"),
             "productId": int(r.get("product_id", 0)),

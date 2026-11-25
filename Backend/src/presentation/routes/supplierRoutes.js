@@ -13,7 +13,7 @@ const authMiddleware = require('../middlewares/authMiddleware');
 const roleMiddleware = require('../middlewares/roleMiddleware');
 
 const router = express.Router();
-const catalogManageGuard = roleMiddleware(['ADMIN', 'STORE_MANAGER'], { pageKey: 'settings-integration' });
+const catalogManageGuard = roleMiddleware(['ADMIN'], { pageKey: 'settings-integration', grantUnlocksRole: true });
 
 // GET /api/suppliers
 router.get('/', SupplierController.getSuppliers);

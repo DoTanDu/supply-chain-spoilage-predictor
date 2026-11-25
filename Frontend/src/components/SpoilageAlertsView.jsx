@@ -22,7 +22,7 @@ import PrintDiscountStickerModal from './PrintDiscountStickerModal';
 import DisposalFormModal from './DisposalFormModal';
 import PrintSpoilageReceiptModal from './PrintSpoilageReceiptModal';
 import { exportBatchesFefoToExcel, exportSpoilageLedgerToExcel } from '../utils/exportUtils';
-import { normalizeRole } from '../utils/pagePermissions';
+import { canAccessPage, normalizeRole } from '../utils/pagePermissions';
 
 function stripVietnamese(str) {
   if (!str) return '';
@@ -78,6 +78,9 @@ export default function SpoilageAlertsView({
 }) {
   const roleCode = normalizeRole(currentRole || currentUser?.roleCode);
   const canApproveAndMarkdown = isAdmin || roleCode === 'ADMIN' || roleCode === 'STORE_MANAGER';
+  const canReadAiForecast = canApproveAndMarkdown || (
+    Boolean(currentUser) && (canAccessPage(currentUser, 'ai-forecast') || canAccessPage(currentUser, 'smart-ordering'))
+  );
 
   const [subTab, setSubTab] = useState(initialSubTab || 'alerts');
   useEffect(() => {
@@ -113,6 +116,10 @@ export default function SpoilageAlertsView({
   const [recordStatusFilter, setRecordStatusFilter] = useState('ALL');
 
   useEffect(() => {
+    if (!canReadAiForecast) {
+      setAiRiskMap({});
+      return;
+    }
     let mounted = true;
     fetchRopForecast(weather?.condition || 'NORMAL', Boolean(weather?.isHoliday), selectedStoreId)
       .then(res => {
@@ -125,7 +132,7 @@ export default function SpoilageAlertsView({
       })
       .catch(() => {});
     return () => { mounted = false; };
-  }, [selectedStoreId, weather?.condition, weather?.isHoliday]);
+  }, [canReadAiForecast, selectedStoreId, weather?.condition, weather?.isHoliday]);
 
   const inStockBatches = useMemo(() => {
     return batches.filter(b => Number(b.currentQuantity ?? b.quantity ?? 0) > 0 && String(b.status).toUpperCase() !== 'DISPOSED');

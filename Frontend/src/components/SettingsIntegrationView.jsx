@@ -46,6 +46,7 @@ export default function SettingsIntegrationView({
   onEnterpriseUpdated,
   storesList = [],
   products = [],
+  batches = [],
   auditLogs = [],
   weather = { condition: 'NORMAL', isHoliday: false, temp: 30 },
   setWeather,
@@ -92,6 +93,25 @@ export default function SettingsIntegrationView({
     return map;
   }, [products]);
 
+  const fefoStockByStoreSku = useMemo(() => {
+    const storeCodeToId = new Map();
+    for (const s of storesList) {
+      storeCodeToId.set(String(s.storeCode || '').toUpperCase().trim(), Number(s.id));
+    }
+    const map = new Map();
+    for (const b of batches) {
+      const daysLeft = Number(b.daysLeft ?? 99);
+      const st = String(b.status || '').toUpperCase();
+      const qty = Number(b.currentQuantity ?? b.quantity ?? 0);
+      if (qty <= 0 || daysLeft <= 0 || st === 'EXPIRED' || st === 'DISPOSED') continue;
+      const sid = Number(b.storeId || 1);
+      const pid = Number(b.productId);
+      const key = `${sid}_${pid}`;
+      map.set(key, (map.get(key) || 0) + qty);
+    }
+    return { map, storeCodeToId };
+  }, [batches, storesList]);
+
   const handleDownloadTemplate = () => {
     const storeCode = storeProfile?.storeCode || '';
     const today = new Date().toISOString().slice(0, 10);
@@ -116,17 +136,30 @@ export default function SettingsIntegrationView({
         setCsvRows([]);
         return;
       }
+      const cumulativeDemand = new Map();
       const parsed = rows.slice(1).map((cols, idx) => {
-        const storeCode = cols[0] || storeProfile?.storeCode || 'RETAIL-STORE-01';
+        const storeCode = String(cols[0] || storeProfile?.storeCode || 'RETAIL-STORE-01').toUpperCase().trim();
         const sku = String(cols[1] || '').toUpperCase().trim();
         const saleDate = cols[2] || new Date().toISOString().slice(0, 10);
         const quantitySold = Number(cols[3] || 0);
         const salePrice = Number(cols[4] || 0);
         const matchedProd = skuLookup.get(sku);
+        const targetSid = fefoStockByStoreSku.storeCodeToId.get(storeCode) || Number(storeProfile?.id || 1);
+        const availFefo = matchedProd ? (fefoStockByStoreSku.map.get(`${targetSid}_${Number(matchedProd.id)}`) || 0) : 0;
+        const demandKey = `${targetSid}_${matchedProd?.id || sku}`;
+        const usedSoFar = cumulativeDemand.get(demandKey) || 0;
+        const remainBeforeRow = Math.max(0, availFefo - usedSoFar);
+
         const issues = [];
         if (!matchedProd) issues.push('SKU không tồn tại');
-        if (!Number.isFinite(quantitySold) || quantitySold <= 0) issues.push('SL <= 0');
+        if (!Number.isInteger(quantitySold) || quantitySold <= 0) issues.push('SL phải là số nguyên > 0');
         if (!Number.isFinite(salePrice) || salePrice <= 0) issues.push('Giá <= 0');
+        if (matchedProd && quantitySold > 0 && remainBeforeRow < quantitySold) {
+          issues.push(`Thiếu tồn FEFO (còn ${remainBeforeRow})`);
+        } else if (matchedProd && quantitySold > 0) {
+          cumulativeDemand.set(demandKey, usedSoFar + quantitySold);
+        }
+
         return {
           rowNum: idx + 1,
           storeCode,
@@ -135,6 +168,7 @@ export default function SettingsIntegrationView({
           saleDate,
           quantitySold,
           salePrice,
+          availableFefo: availFefo,
           isValid: issues.length === 0,
           issues
         };
@@ -157,7 +191,13 @@ export default function SettingsIntegrationView({
     try {
       const res = await api.apiImportPosSales(validRows);
       if (res && res.success) {
-        setToast({ type: 'success', text: res.message || `Đã đồng bộ thành công ${validRows.length} dòng doanh số POS!` });
+        const rejCount = Number(res.data?.rejectedCount || 0);
+        const unitsDed = Number(res.data?.totalUnitsDeducted || 0);
+        const rejNote = rejCount > 0 ? ` (Từ chối ${rejCount} dòng: ${res.data?.errors?.[0]?.message || ''})` : '';
+        setToast({
+          type: 'success',
+          text: `${res.message || `Đã đồng bộ ${validRows.length} dòng.`} Đã trừ kho FEFO ${unitsDed} ĐV.${rejNote}`
+        });
         setCsvRows([]);
         setCsvFileName('');
         if (onRefreshData) await onRefreshData();
@@ -403,6 +443,7 @@ export default function SettingsIntegrationView({
                           <th scope="col">SKU & Sản phẩm</th>
                           <th scope="col">Ngày bán</th>
                           <th scope="col">Số lượng</th>
+                          <th scope="col">Tồn FEFO</th>
                           <th scope="col">Đơn giá</th>
                           <th scope="col">Kiểm tra</th>
                         </tr>
@@ -418,10 +459,11 @@ export default function SettingsIntegrationView({
                             </td>
                             <td className="num-tabular">{r.saleDate}</td>
                             <td className="num-tabular">{r.quantitySold}</td>
+                            <td className="num-tabular">{r.availableFefo ?? 0}</td>
                             <td className="num-tabular">{Number(r.salePrice || 0).toLocaleString('vi-VN')} đ</td>
                             <td>
                               {r.isValid ? (
-                                <span className="ss-badge ss-badge-safe">Hợp lệ</span>
+                                <span className="ss-badge ss-badge-safe">Hợp lệ (Trừ FEFO)</span>
                               ) : (
                                 <span className="ss-badge ss-badge-danger">{r.issues.join(', ')}</span>
                               )}

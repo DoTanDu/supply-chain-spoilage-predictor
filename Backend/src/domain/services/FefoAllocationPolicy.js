@@ -23,7 +23,10 @@ class FefoAllocationPolicy {
     productName = '',
     requestedQuantity,
     sellingPrice,
-    availableBatches = []
+    availableBatches = [],
+    preferredBatchId = null,
+    preferredBatchCode = null,
+    strictBatch = false
   }) {
     const qtyNeeded = Number(requestedQuantity);
     const basePrice = Number(sellingPrice);
@@ -74,6 +77,31 @@ class FefoAllocationPolicy {
       if (timeDiff !== 0) return timeDiff;
       return a.id - b.id;
     });
+
+    // 2.1. Nếu nhân viên quét tem giảm giá / GS1-128 chỉ định đích danh lô khách cầm trên tay
+    const normPrefCode = preferredBatchCode ? String(preferredBatchCode).trim().toUpperCase() : null;
+    if (preferredBatchId || normPrefCode) {
+      const matchIdx = validBatches.findIndex(b =>
+        (preferredBatchId && Number(b.id) === Number(preferredBatchId)) ||
+        (normPrefCode && String(b.batchCode || '').trim().toUpperCase() === normPrefCode)
+      );
+
+      if (strictBatch && (matchIdx === -1 || validBatches[matchIdx].currentQuantity < qtyNeeded)) {
+        const remain = matchIdx >= 0 ? validBatches[matchIdx].currentQuantity : 0;
+        const label = preferredBatchCode || `#${preferredBatchId}`;
+        const err = new Error(
+          `Lô hàng [${label}] chỉ còn ${remain} đơn vị khả dụng, không đủ số lượng yêu cầu (${qtyNeeded})!`
+        );
+        err.statusCode = 400;
+        err.code = 'ERR_INSUFFICIENT_STOCK';
+        throw err;
+      }
+
+      if (matchIdx > 0) {
+        const [picked] = validBatches.splice(matchIdx, 1);
+        validBatches.unshift(picked);
+      }
+    }
 
     // 3. Kiểm tra tổng tồn kho khả dụng (Rule 3: Chống tồn kho âm)
     const totalAvailable = validBatches.reduce((sum, b) => sum + b.currentQuantity, 0);

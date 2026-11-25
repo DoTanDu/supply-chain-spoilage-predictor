@@ -4,6 +4,7 @@ const WeatherCondition = require('../../../domain/value-objects/WeatherCondition
 const SqlConnection = require('../../../infrastructure/database/sqlConnection');
 const ensureSmartSupplySchema = require('../../../infrastructure/database/ensureSmartSupplySchema');
 const RealEnvironmentService = require('../../../infrastructure/services/RealEnvironmentService');
+const LightGbmForecastEngine = require('../../../infrastructure/services/LightGbmForecastEngine');
 
 /**
  * Use Case: Phân tích Dự báo 7 ngày & Điểm đặt hàng (ROP) từ dữ liệu SQL Server + Thời tiết & Lịch lễ thực tế
@@ -160,8 +161,9 @@ class CalculateROPForecastUseCase {
           };
         });
 
-    const forecastResults = [];
-
+    // Chuẩn bị batch suy luận hàng loạt bằng pretrained_lgbm_model.pkl cho các SKU có lịch sử bán thực tế
+    const lgbmFeatureRows = [];
+    const preparedSkuMeta = [];
     for (const item of productsWithStock) {
       const p = item.entity;
       const productBatches = (allBatches || []).filter(b =>
@@ -171,7 +173,6 @@ class CalculateROPForecastUseCase {
       const storeActiveBatches = productBatches
         .filter(b => b.alertColor !== 'EXPIRED' && b.status !== 'EXPIRED' && b.status !== 'DISPOSED' && Number(b.currentQuantity) > 0)
         .sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
-
       const currentStock = storeActiveBatches.reduce((sum, b) => sum + Number(b.currentQuantity || 0), 0);
 
       const rawSalesEntry = salesStatsMap14Days[p.id];
@@ -184,6 +185,78 @@ class CalculateROPForecastUseCase {
       const salesDataPointsCount = Array.isArray(rawSalesEntry)
         ? rawSalesEntry.length
         : Number(rawSalesEntry?.transactionCount || 0);
+
+      const dBaseRaw = RopCalculationService.calculateBaseDemand(salesHistory14Days, historyDaysCount);
+      const maxBatchDiscount = storeActiveBatches.reduce((m, b) => Math.max(m, Number(b.discountPercent || 0)), 0);
+      const effectiveDisc = isPromo ? Math.max(maxBatchDiscount, 15) : maxBatchDiscount;
+      const actualDailyArr = sales30ByProd[Number(p.id)] || salesHistory14Days;
+      const lag1d = actualDailyArr.length > 0 ? Number(actualDailyArr[actualDailyArr.length - 1] || 0) : 0;
+      const last7 = actualDailyArr.slice(-7);
+      const rollingMean7d = last7.length > 0
+        ? last7.reduce((s, v) => s + Number(v || 0), 0) / 7.0
+        : dBaseRaw;
+
+      preparedSkuMeta.push({
+        item,
+        productBatches,
+        storeActiveBatches,
+        currentStock,
+        salesHistory14Days,
+        historyDaysCount,
+        salesDataPointsCount,
+        actualDailyArr,
+        dBaseRaw
+      });
+
+      if (historyDaysCount > 0 && dBaseRaw > 0) {
+        const numericStoreId = isAllStores ? 1 : Number(targetStoreId);
+        dailyEnvList.forEach((dayEnv, dayIdx) => {
+          const dObj = dayEnv.date ? new Date(dayEnv.date) : new Date(Date.now() + (dayIdx + 1) * 86400000);
+          const pyDow = (dObj.getDay() + 6) % 7;
+          const cond = String(dayEnv.condition || effectiveWeather || 'NORMAL').toUpperCase();
+          const wCode = cond === 'RAINY' ? 2 : (cond === 'SUNNY' ? 1 : 0);
+          const tempC = Number(dayEnv.tempMax ?? dayEnv.tempMin ?? liveEnv?.current?.temp ?? 29);
+
+          lgbmFeatureRows.push({
+            row_key: `${p.id}_${dayIdx}`,
+            store_id: numericStoreId,
+            product_id: Number(p.id),
+            day_of_week: pyDow,
+            is_weekend: (pyDow === 5 || pyDow === 6) ? 1 : 0,
+            is_holiday: dayEnv.isHoliday ? 1 : 0,
+            weather_code: wCode,
+            temperature_c: tempC,
+            discount_pct: effectiveDisc,
+            shelf_life_days: Number(p.standardShelfLifeDays || 14),
+            lag_1d: lag1d,
+            lag_7d: rollingMean7d,
+            rolling_mean_7d: rollingMean7d,
+            rolling_mean_14d: dBaseRaw,
+            actual_demand: dBaseRaw
+          });
+        });
+      }
+    }
+
+    const lgbmCacheKey = `${targetStoreId}_${effectiveWeather}_${effectiveHoliday}_${Boolean(isPromo)}_${dailyEnvList[0]?.date || ''}`;
+    const lgbmPredMap = lgbmFeatureRows.length > 0
+      ? await LightGbmForecastEngine.predict7DayBatch(lgbmFeatureRows, lgbmCacheKey)
+      : new Map();
+    const isLgbmActive = Boolean(lgbmPredMap && lgbmPredMap.size > 0);
+    const activeModelName = isLgbmActive ? 'LightGBM (.pkl) + Live Weather' : 'ROP-Live-Sales-Weather';
+
+    const forecastResults = [];
+
+    for (const meta of preparedSkuMeta) {
+      const p = meta.item.entity;
+      const {
+        storeActiveBatches,
+        currentStock,
+        salesHistory14Days,
+        historyDaysCount,
+        salesDataPointsCount,
+        actualDailyArr
+      } = meta;
 
       let earliestBatchDaysLeft = null;
       let earliestBatchCode = null;
@@ -213,7 +286,6 @@ class CalculateROPForecastUseCase {
       const promoMultiplier = isPromo ? 1.15 : 1;
 
       // Độ lệch chuẩn thực tế trên chuỗi ngày có bán (nếu đủ dữ liệu) để tính khoảng tin cậy thực tế
-      const actualDailyArr = sales30ByProd[Number(p.id)] || salesHistory14Days;
       let stdRatio = 0.2;
       if (actualDailyArr.length >= 3) {
         const mean = actualDailyArr.reduce((s, v) => s + v, 0) / actualDailyArr.length;
@@ -223,15 +295,26 @@ class CalculateROPForecastUseCase {
         }
       }
 
-      // Tính dự báo từng ngày thực tế (7 ngày tới theo thời tiết & ngày lễ từng ngày ngoài đời thực)
+      // Tính dự báo từng ngày thực tế (Kết hợp mô hình LightGBM .pkl + Thời tiết Open-Meteo & Lịch lễ VN)
       let predictedSales7d = 0;
-      const dailyBreakdown = dailyEnvList.map((dayEnv) => {
+      const dailyBreakdown = dailyEnvList.map((dayEnv, dayIdx) => {
         const wCondObj = new WeatherCondition(dayEnv.condition || effectiveWeather);
         const dayW = wCondObj.getDemandFactor(p.categoryName || 'FMCG');
         const dayH = dayEnv.isHoliday ? 1.30 : 1.00;
-        const dayPred = dBase > 0
-          ? Math.round(dBase * dayW * dayH * promoMultiplier * stockoutCompFactor)
-          : 0;
+        const statBaseline = dBase * dayW * dayH * promoMultiplier * stockoutCompFactor;
+        const lgbmRaw = isLgbmActive ? lgbmPredMap.get(`${p.id}_${dayIdx}`) : undefined;
+
+        let dayPred = 0;
+        if (dBase > 0) {
+          if (lgbmRaw !== undefined && Number.isFinite(lgbmRaw)) {
+            // Hiệu chuẩn suy luận .pkl theo biên quy mô thực tế của SKU + tác động thời tiết/khuyến mãi
+            const clampedLgbm = Math.max(dBase * 0.65, Math.min(dBase * 1.65, lgbmRaw));
+            const blendedDaily = (0.6 * clampedLgbm + 0.4 * dBase) * dayW * dayH * promoMultiplier * stockoutCompFactor;
+            dayPred = Math.round(blendedDaily);
+          } else {
+            dayPred = Math.round(statBaseline);
+          }
+        }
         const dayLow = dayPred > 0 ? Math.max(0, Math.round(dayPred * (1 - stdRatio))) : 0;
         const dayHigh = dayPred > 0 ? Math.round(dayPred * (1 + stdRatio)) : 0;
         predictedSales7d += dayPred;
@@ -239,6 +322,7 @@ class CalculateROPForecastUseCase {
           ...dayEnv,
           weatherFactor: dayW,
           holidayFactor: dayH,
+          lgbmRawPredicted: lgbmRaw !== undefined ? Number(lgbmRaw.toFixed(2)) : null,
           predicted: dayPred,
           lower: dayLow,
           upper: dayHigh
@@ -273,7 +357,7 @@ class CalculateROPForecastUseCase {
       let dataQualityWarning = null;
       let confidenceLevel = 'HIGH';
       let maeMetric = null;
-      const modelName = 'ROP-Live-Sales-Weather';
+      const modelName = activeModelName;
 
       const scopeLabel = isAllStores ? 'Toàn chuỗi' : `Chi nhánh #${targetStoreId}`;
       if (historyDaysCount === 0) {
@@ -437,7 +521,7 @@ class CalculateROPForecastUseCase {
         chainStoreCount,
         isSingleStore,
         enterpriseConfig: entCfg,
-        modelName: 'ROP-Live-Sales-Weather',
+        modelName: activeModelName,
         averageMaeMetric: avgMae,
         hasReliableModelMetrics: sufficientMaeItems.length > 0,
         analysisDate: new Date().toISOString()
@@ -457,7 +541,7 @@ class CalculateROPForecastUseCase {
         enterpriseConfig: entCfg,
         totalEstimatedBudget,
         averageMaeMetric: avgMae,
-        modelName: 'ROP-Live-Sales-Weather'
+        modelName: activeModelName
       },
       itemsNeedReorder,
       itemsAtRiskOfSpoilage,

@@ -635,6 +635,7 @@ export default function App() {
                     onEnterpriseUpdated={(cfg) => setEnterpriseConfig(cfg)}
                     storesList={storesList}
                     products={products}
+                    batches={batches}
                     auditLogs={auditLogs}
                     weather={weather}
                     setWeather={setWeather}

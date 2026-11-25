@@ -8,6 +8,23 @@ const WeatherCondition = require('../value-objects/WeatherCondition');
  */
 class RopCalculationService {
   /**
+   * Tính tốc độ bán bình quân 14 ngày thực tế (đơn vị/ngày).
+   * Trả về 0 nếu chưa có giao dịch thực tế trong 14 ngày gần nhất.
+   */
+  static calculateBaseDemand(salesHistory14Days = [], historyDaysCount = null) {
+    const actualHistoryDays = historyDaysCount !== null && historyDaysCount !== undefined
+      ? Math.max(0, Number(historyDaysCount))
+      : (Array.isArray(salesHistory14Days) ? salesHistory14Days.length : 0);
+
+    if (actualHistoryDays <= 0 || !Array.isArray(salesHistory14Days) || salesHistory14Days.length === 0) {
+      return 0;
+    }
+
+    const totalSales14 = salesHistory14Days.reduce((sum, q) => sum + Math.max(0, Number(q || 0)), 0);
+    return Number((totalSales14 / 14).toFixed(2));
+  }
+
+  /**
    * Tính toán dự báo ROP cho sản phẩm
    * @param {Object} params
    * @param {number} params.productId ID sản phẩm
@@ -43,16 +60,11 @@ class RopCalculationService {
     const lt = Math.max(1, Number(leadTimeDays));
 
     // 1. Tính tốc độ bán bình quân 14 ngày thực tế (KHÔNG tự ý bịa số bán khi 0 giao dịch)
-    let totalSales14 = 0;
-    let d_base = 0;
     const actualHistoryDays = historyDaysCount !== null && historyDaysCount !== undefined
       ? Math.max(0, Number(historyDaysCount))
       : (Array.isArray(salesHistory14Days) ? salesHistory14Days.length : 0);
 
-    if (Array.isArray(salesHistory14Days) && salesHistory14Days.length > 0) {
-      totalSales14 = salesHistory14Days.reduce((sum, q) => sum + Math.max(0, Number(q)), 0);
-      d_base = Number((totalSales14 / 14).toFixed(2));
-    }
+    const d_base = RopCalculationService.calculateBaseDemand(salesHistory14Days, actualHistoryDays);
     const hasActualSales = d_base > 0 && actualHistoryDays > 0;
     const demandSource = hasActualSales ? 'ACTUAL_SALES' : 'NO_SALES_14D';
     const hasSufficientHistory = actualHistoryDays >= 7;

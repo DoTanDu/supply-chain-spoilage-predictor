@@ -5,11 +5,12 @@ const authMiddleware = require('../middlewares/authMiddleware');
 const roleMiddleware = require('../middlewares/roleMiddleware');
 
 const router = express.Router();
-const aiForecastGuard = roleMiddleware(['ADMIN', 'STORE_MANAGER', 'CASHIER'], {
-  allowedPages: ['ai-forecast', 'smart-ordering']
+const aiForecastGuard = roleMiddleware(['ADMIN', 'STORE_MANAGER'], {
+  allowedPages: ['ai-forecast', 'smart-ordering'],
+  grantUnlocksRole: true
 });
 const reorderReadGuard = roleMiddleware(['ADMIN', 'STORE_MANAGER', 'CASHIER'], {
-  allowedPages: ['smart-ordering', 'ai-forecast']
+  allowedPages: ['smart-ordering', 'ai-forecast', 'inventory-management']
 });
 const reorderManageGuard = roleMiddleware(['ADMIN', 'STORE_MANAGER'], { pageKey: 'smart-ordering' });
 

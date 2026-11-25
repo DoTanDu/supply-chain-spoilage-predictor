@@ -2,6 +2,8 @@
 const SqlConnection = require('../sqlConnection');
 const ISaleRepository = require('../../../domain/interfaces/ISaleRepository');
 const { formatLocalDateYMD } = require('../../../domain/utils/dateUtils');
+const FefoAllocationPolicy = require('../../../domain/services/FefoAllocationPolicy');
+const LightGbmForecastEngine = require('../../services/LightGbmForecastEngine');
 
 class SqlSaleRepository extends ISaleRepository {
   /**
@@ -238,6 +240,7 @@ class SqlSaleRepository extends ISaleRepository {
 
   /**
    * Nhập hàng loạt dữ liệu lịch sử bán hàng POS từ Excel/CSV (Phase 6)
+   * Có phân bổ trừ kho FEFO thật với khóa dòng UPDLOCK, ROWLOCK và từ chối dòng vượt tồn khả dụng.
    */
   async importPosSalesRows(rows = [], cashierId = 1, enforcedStoreId = null) {
     if (!Array.isArray(rows) || rows.length === 0) {
@@ -246,17 +249,23 @@ class SqlSaleRepository extends ISaleRepository {
       throw err;
     }
 
-    // Lấy danh mục products và batches để đối chiếu nhanh
     const metaSql = `
-      SELECT id, sku, selling_price AS sellingPrice FROM products;
+      SELECT id, sku, name, selling_price AS sellingPrice, CAST(is_active AS BIT) AS isActive FROM products;
     `;
     const batchSql = `
-      SELECT id, product_id AS productId, store_id AS storeId, expiry_date AS expiryDate
+      SELECT
+        id, batch_code AS batchCode, product_id AS productId, ISNULL(store_id, 1) AS storeId,
+        expiry_date AS expiryDate, current_quantity AS currentQuantity,
+        ISNULL(discount_percent, 0) AS discountPercent,
+        CAST(import_price AS FLOAT) AS importPrice, status
       FROM batches
-      ORDER BY CASE WHEN status IN ('ACTIVE', 'WARNING') AND current_quantity > 0 THEN 0 ELSE 1 END, expiry_date ASC;
+      WHERE current_quantity > 0
+        AND status IN ('ACTIVE', 'WARNING')
+        AND expiry_date > CAST(GETDATE() AS DATE)
+      ORDER BY expiry_date ASC, id ASC;
     `;
     const storeSql = `
-      SELECT id, store_code AS storeCode FROM store_profile;
+      SELECT id, store_code AS storeCode, ISNULL(status, 'OPEN') AS status FROM store_profile;
     `;
     const [products, batches, stores] = await Promise.all([
       SqlConnection.queryJson(metaSql),
@@ -272,8 +281,10 @@ class SqlSaleRepository extends ISaleRepository {
     }
 
     const storeCodeMap = {};
+    const storeStatusMap = {};
     for (const s of (stores || [])) {
       storeCodeMap[String(s.storeCode || '').toUpperCase().trim()] = Number(s.id);
+      storeStatusMap[Number(s.id)] = String(s.status || 'OPEN').toUpperCase();
     }
 
     const scopedSid = enforcedStoreId !== null && enforcedStoreId !== undefined ? Number(enforcedStoreId) : null;
@@ -302,8 +313,19 @@ class SqlSaleRepository extends ISaleRepository {
       }
     }
 
-    const validInserts = [];
+    // Bản sao working batches để trừ tuần tự chính xác khi nhiều dòng CSV trùng cùng 1 SKU tại cùng chi nhánh
+    const workingBatchesByKey = new Map();
+    for (const b of (batches || [])) {
+      const k = `${Number(b.storeId || 1)}_${Number(b.productId)}`;
+      if (!workingBatchesByKey.has(k)) workingBatchesByKey.set(k, []);
+      workingBatchesByKey.get(k).push({ ...b, currentQuantity: Number(b.currentQuantity || 0) });
+    }
+
+    const batchUpdates = [];
+    const salesInserts = [];
     const errors = [];
+    let importedRowsCount = 0;
+    let totalUnitsDeducted = 0;
     const daysOfWeek = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
     const batchStamp = Date.now().toString().slice(-6);
 
@@ -315,31 +337,48 @@ class SqlSaleRepository extends ISaleRepository {
         errors.push({ row: rowNum, sku: rawSku, message: `Mã SKU [${rawSku || raw.productId}] không tồn tại trong Danh mục Sản phẩm.` });
         return;
       }
+      if (prod.isActive === false || prod.isActive === 0) {
+        errors.push({ row: rowNum, sku: prod.sku, message: `Sản phẩm [${prod.sku}] đã ngừng kinh doanh.` });
+        return;
+      }
 
       const qty = Number(raw.quantitySold ?? raw.quantity ?? 0);
-      if (isNaN(qty) || qty <= 0) {
-        errors.push({ row: rowNum, sku: prod.sku, message: `Số lượng bán (${raw.quantitySold}) phải lớn hơn 0.` });
+      if (!Number.isInteger(qty) || qty <= 0) {
+        errors.push({ row: rowNum, sku: prod.sku, message: `Số lượng bán (${raw.quantitySold ?? raw.quantity}) phải là số nguyên dương (> 0).` });
         return;
       }
 
       const rawStoreCode = String(raw.storeCode || '').toUpperCase().trim();
       const targetStoreId = scopedSid || Number(raw.storeId) || storeCodeMap[rawStoreCode] || 1;
-
-      const matchedBatch = (batches || []).find(b => Number(b.productId) === Number(prod.id) && Number(b.storeId || 1) === targetStoreId);
-
-      if (!matchedBatch) {
-        errors.push({ row: rowNum, sku: prod.sku, message: `Sản phẩm [${prod.sku}] chưa có lô hàng nào tại Chi nhánh #${targetStoreId} để đối chiếu.` });
+      const storeSt = storeStatusMap[targetStoreId] || 'OPEN';
+      if (storeSt !== 'OPEN') {
+        errors.push({ row: rowNum, sku: prod.sku, message: `Chi nhánh #${targetStoreId} đang ở trạng thái [${storeSt}], khóa xuất bán POS.` });
         return;
       }
 
-      const unitPrice = (raw.salePrice !== undefined && raw.salePrice !== null && String(raw.salePrice) !== '')
+      const explicitPrice = (raw.salePrice !== undefined && raw.salePrice !== null && String(raw.salePrice).trim() !== '')
         ? Number(raw.salePrice)
-        : Number(prod.sellingPrice);
-      if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
-        errors.push({ row: rowNum, sku: prod.sku, message: `Sản phẩm [${prod.sku}] không có giá bán hợp lệ (file import thiếu sale_price và danh mục chưa có giá niêm yết).` });
+        : null;
+      const fallbackSellingPrice = explicitPrice !== null ? explicitPrice : Number(prod.sellingPrice);
+      if (!Number.isFinite(fallbackSellingPrice) || fallbackSellingPrice <= 0) {
+        errors.push({ row: rowNum, sku: prod.sku, message: `Sản phẩm [${prod.sku}] không có giá bán hợp lệ.` });
         return;
       }
-      const totalAmount = Math.round(qty * unitPrice);
+
+      const storeProdBatches = workingBatchesByKey.get(`${targetStoreId}_${Number(prod.id)}`) || [];
+      let allocationResult;
+      try {
+        allocationResult = FefoAllocationPolicy.allocate({
+          productId: prod.id,
+          productName: prod.name,
+          requestedQuantity: qty,
+          sellingPrice: Number(prod.sellingPrice || fallbackSellingPrice),
+          availableBatches: storeProdBatches
+        });
+      } catch (allocErr) {
+        errors.push({ row: rowNum, sku: prod.sku, message: allocErr.message });
+        return;
+      }
 
       const parsedDate = raw.saleDate ? new Date(raw.saleDate) : new Date();
       const validDate = isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
@@ -349,31 +388,55 @@ class SqlSaleRepository extends ISaleRepository {
         ? String(raw.transactionCode).trim()
         : `IMP-POS-${dateStr.replace(/-/g, '')}-${batchStamp}-${rowNum}`;
 
-      validInserts.push(`
-        INSERT INTO sales_history (
-          transaction_code, store_id, product_id, batch_id, quantity_sold,
-          sale_price, total_amount, sale_date, day_of_week, weather, is_holiday,
-          cashier_id, created_at
-        ) VALUES (
-          ${SqlConnection.escapeSql(txnCode)},
-          ${targetStoreId},
-          ${Number(prod.id)},
-          ${Number(matchedBatch.id)},
-          ${qty},
-          ${unitPrice},
-          ${totalAmount},
-          ${SqlConnection.escapeSql(dateStr)},
-          ${SqlConnection.escapeSql(dow)},
-          N'NORMAL',
-          0,
-          ${Number(cashierId || 1)},
-          GETDATE()
-        );
-      `);
+      for (const line of allocationResult.allocations) {
+        const targetWorkingBatch = storeProdBatches.find(b => Number(b.id) === Number(line.batchId));
+        if (targetWorkingBatch) {
+          targetWorkingBatch.currentQuantity -= Number(line.quantityAllocated);
+        }
+
+        const unitPrice = explicitPrice !== null ? explicitPrice : Number(line.unitPrice);
+        const totalAmount = Math.round(Number(line.quantityAllocated) * unitPrice);
+
+        batchUpdates.push(`
+          UPDATE batches WITH (UPDLOCK, ROWLOCK)
+          SET current_quantity = current_quantity - ${Number(line.quantityAllocated)}
+          WHERE id = ${Number(line.batchId)}
+            AND current_quantity >= ${Number(line.quantityAllocated)}
+            AND status IN ('ACTIVE', 'WARNING')
+            AND expiry_date > CAST(GETDATE() AS DATE);
+          IF @@ROWCOUNT = 0
+            THROW 50001, N'Tranh chấp tồn kho đồng thời khi đồng bộ POS CSV (Rule 3): Lô hàng không còn đủ tồn khả dụng!', 1;
+        `);
+
+        salesInserts.push(`
+          INSERT INTO sales_history (
+            transaction_code, store_id, product_id, batch_id, quantity_sold,
+            sale_price, total_amount, sale_date, day_of_week, weather, is_holiday,
+            cashier_id, created_at
+          ) VALUES (
+            ${SqlConnection.escapeSql(txnCode)},
+            ${targetStoreId},
+            ${Number(prod.id)},
+            ${Number(line.batchId)},
+            ${Number(line.quantityAllocated)},
+            ${unitPrice},
+            ${totalAmount},
+            ${SqlConnection.escapeSql(dateStr)},
+            ${SqlConnection.escapeSql(dow)},
+            N'NORMAL',
+            0,
+            ${Number(cashierId || 1)},
+            GETDATE()
+          );
+        `);
+      }
+
+      importedRowsCount += 1;
+      totalUnitsDeducted += qty;
     });
 
-    if (validInserts.length === 0) {
-      const err = new Error('Không có dòng dữ liệu hợp lệ nào để nạp vào hệ thống!');
+    if (salesInserts.length === 0) {
+      const err = new Error('Không có dòng dữ liệu hợp lệ nào để nạp & trừ kho FEFO vào hệ thống!');
       err.statusCode = 400;
       err.details = errors;
       throw err;
@@ -382,9 +445,10 @@ class SqlSaleRepository extends ISaleRepository {
     const txSql = `
       BEGIN TRANSACTION;
       BEGIN TRY
-        ${validInserts.join('\n')}
+        ${batchUpdates.join('\n')}
+        ${salesInserts.join('\n')}
         COMMIT TRANSACTION;
-        SELECT ${validInserts.length} AS importedCount FOR JSON PATH;
+        SELECT ${importedRowsCount} AS importedCount FOR JSON PATH;
       END TRY
       BEGIN CATCH
         IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
@@ -392,10 +456,13 @@ class SqlSaleRepository extends ISaleRepository {
       END CATCH;
     `;
     await SqlConnection.queryJson(txSql);
+    LightGbmForecastEngine.clearCache();
 
     return {
-      importedCount: validInserts.length,
+      importedCount: importedRowsCount,
       rejectedCount: errors.length,
+      totalUnitsDeducted,
+      totalBatchLines: salesInserts.length,
       errors
     };
   }

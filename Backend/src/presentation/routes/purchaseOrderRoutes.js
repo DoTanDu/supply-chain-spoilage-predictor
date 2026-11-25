@@ -13,7 +13,9 @@ const authMiddleware = require('../middlewares/authMiddleware');
 const roleMiddleware = require('../middlewares/roleMiddleware');
 
 const router = express.Router();
-const poReadGuard = roleMiddleware(['ADMIN', 'STORE_MANAGER', 'CASHIER'], { pageKey: 'smart-ordering' });
+const poReadGuard = roleMiddleware(['ADMIN', 'STORE_MANAGER', 'CASHIER'], {
+  allowedPages: ['smart-ordering', 'inventory-management']
+});
 const poManageGuard = roleMiddleware(['ADMIN', 'STORE_MANAGER'], { pageKey: 'smart-ordering' });
 
 // GET /api/purchase-orders - Danh sách đơn đặt hàng gửi DC (Mục 22.8 SSOT)

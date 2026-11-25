@@ -180,7 +180,9 @@ export default function InventoryManagementView({
     productId: products[0]?.id || 1,
     quantity: 1,
     saleDate: new Date().toISOString().slice(0, 10),
-    transactionCode: ''
+    transactionCode: '',
+    batchId: '',
+    gs1ScanInput: ''
   });
   const [saleError, setSaleError] = useState('');
   const [submittingSale, setSubmittingSale] = useState(false);
@@ -560,14 +562,121 @@ export default function InventoryManagementView({
     }
   };
 
+  const handleSaleGs1Change = (rawVal) => {
+    const val = String(rawVal || '');
+    setSaleError('');
+    setSaleForm(prev => ({ ...prev, gs1ScanInput: val }));
+    const trimmed = val.trim();
+    if (!trimmed) return;
+
+    const parsed = parseGs1Barcode(trimmed);
+    const targetSid = selectedStoreId !== 'ALL' ? Number(selectedStoreId) : Number(saleForm.storeId || currentUser?.storeId || 1);
+
+    // 1. Thử khớp mã lô trực tiếp hoặc mã lô tách từ GS1-128
+    const candidateBatchCode = (parsed.batchCode || trimmed).toUpperCase();
+    const matchedBatch = batches.find(b =>
+      Number(b.storeId || 1) === targetSid &&
+      String(b.batchCode || '').trim().toUpperCase() === candidateBatchCode
+    );
+    if (matchedBatch) {
+      if (matchedBatch.status === 'EXPIRED' || matchedBatch.alertColor === 'EXPIRED' || Number(matchedBatch.daysLeft ?? 0) <= 0) {
+        setSaleError(`CẢNH BÁO RULE 5: Lô [${matchedBatch.batchCode}] đã hết hạn sử dụng (DaysLeft <= 0), bị khóa cứng bán POS!`);
+        return;
+      }
+      if (Number(matchedBatch.currentQuantity ?? 0) <= 0 || matchedBatch.status === 'DISPOSED') {
+        setSaleError(`Lô [${matchedBatch.batchCode}] đã hết tồn khả dụng.`);
+        return;
+      }
+      setSaleForm(prev => ({
+        ...prev,
+        gs1ScanInput: val,
+        productId: Number(matchedBatch.productId),
+        batchId: String(matchedBatch.id)
+      }));
+      return;
+    }
+
+    // 2. Nếu không khớp mã lô, thử khớp SKU
+    const skuKey = String(parsed.sku || trimmed).toUpperCase();
+    const matchedProd = products.find(p => String(p.sku || '').trim().toUpperCase() === skuKey);
+    if (matchedProd) {
+      setSaleForm(prev => ({
+        ...prev,
+        gs1ScanInput: val,
+        productId: Number(matchedProd.id),
+        batchId: ''
+      }));
+    }
+  };
+
+  const saleEligibleBatches = useMemo(() => {
+    const targetSid = selectedStoreId !== 'ALL' ? Number(selectedStoreId) : Number(saleForm.storeId || currentUser?.storeId || 1);
+    return batches
+      .filter(b =>
+        Number(b.storeId || 1) === targetSid &&
+        Number(b.productId) === Number(saleForm.productId) &&
+        Number(b.currentQuantity ?? 0) > 0 &&
+        Number(b.daysLeft ?? 0) > 0 &&
+        b.status !== 'EXPIRED' &&
+        b.status !== 'DISPOSED'
+      )
+      .sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate) || Number(a.id) - Number(b.id));
+  }, [batches, selectedStoreId, saleForm.storeId, saleForm.productId, currentUser]);
+
+  const saleFefoPreview = useMemo(() => {
+    const qtyNeed = Math.max(0, Number(saleForm.quantity || 0));
+    const prod = products.find(p => Number(p.id) === Number(saleForm.productId));
+    const basePrice = Number(prod?.sellingPrice || 0);
+    if (!qtyNeed || saleEligibleBatches.length === 0) return { lines: [], totalAmount: 0, shortfall: qtyNeed };
+
+    const ordered = [...saleEligibleBatches];
+    if (saleForm.batchId) {
+      const idx = ordered.findIndex(b => Number(b.id) === Number(saleForm.batchId));
+      if (idx > 0) {
+        const [picked] = ordered.splice(idx, 1);
+        ordered.unshift(picked);
+      }
+    }
+
+    let rem = qtyNeed;
+    const lines = [];
+    for (const b of ordered) {
+      if (rem <= 0) break;
+      const avail = Number(b.currentQuantity ?? 0);
+      const take = Math.min(avail, rem);
+      const disc = Number(b.discountPercent || 0);
+      const unitPrice = disc > 0 ? Math.round(basePrice * (1 - disc / 100)) : basePrice;
+      lines.push({
+        batchId: b.id,
+        batchCode: b.batchCode,
+        daysLeft: b.daysLeft,
+        discountPercent: disc,
+        takeQty: take,
+        unitPrice,
+        lineTotal: take * unitPrice
+      });
+      rem -= take;
+    }
+    return {
+      lines,
+      totalAmount: lines.reduce((s, l) => s + l.lineTotal, 0),
+      shortfall: rem
+    };
+  }, [saleEligibleBatches, saleForm.quantity, saleForm.productId, saleForm.batchId, products]);
+
   const handleRecordQuickSale = async (e) => {
     e.preventDefault();
     setSaleError('');
     setSubmittingSale(true);
     try {
       const targetSid = selectedStoreId !== 'ALL' ? Number(selectedStoreId) : Number(saleForm.storeId || currentUser?.storeId || 1);
+      const cartPayload = {
+        productId: Number(saleForm.productId),
+        quantity: Number(saleForm.quantity),
+        ...(saleForm.batchId ? { batchId: Number(saleForm.batchId) } : {})
+      };
       const res = await api.apiProcessFefoSale(
-        [{ productId: Number(saleForm.productId), quantity: Number(saleForm.quantity) }],
+        [cartPayload],
         weather?.condition || 'NORMAL',
         Boolean(weather?.isHoliday),
         {
@@ -578,6 +687,7 @@ export default function InventoryManagementView({
       );
       if (res && res.success) {
         setShowSaleModal(false);
+        setSaleForm(prev => ({ ...prev, batchId: '', gs1ScanInput: '', transactionCode: '' }));
         setToast({ type: 'success', text: `Đã ghi nhận xuất bán ${saleForm.quantity} ĐV theo FEFO (${res.transactionCode}).` });
         await loadSales();
         if (onRefreshData) await onRefreshData();
@@ -1638,16 +1748,46 @@ export default function InventoryManagementView({
           )}
 
           <div className="ss-field">
+            <label className="ss-label" htmlFor="sale-gs1">Quét mã GS1-128 / Tem Giảm giá / Mã lô (Tùy chọn)</label>
+            <input
+              id="sale-gs1"
+              type="text"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              placeholder="Dán (01)...(17)...(10)LOT-... hoặc mã lô để trừ đúng hộp giảm giá"
+              value={saleForm.gs1ScanInput}
+              onChange={(e) => handleSaleGs1Change(e.target.value)}
+            />
+          </div>
+
+          <div className="ss-field">
             <label className="ss-label" htmlFor="sale-prod">Sản phẩm *</label>
             <select
               id="sale-prod"
               required
               value={saleForm.productId}
-              onChange={(e) => setSaleForm(prev => ({ ...prev, productId: Number(e.target.value) }))}
+              onChange={(e) => setSaleForm(prev => ({ ...prev, productId: Number(e.target.value), batchId: '' }))}
             >
               {products.map(p => (
                 <option key={p.id} value={p.id}>
                   {p.name} ({p.sku}) — Tồn: {getProductLiveStock(p.id)} {p.unit || 'ĐV'}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="ss-field">
+            <label className="ss-label" htmlFor="sale-batch-pref">Lô xuất bán (Mặc định: Tự động FEFO)</label>
+            <select
+              id="sale-batch-pref"
+              value={saleForm.batchId}
+              onChange={(e) => setSaleForm(prev => ({ ...prev, batchId: e.target.value }))}
+            >
+              <option value="">Tự động FEFO chuẩn (Hạn gần nhất xuất trước)</option>
+              {saleEligibleBatches.map(b => (
+                <option key={b.id} value={b.id}>
+                  {b.batchCode} — HSD {formatDateVN(b.expiryDate)} (còn {b.daysLeft}d, tồn {b.currentQuantity}{Number(b.discountPercent) > 0 ? `, Giảm -${b.discountPercent}%` : ''})
                 </option>
               ))}
             </select>
@@ -1676,6 +1816,33 @@ export default function InventoryManagementView({
               />
             </div>
           </div>
+
+          {saleFefoPreview.lines.length > 0 && (
+            <div className="ss-card-subtle" style={{ padding: '10px 12px', fontSize: '0.78rem' }}>
+              <div style={{ fontWeight: 700, marginBottom: '6px', color: 'var(--primary)' }}>
+                Xem trước phân bổ trừ kho ({saleForm.batchId ? 'Ưu tiên lô đã chọn' : 'FEFO tự động'}):
+              </div>
+              {saleFefoPreview.lines.map(ln => (
+                <div key={ln.batchId} style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', padding: '2px 0' }}>
+                  <span>
+                    <strong style={{ fontFamily: 'monospace' }}>{ln.batchCode}</strong> ({ln.daysLeft}d{ln.discountPercent > 0 ? `, -${ln.discountPercent}%` : ''})
+                  </span>
+                  <span className="num-tabular">
+                    -{ln.takeQty} × {ln.unitPrice.toLocaleString('vi-VN')} đ = <strong>{ln.lineTotal.toLocaleString('vi-VN')} đ</strong>
+                  </span>
+                </div>
+              ))}
+              {saleFefoPreview.shortfall > 0 && (
+                <div style={{ color: 'var(--danger-red-light)', fontWeight: 700, marginTop: '4px' }}>
+                  Thiếu {saleFefoPreview.shortfall} ĐV khả dụng so với số lượng yêu cầu!
+                </div>
+              )}
+              <div style={{ borderTop: '1px solid var(--border-subtle)', marginTop: '6px', paddingTop: '4px', display: 'flex', justifyContent: 'space-between', fontWeight: 800 }}>
+                <span>Tổng tiền dự kiến:</span>
+                <span className="num-tabular" style={{ color: 'var(--primary)' }}>{saleFefoPreview.totalAmount.toLocaleString('vi-VN')} đ</span>
+              </div>
+            </div>
+          )}
 
           <div className="ss-field">
             <label className="ss-label" htmlFor="sale-txn">Mã hóa đơn (tùy chọn)</label>
