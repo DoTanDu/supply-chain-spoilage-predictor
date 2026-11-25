@@ -199,8 +199,8 @@ Sơ đồ được tổ chức thành 4 phân hệ chức năng theo kiến trú
   * `default_lead_time_days` (`INT`), `min_inbound_rsl_percent` (`DECIMAL(5,2)`), `standard_warning_days` (`INT`), `critical_days` (`INT`), `safety_stock_days` (`INT`).
   * `opening_time` (`NVARCHAR(10)`), `closing_time` (`NVARCHAR(10)`), `status` (`NVARCHAR(20)`).
 
-#### 4.4 Bảng `system_audit_logs` (Nhật ký Kiểm toán & Bàn giao Ca Bất biến)
-* **Ý nghĩa:** Lưu vết bất biến mọi thao tác nghiệp vụ quan trọng (bán hàng FEFO, nhập kho DC, giảm giá Quick Markdown, đảo kệ SOP, duyệt hủy hàng, điều chuyển liên cửa hàng, đối soát bàn giao ca).
+#### 4.4 Bảng `system_audit_logs` (Nhật ký Kiểm toán Hệ thống Bất biến)
+* **Ý nghĩa:** Lưu vết bất biến mọi thao tác nghiệp vụ quan trọng (bán hàng FEFO, nhập kho DC, đồng bộ POS CSV, giảm giá Quick Markdown, đảo kệ SOP, duyệt hủy hàng, điều chuyển liên cửa hàng, phân quyền RBAC).
 * **Cấu trúc cột:**
   * `id` (`INT IDENTITY`, PK), `user_id` (`INT`, FK $\rightarrow$ `users.id`, NULL), `username` (`NVARCHAR(50)`).
   * `action_type` (`NVARCHAR(50)`), `entity_name` (`NVARCHAR(50)`), `entity_id` (`NVARCHAR(50)`).

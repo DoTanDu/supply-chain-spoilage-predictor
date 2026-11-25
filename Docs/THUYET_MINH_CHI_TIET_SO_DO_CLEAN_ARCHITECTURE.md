@@ -3,7 +3,7 @@
 **Đơn vị:** Khoa Công nghệ Thông tin - Trường Đại học Lạc Hồng (LHU)  
 **GVHD:** ThS. Lê Minh Nhật  
 **Nhóm sinh viên thực hiện:** Đỗ Tấn Du (123001364) & Đoàn Minh Quân (123000946)  
-**Tài liệu chuẩn mực (SSOT):** [Dac Ta He Thong Quan Ly Chuoi Cung Ung Chong Lang Phi - Supply Chain Spoilage Predictor.md](file:///c:/thuyet%20minh/Docs/Dac%20Ta%20He%20Thong%20Quan%20Ly%20Chuoi%20Cung%20Ung%20Chong%20Lang%20Phi%20-%20Supply%20Chain%20Spoilage%20Predictor.md)
+**Tài liệu chuẩn đối chiếu:** [SmartSupply_AI_Phan_tich_nghiep_vu_3_Actor.md](file:///c:/thuyet%20minh/Docs/SmartSupply_AI_Phan_tich_nghiep_vu_3_Actor.md) & [SmartSupply_AI_Dinh_huong_va_Dac_ta_Trien_khai.md](file:///c:/thuyet%20minh/Docs/SmartSupply_AI_Dinh_huong_va_Dac_ta_Trien_khai.md).
 
 ---
 
@@ -115,24 +115,24 @@ Tiếp thu sự chỉ đạo sâu sát của **ThS. Lê Minh Nhật**, hệ th�
 * **Thư mục mã nguồn:** `Backend/src/presentation/` & `Frontend/src/`
 * **Vai trò:** Tiếp nhận yêu cầu từ người dùng, chuyển đổi dữ liệu đầu vào thành DTO chuyển cho tầng Application, và định dạng kết quả trả về cho giao diện.
 * **Backend Presentation (`Backend/src/presentation/`):**
-  * **REST Controllers (`controllers/`):**
-    * `AuthController.js`, `StoreProfileController.js`, `CatalogController.js`, `BatchController.js`, `SalesController.js`, `SpoilageController.js`, `ForecastController.js`, `DashboardController.js`, `ShiftHandoverController.js`, `AuditLogController.js`.
+  * **REST Controllers & Routes (`controllers/`, `routes/`):**
+    * `AuthController.js`, `StoreProfileController.js`, `CatalogController.js`, `BatchController.js`, `SalesController.js`, `SpoilageController.js`, `ForecastController.js`, `DashboardController.js`, `SupplierController.js`, kèm `stockTransferRoutes.js`, `aiAssistantRoutes.js`, `userRoutes.js`.
   * **Middlewares (`middlewares/`):**
     * `authMiddleware.js`: Trích xuất và xác thực JWT token từ Header HTTP, kiểm tra tài khoản bị khóa Brute-force.
-    * `roleMiddleware.js`: Kiểm tra phân quyền truy cập theo 4 nhóm vai trò (Admin, Manager, Cashier, Warehouse).
+    * `roleMiddleware.js` & `storeScope.js`: Kiểm tra phân quyền 3 Actor (`OWNER`, `MANAGER`, `STAFF`), cấp/thu hồi trang động `pagePermissions` và cô lập dữ liệu theo `store_id`.
     * `errorHandler.js`: Chuẩn hóa bắt lỗi và trả định dạng JSON `{ success: false, message }`.
-* **Frontend SPA (`Frontend/src/` - React 19 + Vite):**
-  * Giao diện SPA hiện đại, thẩm mỹ cao với 10 màn hình tác nghiệp độc lập:
-    1. **Trang Đăng Nhập Riêng (`LoginView.jsx`):** Đăng nhập bảo mật JWT, chống Brute-Force lockout, 4 thẻ Quick Demo 1-Click cho 3 vai trò.
-    2. **Dashboard Điều Hành (`DashboardView.jsx`):** 6 Thẻ KPI tài chính, Tỷ lệ tuân thủ FEFO %, Top 5 Bán chạy, Top 5 Hao hụt, Action Board ca trực 4 Tab.
-    3. **Quầy Thu Ngân POS FEFO (`PosCheckoutView.jsx`):** Quét Barcode, xem trước phân bổ FEFO bẻ lô, áp dụng Quick Markdown, chọn cờ thời tiết/lễ.
-    4. **Tiếp Nhận Hàng DC (`DcIntakeView.jsx`):** Thước đo $RSL \ge 70\%$, khóa lưu tự động, lập Biên bản từ chối nhận hàng DC & liên kết PO.
-    5. **Giám Sát Hạn Dùng FEFO (`ExpiryMonitorView.jsx`):** Phân nhóm 3 màu Xanh/Vàng/Đỏ, Quick Markdown 15%-50% & SOP đảo kệ 5 bước.
-    6. **Tiêu Hủy & Sổ Hao Hụt (`SpoilageLogView.jsx`):** Lập đề xuất, tính $CostLoss$, Cửa hàng trưởng phê duyệt và chốt Sổ hao hụt tài chính bất biến (SoD).
-    7. **Danh Mục Sản Phẩm (`ProductCatalogView.jsx`):** CRUD hàng hóa, Live Margin, chống tạo trùng SKU & tên tương đồng $\ge 85\%$ (**Rule 9**).
-    8. **Dự Báo Nhu Cầu ROP & Đơn DC (`ReorderPredictorView.jsx` & `PurchaseOrdersSubView.jsx`):** Mô phỏng Thời tiết/Lễ Tết, hiển thị $d_{adj}$ & giải thích AI, cảnh báo $DOS > DUE$, quản lý vòng đời đơn PO.
-    9. **Hồ Sơ Cửa Hàng & Phân Quyền (`StoreSettingsView.jsx`):** Cấu hình `RETAIL-STORE-01`, Cửa hàng trưởng phụ trách, giờ mở 06:00-22:00, quản trị tài khoản RBAC.
-    10. **Bàn Giao Ca Trực & Kiểm Toán (`ShiftHandoverView.jsx` & `AuditLogView.jsx`):** Quy trình 4 bước chốt ca POS, đối soát tiền két, rà soát lô cận date, ký nhận điện tử kèm 3 chế tài kỷ luật Mục 15.2.
+* **Frontend SPA (`Frontend/src/` - React Vite, Light Theme):**
+  * Giao diện SPA đồng bộ đúng trang `/login` và **9 trang chức năng chuẩn (`01`–`09`)**:
+    1. **Đăng nhập (`/login` – `LoginView.jsx`):** Xác thực JWT, chống Brute-Force lockout, hỗ trợ chuyển nhanh 3 vai trò `OWNER`, `MANAGER`, `STAFF`.
+    2. **`01. Dashboard` (`DashboardView.jsx`):** Thống kê 6 KPI điều hành toàn chuỗi hoặc từng chi nhánh, tuân thủ FEFO %, Action Board ca trực.
+    3. **`02. Store Management` (`StoreManagementView.jsx`):** Quản lý chuỗi 3–30 chi nhánh, tham số `RSL >= 70%`, trạng thái `OPEN`/`CLOSED`, hỗ trợ chế độ 1 cửa hàng (`isSingleStore`).
+    4. **`03. Inventory Management` (`InventoryManagementView.jsx`, `DcIntakeModal.jsx`, `PrintBatchLabelModal.jsx`):** Quản lý lô & 4 vùng màu HSD, tiếp nhận DC (`RSL >= 70%`, GS1-128), bán lẻ POS tự động bẻ lô FEFO + quét tem giảm giá GS1-128, kiểm kê/xuất kho & danh mục sản phẩm chống trùng (**Rule 9**).
+    5. **`04. AI Forecast` (`AiForecastView.jsx`):** Dự báo sức mua 7 ngày bằng mô hình `LightGBM` (`pretrained_lgbm_model.pkl`) kết hợp thời tiết Open-Meteo & lịch lễ Nager.Date VN, lưu snapshot & đối soát `MAE`/`MAPE`.
+    6. **`05. Smart Ordering` (`SmartOrderingView.jsx`, `PurchaseOrdersSubView.jsx`):** Tính `ROP` trừ hàng đang giao (`incomingOrderQty + incomingTransferQty`), so sánh 3 phương án và duyệt vòng đời đơn PO theo hạn mức Manager/Owner.
+    7. **`06. Stock Transfer` (`StockTransferView.jsx`):** Tối ưu điều phối dư–thiếu liên chi nhánh bằng **Google OR-Tools MILP (`SCIP`/`CBC`)** theo chu trình 5 trạng thái (tự ẩn khi `isSingleStore = true`).
+    8. **`07. Spoilage Alerts` (`SpoilageAlertsView.jsx`, `QuickMarkdownModal.jsx`, `PrintDiscountStickerModal.jsx`, `DisposalFormModal.jsx`):** Cảnh báo cận hạn (`DOS > DUE`), Quick Markdown (`0%`–`50%`), in tem GS1-128, SOP đảo kệ 5 bước và tiêu hủy SoD chốt Sổ hao hụt tài chính.
+    9. **`08. Reports & Analytics` (`ReportsAnalyticsView.jsx`):** Báo cáo phân tích 5 trụ cột (Sai số AI, Thiệt hại hủy, Thiếu & Cứu hàng, Hiệu quả PO, Lợi ích điều chuyển) & xuất `.CSV`.
+    10. **`09. Settings & Integration` (`SettingsIntegrationView.jsx`, `AuditLogView.jsx`):** Đồng bộ POS CSV/Excel trừ kho FEFO thật, quản trị nhân sự & phân quyền 9 trang, quản lý NCC, cấu hình chuỗi và Nhật ký kiểm toán `system_audit_logs` bất biến (**Rule 11**), cùng `AiAssistantModal.jsx` (Gemini 2.5 Flash).
 
 ---
 
@@ -168,5 +168,5 @@ Minh họa luồng thực thi khi Thu ngân bấm thanh toán đơn hàng tại 
 
 Kiến trúc Clean Architecture đã giúp hệ thống:
 1. **Cô lập triệt để rủi ro:** Thay đổi giao diện CSS/React hay cấu trúc bảng trong SQL Server không bao giờ làm hỏng quy tắc tính toán FEFO hay công thức ROP.
-2. **Dễ dàng bảo trì và mở rộng:** Các tính năng mới (như bàn giao ca trực, đảo kệ mặt tiền) được thêm vào theo từng Use Case độc lập mà không cần sửa đổi các Use Case cũ.
+2. **Dễ dàng bảo trì và mở rộng:** Các tính năng mới (như điều phối liên chi nhánh OR-Tools, quét tem GS1-128, đảo kệ mặt tiền) được thêm vào theo từng Use Case độc lập mà không làm vỡ các Use Case cũ.
 3. **Đạt chuẩn học thuật xuất sắc:** Đáp ứng hoàn toàn các tiêu chuẩn khắt khe của một đồ án tốt nghiệp ngành Công nghệ Thông tin tại Trường Đại học Lạc Hồng.

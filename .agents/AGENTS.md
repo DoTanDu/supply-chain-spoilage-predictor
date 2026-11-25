@@ -1,50 +1,47 @@
 # AGENTS.MD - HƯỚNG DẪN DÀNH CHO AI AGENT TRONG DỰ ÁN
 
-## 1. TÀI LIỆU NGUỒN CHUẨN MỰC (SINGLE SOURCE OF TRUTH - SSOT)
-* **Đặc tả hệ thống cốt lõi:** [Dac Ta He Thong Quan Ly Chuoi Cung Ung Chong Lang Phi - Supply Chain Spoilage Predictor.md](file:///c:/thuyet%20minh/Docs/Dac%20Ta%20He%20Thong%20Quan%20Ly%20Chuoi%20Cung%20Ung%20Chong%20Lang%20Phi%20-%20Supply%20Chain%20Spoilage%20Predictor.md)
-* **Nguyên tắc định hướng:** Toàn bộ kiến trúc, cơ sở dữ liệu, API, dịch vụ domain, giao diện POS & Dashboard, quy tắc nghiệp vụ của dự án **BẮT BUỘC XOAY QUANH VÀ TUÂN THỦ TẬP TIN ĐẶC TẢ NÀY**. Bất kỳ tính năng hoặc mã nguồn cũ nào chưa khớp sẽ được sửa đổi và chuẩn hóa dần dần theo đúng tài liệu này.
+## 1. Tài liệu chuẩn đối chiếu (Authoritative Docs)
+* [SmartSupply_AI_Phan_tich_nghiep_vu_3_Actor.md](file:///c:/thuyet%20minh/Docs/SmartSupply_AI_Phan_tich_nghiep_vu_3_Actor.md) — **3 Actor – 26 nhóm nghiệp vụ** (OWNER: 10, MANAGER: 9, STAFF: 7) & quy trình trọng tâm 5 bước.
+* [SmartSupply_AI_Dinh_huong_va_Dac_ta_Trien_khai.md](file:///c:/thuyet%20minh/Docs/SmartSupply_AI_Dinh_huong_va_Dac_ta_Trien_khai.md) — Định hướng sản phẩm SaaS B2B, 9 trang chuẩn (01–09), 4 Bộ máy AI, quy trình điều phối dư–thiếu giữa các chi nhánh.
 
 ---
 
 ## 2. Bối cảnh & Phạm vi Dự án (Project Scope)
-* **Tên đề tài:** Nền tảng Quản trị Chuỗi cung ứng Chống lãng phí (Supply Chain Spoilage Predictor).
+* **Tên đề tài:** SmartSupply AI – Hệ thống dự báo nhu cầu tiêu thụ và tối ưu điều phối hàng hóa nhằm giảm lãng phí thực phẩm trong chuỗi bán lẻ.
 * **Đơn vị:** Khoa Công nghệ Thông tin - Trường Đại học Lạc Hồng (LHU).
 * **GVHD:** ThS. Lê Minh Nhật.
 * **Nhóm sinh viên thực hiện:** Đỗ Tấn Du (123001364) & Đoàn Minh Quân (123000946).
-* **Mô hình bắt buộc:** Cửa hàng Bán lẻ tinh gọn duy nhất (Retail Store - LHU Mart) liên kết với Trung tâm Phân phối Kho tổng (DC Biên Hòa):
-  * Cửa hàng nhận hàng theo đợt từ DC (kiểm soát nghiêm ngặt RSL >= 70%).
-  * Quản lý vòng đời hạn sử dụng từng lô (Shelf-Life) và cảnh báo 3 cấp màu (Xanh / Vàng / Đỏ).
-  * Bán lẻ tại quầy POS theo nguyên tắc **FEFO (First Expired, First Out)**. Bán hàng = Xuất kho trực tiếp, tự động bẻ lô.
-  * Giảm giá xả hàng Quick Markdown (15%, 30%, 40%, 50%) và SOP đảo lô mặt tiền kệ trưng bày.
-  * Tiêu hủy hàng hư hỏng/quá date gắn liền Sổ hao hụt tài chính bất biến.
-  * Dự báo nhu cầu tiêu thụ ROP dựa trên tốc độ bán 14 ngày + thời tiết + ngày lễ để đề xuất đơn đặt hàng gửi DC.
-  * *Tuyệt đối không phát triển luân chuyển ngang giữa các shop hoặc thủ tục hoàn trả nhà cung cấp phức tạp.*
+* **Mô hình hệ thống:** Chuỗi cửa hàng bán lẻ thực phẩm quy mô 3–30 chi nhánh (MVP gồm 3 chi nhánh LHU Mart: `RETAIL-STORE-01`, `RETAIL-STORE-02`, `RETAIL-STORE-03` + Kho trung tâm tùy chọn; đồng thời hỗ trợ chế độ 1 cửa hàng độc lập `isSingleStore` tự ẩn phân hệ điều chuyển `06. Stock Transfer`):
+  * Quản lý danh mục sản phẩm FMCG (chống trùng SKU / tên tương đồng >= 85%) và tiếp nhận hàng theo đợt (`RSL_inbound >= 70%`).
+  * Quản lý vòng đời hạn sử dụng từng lô (Shelf-Life) và cảnh báo 3 cấp màu (Xanh / Vàng / Đỏ) + khóa cứng hàng hết hạn (`EXPIRED`).
+  * Bán lẻ tại quầy theo nguyên tắc **FEFO (First Expired, First Out)** (có hỗ trợ quét lô / tem giảm giá GS1-128), chống tồn kho âm (`UPDLOCK, ROWLOCK`), giảm giá Quick Markdown (`0%`, `15%`, `30%`, `40%`, `50%`), SOP đảo kệ 5 bước và đồng bộ dữ liệu bán hàng POS CSV/Excel trừ kho FEFO thật.
+  * Tiêu hủy hàng hư hỏng/quá date gắn liền Sổ hao hụt tài chính bất biến (`CostLoss = QuantityDisposed * ImportPrice`).
+  * **4 Bộ máy AI:**
+    * **AI 1 – Demand Forecasting:** `LightGBM` (`pretrained_lgbm_model.pkl`) dự báo sức mua 7 ngày kết hợp dữ liệu bán 14 ngày + thời tiết + ngày lễ + khuyến mãi; chỉ xuất dự báo `0` khi chưa phát sinh lịch sử bán.
+    * **AI 2 – Spoilage Risk:** Tính rủi ro ứ đọng quá hạn (`DOS > DUE`) và sản lượng có nguy cơ hỏng trước hạn.
+    * **AI 3 – Inventory Optimization:** Tính ROP có trừ hàng đang giao (`incomingOrderQty + incomingTransferQty`) + giải bài toán điều phối dư–thiếu liên chi nhánh bằng **Google OR-Tools MILP (`SCIP`/`CBC`)** với 3 phương án (PO Nhà cung cấp / Điều chuyển nội bộ / Kho trung tâm).
+    * **AI 4 – AI Assistant:** Gemini LLM truy vấn giải thích báo cáo theo đúng phạm vi quyền người dùng (không dùng LLM thay mô hình dự báo số học).
+  * Điều chuyển nội bộ tuân thủ máy trạng thái 5 bước: `PROPOSED -> PENDING -> APPROVED -> IN_TRANSIT -> RECEIVED` (hoặc `CANCELLED`).
 
 ---
 
-## 3. Quy chuẩn 11 Quy tắc Nghiệp vụ Cốt lõi (11 Core Business Rules)
-1. **Rule 1 - Một cửa hàng duy nhất:** Bảng `StoreProfile` chỉ có 1 bản ghi duy nhất (`RETAIL-STORE-01`), mọi giao dịch tự động gắn với cửa hàng này.
-2. **Rule 2 - FEFO tuyệt đối:** Bán lẻ POS tự động chọn các lô có `expiry_date ASC` ra xuất trước; tự động bẻ đơn qua nhiều lô nếu cần.
-3. **Rule 3 - Chống tồn kho âm:** `current_quantity >= 0` tại mọi thời điểm, bảo vệ bằng ràng buộc CHECK và Transaction có khóa `UPDLOCK, ROWLOCK`.
-4. **Rule 4 - Cảnh báo 3 cấp màu:**
-   * **Vùng Xanh (An toàn):** `DaysLeft > WarningDays` (Bán nguyên giá).
-   * **Vùng Vàng (Cảnh báo):** `3 < DaysLeft <= WarningDays` (Giảm 15%-30%, đảo kệ mặt tiền).
-   * **Vùng Đỏ (Nguy kịch):** `0 < DaysLeft <= 3` (Giảm kịch sàn 40%-50%, gom xả trong ngày).
-5. **Rule 5 - Khóa cứng hàng hết hạn:** `DaysLeft <= 0` tự động chuyển sang `EXPIRED`, cấm xuất bán POS tuyệt đối.
-6. **Rule 6 - Sổ hao hụt tài chính:** Hủy hàng bắt buộc tính `CostLoss = QuantityDisposed * ImportPrice`, lưu bảng `SpoilageRecords`.
-7. **Rule 7 - Tiêu chuẩn nhận hàng DC:** Xe tải DC giao đến phải có `RSL_inbound >= 70%`, nếu nhỏ hơn hệ thống khóa lưu và từ chối nhận.
-8. **Rule 8 - Dự báo ROP tích hợp ngoại cảnh:** `ROP = (d_adjusted * LeadTime) + SafetyStock`, có hệ số thời tiết (W_factor), ngày lễ (H_factor) và cảnh báo nguy cơ ứ đọng `DOS > DUE`.
-9. **Rule 9 - Chống trùng lặp sản phẩm:** Thuật toán chuẩn hóa chuỗi và chặn trùng SKU / tên tương đồng >= 85%.
-10. **Rule 10 - Xả hàng & Đảo kệ mặt tiền:** Quick Markdown có hiệu lực tức thì ở POS; quy trình đảo kệ 5 bước có xác nhận điện tử.
-11. **Rule 11 - Nhật ký kiểm toán bất biến:** Toàn bộ nghiệp vụ xuất, nhập, đổi giá, đảo kệ, hủy hàng, phân quyền đều ghi vào `AuditLogs`.
+## 3. Ma trận 3 Actor & 9 Trang Chuẩn (Strict Role Defaults)
+Kiểm tra quyền thực hiện tại Backend (`roleMiddleware` + `storeScope`), không chỉ ẩn trên UI:
+1. **`01. Dashboard` (`dashboard`)**: `ADMIN`, `STORE_MANAGER`
+2. **`02. Store Management` (`store-management`)**: `ADMIN`, `STORE_MANAGER`
+3. **`03. Inventory Management` (`inventory-management`)**: `ADMIN`, `STORE_MANAGER`, `CASHIER`
+4. **`04. AI Forecast` (`ai-forecast`)**: `ADMIN`, `STORE_MANAGER`
+5. **`05. Smart Ordering` (`smart-ordering`)**: `ADMIN`, `STORE_MANAGER`
+6. **`06. Stock Transfer` (`stock-transfer`)**: `ADMIN`, `STORE_MANAGER`, `CASHIER` (tự ẩn khi `isSingleStore = true`)
+7. **`07. Spoilage Alerts` (`spoilage-alerts`)**: `ADMIN`, `STORE_MANAGER`, `CASHIER`
+8. **`08. Reports & Analytics` (`reports-analytics`)**: `ADMIN`, `STORE_MANAGER`
+9. **`09. Settings & Integration` (`settings-integration`)**: `ADMIN`
+
+*(OWNER/ADMIN có thể cấp/thu hồi quyền linh hoạt từng trang qua `pagePermissions: { grant, revoke }`; toàn bộ nghiệp vụ ghi nhận bắt buộc ghi `system_audit_logs` bất biến.)*
 
 ---
 
 ## 4. Kiến trúc & Kỹ thuật Chuẩn mực (Technical Guidelines)
-* **Kiến trúc:** Clean Architecture 4 tầng (Domain -> Application -> Infrastructure -> Presentation).
+* **Kiến trúc:** Clean Architecture 4 tầng (`Domain -> Application -> Infrastructure -> Presentation`) ở Backend Node.js/Express + Python AI CLI (`predict_cli.py`, `optimize_transfer_cli.py`) + Frontend React (Vite, Light Theme).
 * **Cơ sở dữ liệu:** Microsoft SQL Server LocalDB `(localdb)\mssqllocaldb`, database `retail_spoilage_db`.
-  * Gồm 13 bảng chuẩn 3NF: `Users`, `Roles`, `StoreProfile`, `Suppliers`, `Categories`, `Products`, `Batches`, `SalesHistory`, `SpoilageRecords`, `PurchaseOrders`, `PurchaseOrderItems`, `GoodsReceipts`, `AuditLogs`.
-  * Dùng index tối ưu: `IX_Batches_FEFO`, `IX_Batches_ExpiryWatchdog`, `IX_Products_Sku`, `IX_SalesHistory_Product_Date`, `IX_SpoilageRecords_Batch`.
-  * Toàn bộ chuỗi tiếng Việt phải dùng `N'...'` và mã hóa `utf-8-sig`.
-* **Giao diện Frontend:** Rich Aesthetics, Dark mode, Dashboard 6 chỉ số KPI tài chính, Action Board ca trực khẩn cấp, Responsive.
-* **Chiến lược phát triển:** Nếu mã nguồn hiện tại có điểm sai lệch so với đặc tả, giữ vững tính ổn định của hệ thống và refactor/sửa đổi tuần tự từng module để đạt sự đồng nhất hoàn toàn với đặc tả.
+* **Tính toàn vẹn:** Mọi giao dịch bán hàng, nhập kho, điều chuyển, tiêu hủy dùng Transaction SQL Server (`UPDLOCK, ROWLOCK`), chuỗi tiếng Việt dùng `N'...'` và mã hóa `utf-8-sig`.
